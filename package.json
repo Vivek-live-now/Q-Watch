@@ -1,1 +1,1 @@
-{"name": "007-watch", "version": "1.0.0"}
+{"name":"007-watch","version":"1.0.0","description":"A James Bond \"First Light\" inspired watch built on the ESP32-S3 SuperMini.","main":"index.js","scripts":{"test":"echo \"Error: no test specified\" && exit 1"},"repository":{"type":"git","url":"git+https://github.com/Vivek-live-now/Q-Watch.git"},"keywords":[],"author":"","license":"ISC","type":"commonjs","bugs":{"url":"https://github.com/Vivek-live-now/Q-Watch/issues"},"homepage":"https://github.com/Vivek-live-now/Q-Watch#readme"}
