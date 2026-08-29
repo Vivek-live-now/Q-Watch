@@ -23,14 +23,18 @@ void setup() {
   oled.drawFrame(0, 0, 128, 64);
 
   // Set font and write text
+  // Using a slightly smaller font or splitting the text so it doesn't break out of the box
   oled.setFont(u8g2_font_ncenB08_tr);
 
-  // Center text roughly
-  const char* text = "Q-WATCH OLED TEST OK";
+  const char* text1 = "Q-WATCH OLED";
+  const char* text2 = "TEST OK";
 
-  int w1 = oled.getStrWidth(text);
+  int w1 = oled.getStrWidth(text1);
+  int w2 = oled.getStrWidth(text2);
 
-  oled.drawStr((128 - w1) / 2, 32, text);
+  // Draw the two lines centered
+  oled.drawStr((128 - w1) / 2, 28, text1);
+  oled.drawStr((128 - w2) / 2, 44, text2);
 
   // Send buffer to the display
   oled.sendBuffer();
