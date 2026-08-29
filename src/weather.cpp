@@ -10,56 +10,23 @@ Weather::Weather() {
     data.valid = false;
     last_update_time = 0;
     needs_update = true;
+    in_progress = false;
+    weatherTaskHandle = NULL;
 }
 
-void Weather::loop() {
-    if (WiFi.status() != WL_CONNECTED) return;
+void Weather::weatherTask(void *pvParameters) {
+    Weather* instance = (Weather*)pvParameters;
 
+    Serial.println("Weather task running...");
     AppConfig& cfg = configManager.get();
 
-    // Check if it's time for an update
-    if (needs_update || (millis() - last_update_time > cfg.weather_interval_ms)) {
-        // ALWAYS update the timer so we don't spam the API on failure
-        last_update_time = millis();
-        needs_update = false;
-
-        fetchWeather();
-    }
-}
-
-void Weather::forceUpdate() {
-    needs_update = true;
-}
-
-const WeatherData& Weather::getData() const {
-    return data;
-}
-
-String Weather::mapWmoCodeToCondition(int code) {
-    if (code == 0) return "Clear";
-    if (code == 1 || code == 2 || code == 3) return "Clouds";
-    if (code == 45 || code == 48) return "Fog";
-    if (code >= 51 && code <= 55) return "Drizzle";
-    if (code >= 61 && code <= 67) return "Rain";
-    if (code >= 71 && code <= 77) return "Snow";
-    if (code >= 80 && code <= 82) return "Showers";
-    if (code >= 95 && code <= 99) return "Storm";
-    return "Unknown";
-}
-
-// In a real production watch, we would use AsyncHTTPRequest or an RTOS task here.
-// For this implementation, we use a very short timeout to minimize blocking.
-void Weather::fetchWeather() {
-    Serial.println("Fetching weather...");
-    AppConfig& cfg = configManager.get();
-
-    // Open-Meteo API doesn't require a key
-    String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(cfg.latitude, 4) +
-                 "&longitude=" + String(cfg.longitude, 4) +
-                 "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m";
+    String url = "http://api.openweathermap.org/data/2.5/weather?lat=" + String(cfg.latitude, 4) +
+                 "&lon=" + String(cfg.longitude, 4) +
+                 "&units=" + cfg.owm_units +
+                 "&appid=" + cfg.owm_api_key;
 
     HTTPClient http;
-    http.setTimeout(2500); // Reduce timeout to 2.5s to minimize blocking on failure
+    http.setTimeout(5000); // 5s timeout
     http.begin(url);
     int httpCode = http.GET();
 
@@ -70,17 +37,74 @@ void Weather::fetchWeather() {
         DeserializationError error = deserializeJson(doc, payload);
 
         if (!error) {
-            data.temperature = doc["current"]["temperature_2m"];
-            data.humidity = doc["current"]["relative_humidity_2m"];
-            data.weather_code = doc["current"]["weather_code"];
-            data.wind_speed = doc["current"]["wind_speed_10m"];
-            data.valid = true;
-            Serial.println("Weather update successful.");
+            instance->data.temperature = doc["main"]["temp"];
+            instance->data.feels_like = doc["main"]["feels_like"];
+            instance->data.humidity = doc["main"]["humidity"];
+            instance->data.wind_speed = doc["wind"]["speed"];
+
+            if (doc["weather"].size() > 0) {
+                const char* desc = doc["weather"][0]["main"];
+                instance->data.condition = String(desc);
+            } else {
+                instance->data.condition = "Unknown";
+            }
+
+            instance->data.valid = true;
+            instance->last_update_time = millis(); // Set success time
+            instance->needs_update = false;
+            Serial.println("OWM update successful.");
         } else {
             Serial.println("JSON Parsing failed.");
+            instance->last_update_time = millis();
+            instance->needs_update = false;
         }
     } else {
-        Serial.printf("Weather HTTP Request failed, error: %s\n", http.errorToString(httpCode).c_str());
+        Serial.printf("OWM HTTP Request failed, error: %d\n", httpCode);
+        instance->last_update_time = millis();
+        instance->needs_update = false;
     }
     http.end();
+
+    instance->in_progress = false;
+    vTaskDelete(NULL);
+}
+
+void Weather::loop() {
+    if (WiFi.status() != WL_CONNECTED || in_progress) return;
+
+    AppConfig& cfg = configManager.get();
+
+    if (cfg.owm_api_key.length() > 0) {
+        if (needs_update || (millis() - last_update_time > cfg.weather_interval_ms)) {
+            // Start weather fetch as a FreeRTOS task to prevent blocking the main loop
+            in_progress = true;
+            xTaskCreatePinnedToCore(
+                weatherTask,
+                "WeatherFetchTask",
+                8192,           // Stack size
+                this,           // Parameter
+                1,              // Priority
+                &weatherTaskHandle,
+                0               // Core 0 (leaving core 1 for Arduino loop)
+            );
+        }
+    }
+}
+
+void Weather::forceUpdate() {
+    if (!in_progress) {
+        needs_update = true;
+    }
+}
+
+const WeatherData& Weather::getData() const {
+    return data;
+}
+
+uint32_t Weather::getLastUpdateTime() const {
+    return last_update_time;
+}
+
+bool Weather::isUpdateInProgress() const {
+    return in_progress;
 }

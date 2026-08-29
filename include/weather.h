@@ -5,9 +5,10 @@
 
 struct WeatherData {
     float temperature;
+    float feels_like;
     float wind_speed;
     int humidity;
-    int weather_code; // WMO code
+    String condition;
     bool valid;
 };
 
@@ -17,14 +18,18 @@ public:
     void loop();
     void forceUpdate();
     const WeatherData& getData() const;
-    String mapWmoCodeToCondition(int code);
+    uint32_t getLastUpdateTime() const;
+    bool isUpdateInProgress() const;
 
 private:
     WeatherData data;
     uint32_t last_update_time;
     bool needs_update;
+    bool in_progress;
 
-    void fetchWeather();
+    // Non-blocking Task Handle
+    TaskHandle_t weatherTaskHandle;
+    static void weatherTask(void *pvParameters);
 };
 
 extern Weather weather;

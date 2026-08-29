@@ -3,9 +3,9 @@
 #include "wifi_portal.h"
 #include "clock.h"
 #include "weather.h"
+#include "config.h"
 #include <SPI.h>
 
-// Define the global oled object here
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
 DisplayManager displayManager;
@@ -55,10 +55,20 @@ void DisplayManager::drawWatchFace() {
 
     // 3. Weather
     const WeatherData& wd = weather.getData();
-    if (wd.valid) {
-        String condStr = weather.mapWmoCodeToCondition(wd.weather_code);
-        String weatherStr1 = String(wd.temperature, 1) + "C " + condStr;
-        String weatherStr2 = "H:" + String(wd.humidity) + "% W:" + String(wd.wind_speed, 1) + "km/h";
+    AppConfig& cfg = configManager.get();
+
+    if (cfg.owm_api_key.length() == 0) {
+        oled.setFont(u8g2_font_ncenB08_tr);
+        oled.drawStr(5, 58, "Setup API Key");
+    } else if (wd.valid) {
+        // Temperature & Condition
+        String unit = cfg.owm_units == "metric" ? "C" : "F";
+        String weatherStr1 = String(wd.temperature, 1) + unit + " " + wd.condition;
+        if (WiFi.status() != WL_CONNECTED) weatherStr1 += " (!)"; // Offline indicator
+
+        // Humidity & Wind
+        String speed_unit = cfg.owm_units == "metric" ? "m/s" : "mph";
+        String weatherStr2 = "H:" + String(wd.humidity) + "% W:" + String(wd.wind_speed, 1) + speed_unit;
 
         oled.setFont(u8g2_font_5x7_tr);
         oled.drawStr(5, 53, weatherStr1.c_str());

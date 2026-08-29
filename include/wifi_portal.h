@@ -9,6 +9,7 @@
 enum class WifiState {
     CONNECTING,
     CONNECTED,
+    DISCONNECTED,
     PORTAL
 };
 
@@ -24,10 +25,17 @@ private:
     DNSServer dnsServer;
     WifiState state;
     uint32_t connect_start_time;
+    uint32_t last_reconnect_attempt;
+    bool scan_in_progress;
 
     void startPortal();
+    void setupRoutes();
     void handleRoot();
     void handleSave();
+    void handleScanTrigger();
+    void handleScanResults();
+    void handleStatusJson();
+    void handleWeatherForce();
     String getHtml();
 };
 
