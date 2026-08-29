@@ -1,22 +1,25 @@
-# 007 Q Watch
+# 007 Q-Watch
 
-A James Bond "First Light" inspired watch built on the ESP32-S3 SuperMini.
+A James Bond "First Light" inspired smartwatch built on the ESP32-S3 SuperMini.
 
-## Milestone 1: Hardware Foundation
+## Milestones & Features
 
-This milestone establishes the initial hardware setup, focusing strictly on getting the ESP32-S3 communicating with the 1.3-inch OLED display over SPI.
-
-### Hardware
-
+### Milestone 1: Hardware Foundation
 *   **Microcontroller:** ESP32-S3 SuperMini (4MB Flash, 2MB PSRAM)
 *   **Display:** 1.3" 128x64 OLED Display (White Color)
+*   **Controller:** SH1106 via 4-wire Hardware SPI.
+*   **Configuration:** Custom `esp32s3_supermini` PlatformIO board definition to ensure correct memory and USB routing.
 
-#### A note on the Display Controller
-The physical OLED module is labeled/sold as an "SSD1106". However, in the embedded display ecosystem, 1.3-inch OLEDs almost universally use the **SH1106** controller. This project uses the `U8g2` library configured with the `SH1106` driver to communicate with the display over SPI.
+### Milestone 2 & 3: Connectivity, Time & Weather
+*   **Captive Portal:** A mobile-friendly setup dashboard accessible at `192.168.4.1` (when Wi-Fi is unconfigured/disconnected) or `q-watch.local` via mDNS on your home network.
+*   **Wi-Fi Management:** Asynchronous background connecting and a captive portal scanner to easily connect to local networks.
+*   **NTP Clock:** Asynchronous time synchronization using standard ESP32 SNTP, allowing the clock to continue accurately without internet.
+*   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
+*   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
-### Pinout (Hardware SPI)
+## Hardware Pinout (SPI)
 
-To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines (often GPIO 9-14 depending on the specific variant) and strapping pins, the following custom SPI pinout is used:
+To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following custom SPI pinout is used:
 
 | ESP32-S3 Pin | OLED Pin | Description       |
 | :---         | :---     | :---              |
@@ -26,11 +29,10 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines (often GPIO 9-
 | GPIO 2       | DC       | Data/Command      |
 | GPIO 8       | RST      | Reset             |
 
-*Note: GPIO 3 is deliberately avoided for DC as it is a strapping pin.*
-
-### Getting Started
+## Getting Started
 
 1.  Open the project in PlatformIO.
 2.  Connect the ESP32-S3 SuperMini to the OLED using the pinout above.
-3.  Build and upload the code.
-4.  The display should show a border around the edge and the text "007 SYSTEM INITIALIZED".
+3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
+4.  On first boot, connect to the **Q-Watch-Setup** Wi-Fi network and navigate to `http://192.168.4.1`.
+5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
