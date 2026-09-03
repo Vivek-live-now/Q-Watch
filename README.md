@@ -43,14 +43,23 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | Peripheral | Function | GPIO | Notes |
 | :--- | :--- | :--- | :--- |
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
-| Button Select | INPUT_PULLUP | 40 | Reclaims JTAG MTDO |
+| Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
 | Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
 | Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
 | RGB LED | WS2812 DATA | 48 | Preserved for onboard LED |
 
-### 4. Decoupling Capacitor Strategy (104 Ceramic)
+### 4. Available / Reserved Pins
+The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging.
+*   **GPIO 1:** Clean reserve pin.
+*   **GPIO 40:** Clean reserve pin (Reclaims JTAG MTDO).
+*   **GPIO 42:** Clean reserve pin.
+*   **GPIO 43:** Reserved (Used for hardware UART0 TX / Serial Debugging if USB CDC fails).
+*   **GPIO 44:** Reserved (Used for hardware UART0 RX / Serial Debugging if USB CDC fails).
+*   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*
+
+### 5. Decoupling Capacitor Strategy (104 Ceramic)
 The ESP32-S3, OLED, and individual sensor breakouts already contain adequate local decoupling. However, because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is highly recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
 
 ## Getting Started

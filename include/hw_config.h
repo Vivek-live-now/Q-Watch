@@ -32,10 +32,10 @@
 #define I2C_SCL    16
 
 // ----------------------------------------------------------------------------
-// Navigation Buttons [Requires internal or external pull-ups]
+// Navigation Buttons [Requires internal pull-ups]
 // ----------------------------------------------------------------------------
 #define BTN_UP     39
-#define BTN_SEL    40
+#define BTN_SEL    21  // Dual purpose: Normal SELECT input and Deep Sleep RTC Wake
 #define BTN_DN     41
 
 // ----------------------------------------------------------------------------
@@ -57,8 +57,8 @@
 // ----------------------------------------------------------------------------
 // Reserve / Unused Pins
 // ----------------------------------------------------------------------------
-// GPIO 1, 21, 42 (Clean Reserves)
-// GPIO 43, 44    (UART0 / Serial Debugging)
+// GPIO 1, 40, 42    (Clean Reserves)
+// GPIO 43, 44       (UART0 / Serial Debugging)
 // GPIO 0, 3, 45, 46 (Strapping / Boot pins - DO NOT USE)
 
 // ============================================================================
