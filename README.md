@@ -17,22 +17,46 @@ A James Bond "First Light" inspired smartwatch built on the ESP32-S3 SuperMini.
 *   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
 *   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
-## Hardware Pinout (SPI)
+## Hardware Architecture & Pinout
 
-To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following custom SPI pinout is used:
+To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
 
-| ESP32-S3 Pin | OLED Pin | Description       |
-| :---         | :---     | :---              |
-| GPIO 5       | MOSI/DIN | Data In           |
-| GPIO 7       | CLK/SCK  | Clock             |
-| GPIO 4       | CS       | Chip Select       |
-| GPIO 2       | DC       | Data/Command      |
-| GPIO 8       | RST      | Reset             |
+### 1. OLED Display (LOCKED)
+| Peripheral | Function | GPIO |
+| :--- | :--- | :--- |
+| OLED | MOSI/DIN | 5 |
+| OLED | CLK/SCK | 7 |
+| OLED | CS | 4 |
+| OLED | DC | 2 |
+| OLED | RST | 8 |
+
+### 2. I2C Sensors (Shared Bus)
+| Peripheral | Function | GPIO |
+| :--- | :--- | :--- |
+| BME280 / MPU-6500 / HMC5883L / MAX30100 | SDA | 15 |
+| BME280 / MPU-6500 / HMC5883L / MAX30100 | SCL | 16 |
+
+*Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
+*Note on MAX30100:* This project utilizes a specific physical modification to allow the 1.8V MAX30100 breakout to safely interface with the 3.3V logic of the ESP32.
+
+### 3. Inputs & Audio/Visual
+| Peripheral | Function | GPIO | Notes |
+| :--- | :--- | :--- | :--- |
+| Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
+| Button Select | INPUT_PULLUP | 40 | Reclaims JTAG MTDO |
+| Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
+| IR Receiver | RX DATA | 17 | |
+| IR Transmitter| TX DATA | 18 | High current pulse load |
+| Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
+| RGB LED | WS2812 DATA | 48 | Preserved for onboard LED |
+
+### 4. Decoupling Capacitor Strategy (104 Ceramic)
+The ESP32-S3, OLED, and individual sensor breakouts already contain adequate local decoupling. However, because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is highly recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
 
 ## Getting Started
 
 1.  Open the project in PlatformIO.
-2.  Connect the ESP32-S3 SuperMini to the OLED using the pinout above.
+2.  Connect the hardware according to the pinout above.
 3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
 4.  On first boot, connect to the **Q-Watch-Setup** Wi-Fi network and navigate to `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
