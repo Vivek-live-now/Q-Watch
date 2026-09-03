@@ -4,9 +4,17 @@
 #include <Arduino.h>
 
 enum class UIState {
-    HOME,
+    APP_HOME,
     MAIN_MENU,
-    SETTINGS_MENU,
+    APP_CLOCK,
+    APP_WEATHER,
+    APP_COMPASS,
+    APP_HEALTH,
+    APP_MOTION,
+    APP_IR,
+    APP_GAMES,
+    APP_SETTINGS,
+    APP_ABOUT,
     VALUE_EDIT,
     SLEEPING
 };
@@ -26,11 +34,16 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 7;
-    const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {"Clock", "Weather", "Sensors", "Games", "Themes", "Settings", "Sleep"};
+    static const int MAIN_MENU_ITEM_COUNT = 10;
+    const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
+        "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
+        "MOTION", "IR REMOTE", "GAMES", "SETTINGS", "ABOUT"
+    };
 
-    static const int SETTINGS_MENU_ITEM_COUNT = 3;
-    const char* settings_menu_items[SETTINGS_MENU_ITEM_COUNT] = {"Brightness", "Wi-Fi", "About"};
+    static const int SETTINGS_MENU_ITEM_COUNT = 4;
+    const char* settings_menu_items[SETTINGS_MENU_ITEM_COUNT] = {
+        "Display", "Sound", "Theme", "Sleep"
+    };
 
 private:
     UIState current_state;
@@ -43,6 +56,7 @@ private:
     void handleMainMenuInput();
     void handleSettingsMenuInput();
     void handleValueEditInput();
+    void handleGenericAppInput(); // Shared handler for dummy apps
 
     void processNavUp();
     void processNavDown();
