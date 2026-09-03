@@ -69,3 +69,4 @@ The ESP32-S3, OLED, and individual sensor breakouts already contain adequate loc
 3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
 4.  On first boot, connect to the **Q-Watch-Setup** Wi-Fi network and navigate to `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
+6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local`.
