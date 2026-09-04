@@ -45,6 +45,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
 | Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
 | Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
+| Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
 | Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
@@ -52,7 +53,6 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 
 ### 4. Available / Reserved Pins
 The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging.
-*   **GPIO 1:** Clean reserve pin.
 *   **GPIO 40:** Clean reserve pin (Reclaims JTAG MTDO).
 *   **GPIO 42:** Clean reserve pin.
 *   **GPIO 43:** Reserved (Used for hardware UART0 TX / Serial Debugging if USB CDC fails).
