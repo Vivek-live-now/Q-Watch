@@ -1,57 +1,67 @@
 #include <Arduino.h>
-#include "display.h"
-#include "wifi_portal.h"
-#include "clock.h"
-#include "weather.h"
-#include "config.h"
-#include "button_manager.h"
-#include "ui_core.h"
-#include "battery.h"
-
-String last_drawn_time = "";
-uint32_t last_portal_draw = 0;
-uint32_t last_batt_print = 0;
+#include <Wire.h>
+#include "hw_config.h"
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Booting Q-Watch...");
+  while (!Serial) {
+    delay(10);
+  }
 
-  displayManager.begin();
-  btnManager.begin();
-  ui.begin();
-  battery.begin();
+  Serial.println("\n\n========================================");
+  Serial.println("Q-WATCH I2C HARDWARE SCANNER");
+  Serial.println("========================================");
+  Serial.printf("SDA Pin: %d\n", I2C_SDA);
+  Serial.printf("SCL Pin: %d\n", I2C_SCL);
+  Serial.println("Initializing Wire...");
 
-  wifiPortal.begin();
-  qclock.begin(configManager.get().timezone);
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Serial.println("Wire initialized. Starting scan...");
 }
 
 void loop() {
-  wifiPortal.loop();
-  qclock.loop();
-  weather.loop();
+  byte error, address;
+  int nDevices;
 
-  btnManager.loop();
-  ui.loop(); // Process button inputs into UI state
+  Serial.println("Scanning...");
 
-  // Periodically print battery info for testing purposes (since UI integration is not requested yet)
-  if (millis() - last_batt_print >= 5000) {
-      float vbat = battery.readVoltage();
-      int pct = battery.readPercentage();
+  nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
 
-      // We know the divider is exactly 1/2, so the ADC node voltage is vbat / 2.0
-      Serial.printf("[BATTERY] Raw Node: %.2fV | Calc VBAT: %.2fV | Est Pct: %d%%\n", (vbat / 2.0f), vbat, pct);
-      last_batt_print = millis();
+    if (error == 0) {
+      Serial.print("I2C device found at address 0x");
+      if (address < 16) {
+        Serial.print("0");
+      }
+      Serial.print(address, HEX);
+
+      // Attempt to identify common Q-Watch sensors
+      if (address == 0x68 || address == 0x69) Serial.print("  <-- Likely MPU-6500");
+      else if (address == 0x76 || address == 0x77) Serial.print("  <-- Likely BME280");
+      else if (address == 0x1E || address == 0x0D) Serial.print("  <-- Likely QMC5883L / HMC5883L");
+      else if (address == 0x57) Serial.print("  <-- Likely MAX30100");
+
+      Serial.println();
+      nDevices++;
+    }
+    else if (error == 4) {
+      Serial.print("Unknown error at address 0x");
+      if (address < 16) {
+        Serial.print("0");
+      }
+      Serial.println(address, HEX);
+    }
+  }
+  if (nDevices == 0) {
+    Serial.println("No I2C devices found\n");
+  } else {
+    Serial.println("done\n");
   }
 
-  // Energy Efficiency & UI Updates
-  String current_time = qclock.getSecondsStr();
-  bool time_changed = (current_time != last_drawn_time);
-  bool portal_update_due = (wifiPortal.getState() == WifiState::PORTAL && millis() - last_portal_draw >= 1000);
-
-  if (time_changed || portal_update_due || ui.needsRedraw()) {
-      displayManager.update();
-      ui.clearRedrawFlag();
-      last_drawn_time = current_time;
-      if (wifiPortal.getState() == WifiState::PORTAL) last_portal_draw = millis();
-  }
+  delay(5000);           // wait 5 seconds for next scan
 }
