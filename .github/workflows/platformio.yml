@@ -1,0 +1,42 @@
+name: PlatformIO CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Python (required by PlatformIO Core)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Cache PlatformIO packages to speed up consecutive builds
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      # 4. Install PlatformIO Core CLI
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      # 5. Compile the ESP32 project
+      - name: Build Project
+        run: pio run
