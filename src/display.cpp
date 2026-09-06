@@ -129,21 +129,131 @@ void DisplayManager::drawAppWeather() {
     drawFooter("STS: OFFLINE DEMO");
 }
 
+
 void DisplayManager::drawAppCompass() {
-    drawHeader("NAV/HDG");
+    if (ui.getCompassPage() == 1) {
+        drawAppCompassMetrics();
+        return;
+    }
 
     OrientationData o = sensors.getOrientation();
-    String hdgStr = "HDG [" + String((int)o.yaw) + "\260 ]";
+    float heading = o.yaw;
 
+    // Convert heading string
+    String hdgStr = String((int)heading) + "\260";
+
+    // Base center for the compass dial
+    int cx = 64;
+    int cy = 60;
+    int r = 50;
+
+    // Draw rotating dial
+    for (int i = 0; i < 360; i += 15) {
+        float angle = (i - heading - 90) * PI / 180.0;
+        int x1 = cx + (r * cos(angle));
+        int y1 = cy + (r * sin(angle));
+
+        // Only draw visible upper half
+        if (y1 <= cy + 5) {
+            int len = (i % 90 == 0) ? 6 : (i % 30 == 0 ? 4 : 2);
+            int x2 = cx + ((r - len) * cos(angle));
+            int y2 = cy + ((r - len) * sin(angle));
+            oled.drawLine(x1, y1, x2, y2);
+
+            // Draw cardinal labels
+            if (i % 90 == 0) {
+                const char* lbl = (i == 0) ? "N" : (i == 90) ? "E" : (i == 180) ? "S" : "W";
+                int tx = cx + ((r - 12) * cos(angle));
+                int ty = cy + ((r - 12) * sin(angle));
+                oled.setFont(u8g2_font_5x7_tr);
+                int sw = oled.getStrWidth(lbl);
+                oled.drawStr(tx - sw/2, ty + 3, lbl);
+            } else if (i % 30 == 0) {
+                String lbl = String(i);
+                int tx = cx + ((r - 12) * cos(angle));
+                int ty = cy + ((r - 12) * sin(angle));
+                oled.setFont(u8g2_font_4x6_tr);
+                int sw = oled.getStrWidth(lbl.c_str());
+                oled.drawStr(tx - sw/2, ty + 3, lbl.c_str());
+            }
+        }
+    }
+
+    // Fixed indicator triangle at top
+    oled.drawTriangle(64, 4, 60, 12, 68, 12);
+
+    // Large heading text
     oled.setFont(u8g2_font_ncenB12_tr);
-    oled.drawStr(10, 30, hdgStr.c_str());
 
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 46, "TILT COMPENSATED");
+    const char* dirStr = "N";
+    if (heading >= 337.5 || heading < 22.5) dirStr = "N";
+    else if (heading >= 22.5 && heading < 67.5) dirStr = "NE";
+    else if (heading >= 67.5 && heading < 112.5) dirStr = "E";
+    else if (heading >= 112.5 && heading < 157.5) dirStr = "SE";
+    else if (heading >= 157.5 && heading < 202.5) dirStr = "S";
+    else if (heading >= 202.5 && heading < 247.5) dirStr = "SW";
+    else if (heading >= 247.5 && heading < 292.5) dirStr = "W";
+    else if (heading >= 292.5 && heading < 337.5) dirStr = "NW";
 
-    drawFooter(sensors.isMagOk() ? "STS: ACTIVE" : "STS: MAG FAIL");
+    String fullHdg = hdgStr + " " + String(dirStr);
+    int w = oled.getStrWidth(fullHdg.c_str());
+    oled.drawStr(64 - w/2, 60, fullHdg.c_str());
 }
 
+void DisplayManager::drawAppCompassMetrics() {
+    drawHeader("MAG SENSOR");
+
+    CalibratedSensorData data = sensors.getCalData();
+    float magTotal = sqrt(data.mx*data.mx + data.my*data.my + data.mz*data.mz);
+
+    // Update history array
+    mag_history[mag_history_idx] = magTotal;
+    mag_history_idx = (mag_history_idx + 1) % 64;
+
+    oled.setFont(u8g2_font_4x6_tr);
+    String xStr = "X:" + String(data.mx, 1);
+    String yStr = "Y:" + String(data.my, 1);
+    String zStr = "Z:" + String(data.mz, 1);
+
+    oled.drawStr(10, 22, xStr.c_str());
+    oled.drawStr(50, 22, yStr.c_str());
+    oled.drawStr(90, 22, zStr.c_str());
+
+    String totStr = "TOTAL: " + String(magTotal, 1) + "uT";
+    oled.drawStr(10, 32, totStr.c_str());
+
+    // Draw graph
+    int graph_x = 10;
+    int graph_y = 52;
+    int graph_w = 108;
+    int graph_h = 15;
+
+    oled.drawFrame(graph_x, graph_y - graph_h, graph_w, graph_h + 1);
+
+    float max_val = 1.0;
+    for (int i = 0; i < 64; i++) {
+        if (mag_history[i] > max_val) max_val = mag_history[i];
+    }
+
+    for (int i = 0; i < 63; i++) {
+        int idx1 = (mag_history_idx + i) % 64;
+        int idx2 = (mag_history_idx + i + 1) % 64;
+
+        int x1 = graph_x + 1 + (i * (graph_w - 2) / 63);
+        int x2 = graph_x + 1 + ((i + 1) * (graph_w - 2) / 63);
+
+        int y1 = graph_y - (mag_history[idx1] / max_val * graph_h);
+        int y2 = graph_y - (mag_history[idx2] / max_val * graph_h);
+
+        // Clamp to frame
+        if (y1 < graph_y - graph_h + 1) y1 = graph_y - graph_h + 1;
+        if (y2 < graph_y - graph_h + 1) y2 = graph_y - graph_h + 1;
+
+        oled.drawLine(x1, y1, x2, y2);
+    }
+
+    drawFooter("PAGE 2/2");
+}
 void DisplayManager::drawAppHealth() {
     drawHeader("BIO/METRIC");
     oled.setFont(u8g2_font_6x10_tr);

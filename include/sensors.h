@@ -38,6 +38,7 @@ public:
     void loop();
 
     OrientationData getOrientation() const;
+    CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
 

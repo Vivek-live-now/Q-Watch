@@ -9,7 +9,7 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     menu_selection(0),
     menu_scroll_offset(0),
-    edit_value(5),
+    edit_value(5), compass_page(0),
     needs_redraw(true) {}
 
 void UICore::begin() {
@@ -34,6 +34,9 @@ void UICore::loop() {
             break;
         case UIState::VALUE_EDIT:
             handleValueEditInput();
+            break;
+        case UIState::APP_COMPASS:
+            handleCompassInput();
             break;
         default:
             handleGenericAppInput();
@@ -96,7 +99,7 @@ void UICore::handleMainMenuInput() {
             case 0: current_state = UIState::APP_HOME; break;
             case 1: current_state = UIState::APP_CLOCK; break;
             case 2: current_state = UIState::APP_WEATHER; break;
-            case 3: current_state = UIState::APP_COMPASS; break;
+            case 3: current_state = UIState::APP_COMPASS; compass_page = 0; break;
             case 4: current_state = UIState::APP_HEALTH; break;
             case 5: current_state = UIState::APP_MOTION; break;
             case 6: current_state = UIState::APP_IR; break;
@@ -179,4 +182,28 @@ void UICore::enterDeepSleep() {
     esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_SEL, 0);
 
     esp_deep_sleep_start();
+}
+
+void UICore::handleCompassInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        if (compass_page > 0) {
+            compass_page--;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        if (compass_page < 1) {
+            compass_page++;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    if (sel_evt == BTN_EVT_LONG_PRESS) {
+        current_state = UIState::APP_HOME;
+        needs_redraw = true;
+    }
 }

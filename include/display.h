@@ -6,6 +6,10 @@
 
 class DisplayManager {
 public:
+    DisplayManager() : mag_history_idx(0) {
+        for(int i=0; i<64; i++) mag_history[i] = 0;
+    }
+public:
     void begin();
     void update();
 
@@ -14,6 +18,9 @@ private:
     void drawAppClock();
     void drawAppWeather();
     void drawAppCompass();
+    void drawAppCompassMetrics();
+    float mag_history[64];
+    int mag_history_idx;
     void drawAppHealth();
     void drawAppMotion();
     void drawAppIR();

@@ -29,6 +29,7 @@ public:
     int getMenuSelection() const { return menu_selection; }
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
+    int getCompassPage() const { return compass_page; }
 
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
@@ -50,6 +51,7 @@ private:
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
+    int compass_page;
     bool needs_redraw;
 
     void handleHomeInput();
@@ -57,6 +59,7 @@ private:
     void handleSettingsMenuInput();
     void handleValueEditInput();
     void handleGenericAppInput(); // Shared handler for dummy apps
+    void handleCompassInput();
 
     void processNavUp();
     void processNavDown();
