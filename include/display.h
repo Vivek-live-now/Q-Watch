@@ -27,6 +27,7 @@ private:
     // Helpers
     void drawHeader(const char* title);
     void drawFooter(const char* status);
+    void drawTacticalOverlay();
 };
 
 extern DisplayManager displayManager;
