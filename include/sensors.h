@@ -16,6 +16,15 @@ struct CalibratedSensorData {
     float mx, my, mz; // in uT (or arbitrary normalized units)
 };
 
+struct CalibrationOffsets {
+    float gyro_bias_x;
+    float gyro_bias_y;
+    float gyro_bias_z;
+    float mag_bias_x;
+    float mag_bias_y;
+    float mag_bias_z;
+};
+
 struct OrientationData {
     float roll;
     float pitch;
@@ -40,6 +49,7 @@ private:
 
     RawSensorData raw_data;
     CalibratedSensorData cal_data;
+    CalibrationOffsets offsets;
     OrientationData orientation;
 
     // Madgwick filter state
@@ -50,6 +60,7 @@ private:
 
     void readMpu();
     void readMag();
+    void calibrateGyro();
     void applyCalibrationAndMapping();
     void updateMadgwick(float dt);
     void computeEulerAngles();

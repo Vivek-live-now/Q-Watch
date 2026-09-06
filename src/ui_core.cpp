@@ -16,7 +16,6 @@ void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
         Serial.println("Woke up from deep sleep via SELECT button (GPIO21)!");
-        // The button manager already handles ignoring the initial hold of the button
     }
 }
 
@@ -37,7 +36,6 @@ void UICore::loop() {
             handleValueEditInput();
             break;
         default:
-            // All other apps (CLOCK, WEATHER, COMPASS, etc) use the generic handler for now
             handleGenericAppInput();
             break;
     }
@@ -45,8 +43,11 @@ void UICore::loop() {
 
 void UICore::processNavUp() {
     menu_selection--;
-    if (menu_selection < 0) menu_selection = 0;
+    if (menu_selection < 0) {
+        menu_selection = 0;
+    }
 
+    // If the cursor moves above the current viewing window, scroll up
     if (menu_selection < menu_scroll_offset) {
         menu_scroll_offset = menu_selection;
     }
@@ -57,11 +58,14 @@ void UICore::processNavDown() {
     int max_items = (current_state == UIState::MAIN_MENU) ? MAIN_MENU_ITEM_COUNT : SETTINGS_MENU_ITEM_COUNT;
 
     menu_selection++;
-    if (menu_selection >= max_items) menu_selection = max_items - 1;
+    if (menu_selection >= max_items) {
+        menu_selection = max_items - 1;
+    }
 
-    // Display shows ~4 items at a time
-    if (menu_selection >= menu_scroll_offset + 4) {
-        menu_scroll_offset = menu_selection - 3;
+    // Display shows 3 items at a time (indices 0, 1, 2 relative to offset)
+    // If cursor reaches index 3 relative to offset, we must scroll down by 1.
+    if (menu_selection >= menu_scroll_offset + 3) {
+        menu_scroll_offset = menu_selection - 2;
     }
     needs_redraw = true;
 }
@@ -108,7 +112,6 @@ void UICore::handleMainMenuInput() {
 }
 
 void UICore::handleGenericAppInput() {
-    // In dummy apps, UP/DN do nothing, Long SELECT goes back to HOME
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
 
@@ -116,9 +119,6 @@ void UICore::handleGenericAppInput() {
     if (sel_evt == BTN_EVT_LONG_PRESS) {
         current_state = UIState::APP_HOME;
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
-        // We could also map Short SELECT to go back to Menu, but requirement says
-        // Long SELECT -> Home/Back. We'll use Long SELECT for Home here.
     }
 }
 
@@ -134,14 +134,16 @@ void UICore::handleSettingsMenuInput() {
         if (menu_selection == 3) { // "Sleep"
             enterDeepSleep();
         } else {
-            // Edit Value for Display, Sound, Theme
             current_state = UIState::VALUE_EDIT;
             needs_redraw = true;
         }
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         current_state = UIState::MAIN_MENU;
         menu_selection = 8; // Reset cursor to Settings in main menu
-        menu_scroll_offset = 6;
+        menu_scroll_offset = 7; // Scroll so Settings is at the bottom of the 3-item list (index 8, offset 6)
+        // Wait, 8 - 2 = 6. Let's fix this mathematically so it's always correct:
+        menu_scroll_offset = menu_selection - 2;
+        if(menu_scroll_offset < 0) menu_scroll_offset = 0;
         needs_redraw = true;
     }
 }
