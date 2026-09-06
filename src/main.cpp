@@ -8,12 +8,12 @@
 #define MPU6500_PWR_MGMT_1  0x6B
 #define MPU6500_ACCEL_XOUT_H 0x3B
 
-// Magnetometer 0x2C (Highly likely MMC5883MA) Addresses & Registers
-#define MAG_ADDR            0x2C
-#define MMC5883MA_PRODUCT_ID 0x2F
-#define MMC5883MA_CTRL_0     0x08
-#define MMC5883MA_STATUS     0x07
-#define MMC5883MA_XOUT_L     0x00
+// QMC5883L (Clone variant at 0x2C) Addresses & Registers
+#define QMC5883L_ADDR       0x2C
+#define QMC5883L_DATA_START 0x00
+#define QMC5883L_STATUS     0x06
+#define QMC5883L_CTRL_1     0x09
+#define QMC5883L_SET_RESET  0x0B
 
 bool mpu_ok = false;
 bool mag_ok = false;
@@ -42,7 +42,7 @@ void setup() {
     Serial.begin(115200);
     delay(2000);
     Serial.println("\n\n========================================");
-    Serial.println("Q-WATCH RAW SENSOR DIAGNOSTIC");
+    Serial.println("Q-WATCH RAW SENSOR DIAGNOSTIC V2");
     Serial.println("========================================");
 
     // Initialize I2C at 100kHz as requested
@@ -55,15 +55,9 @@ void setup() {
     Serial.println("\n--- Checking MPU-6500 at 0x68 ---");
     uint8_t mpu_id = readRegister(MPU6500_ADDR, MPU6500_WHO_AM_I);
     Serial.printf("WHO_AM_I: 0x%02X ", mpu_id);
-    if (mpu_id == 0x70) {
-        Serial.println("(Matches MPU-6500) -> OK");
-        // Wake up MPU
-        writeRegister(MPU6500_ADDR, MPU6500_PWR_MGMT_1, 0x00);
-        delay(10);
-        mpu_ok = true;
-    } else if (mpu_id == 0x68 || mpu_id == 0x71) {
-        Serial.println("(Matches MPU-6050/MPU-9250) -> OK, will proceed");
-        writeRegister(MPU6500_ADDR, MPU6500_PWR_MGMT_1, 0x00);
+    if (mpu_id == 0x70 || mpu_id == 0x68 || mpu_id == 0x71) {
+        Serial.println(" -> OK");
+        writeRegister(MPU6500_ADDR, MPU6500_PWR_MGMT_1, 0x00); // Wake up
         delay(10);
         mpu_ok = true;
     } else {
@@ -71,34 +65,25 @@ void setup() {
     }
 
     // ---------------------------------------------------------
-    // 2. Magnetometer 0x2C Investigation
+    // 2. QMC5883L Magnetometer at 0x2C Investigation
     // ---------------------------------------------------------
-    Serial.println("\n--- Investigating Magnetometer at 0x2C ---");
-    // Check if it responds
-    Wire.beginTransmission(MAG_ADDR);
+    Serial.println("\n--- Checking QMC5883L at 0x2C ---");
+    Wire.beginTransmission(QMC5883L_ADDR);
     if (Wire.endTransmission() == 0) {
         Serial.println("Device acknowledged at 0x2C.");
 
-        // Attempt to read MMC5883MA Product ID register
-        uint8_t mag_id = readRegister(MAG_ADDR, MMC5883MA_PRODUCT_ID);
-        Serial.printf("Product ID Reg (0x2F): 0x%02X ", mag_id);
+        // QMC5883L Initialization
+        // 1. Write 0x01 to SET/RESET Period register (0x0B)
+        writeRegister(QMC5883L_ADDR, QMC5883L_SET_RESET, 0x01);
+        delay(10);
 
-        if (mag_id == 0x0C) {
-            Serial.println("(Matches MMC5883MA) -> OK");
-            // Basic init for MMC5883MA
-            // Write 0x08 (Set) to internal control 0 to charge capacitor
-            writeRegister(MAG_ADDR, MMC5883MA_CTRL_0, 0x08);
-            delay(10);
-            mag_ok = true;
-        } else {
-            Serial.println("(UNKNOWN DEVICE)");
-            Serial.println("Dumping first 10 registers for manual identification:");
-            for(int i=0; i<10; i++) {
-                Serial.printf("Reg 0x%02X: 0x%02X\n", i, readRegister(MAG_ADDR, i));
-            }
-            // We will still attempt to treat it as an MMC5883MA to see if it produces changing data
-            mag_ok = true;
-        }
+        // 2. Write to Control Register 1 (0x09)
+        // 0x1D = Continuous Mode, ODR 200Hz, RNG 8G, OSR 512
+        writeRegister(QMC5883L_ADDR, QMC5883L_CTRL_1, 0x1D);
+        delay(10);
+
+        mag_ok = true;
+        Serial.println("QMC5883L Initialized.");
     } else {
         Serial.println("Device NOT responding at 0x2C!");
     }
@@ -124,43 +109,34 @@ void loop() {
         Wire.requestFrom(MPU6500_ADDR, (int)14);
 
         if (Wire.available() == 14) {
+            // MPU is MSB first
             ax = (Wire.read() << 8) | Wire.read();
             ay = (Wire.read() << 8) | Wire.read();
             az = (Wire.read() << 8) | Wire.read();
-            Wire.read(); Wire.read(); // Skip temperature
+            Wire.read(); Wire.read(); // Skip temp
             gx = (Wire.read() << 8) | Wire.read();
             gy = (Wire.read() << 8) | Wire.read();
             gz = (Wire.read() << 8) | Wire.read();
         } else {
-            Serial.print("[MPU ERROR: Bytes missing] ");
+            Serial.print("[MPU ERROR] ");
         }
     }
 
-    // --- Read MMC5883MA (or unknown 0x2C mag) ---
+    // --- Read QMC5883L ---
     int16_t mx = 0, my = 0, mz = 0;
 
     if (mag_ok) {
-        // Trigger a measurement (TM_M bit in CTRL_0)
-        writeRegister(MAG_ADDR, MMC5883MA_CTRL_0, 0x01);
+        // Read Status Register
+        uint8_t status = readRegister(QMC5883L_ADDR, QMC5883L_STATUS);
 
-        // Wait for measurement to complete (Meas_M_Done bit in STATUS)
-        bool ready = false;
-        for (int i=0; i<10; i++) { // Max wait ~10ms
-            if (readRegister(MAG_ADDR, MMC5883MA_STATUS) & 0x01) {
-                ready = true;
-                break;
-            }
-            delay(1);
-        }
-
-        if (ready) {
-            Wire.beginTransmission(MAG_ADDR);
-            Wire.write(MMC5883MA_XOUT_L);
+        if (status & 0x01) { // Data Ready bit
+            Wire.beginTransmission(QMC5883L_ADDR);
+            Wire.write(QMC5883L_DATA_START);
             Wire.endTransmission(false);
-            Wire.requestFrom(MAG_ADDR, (int)6);
+            Wire.requestFrom(QMC5883L_ADDR, (int)6);
 
             if (Wire.available() == 6) {
-                // MMC5883MA registers are 16-bit, LSB first (unlike MPU which is MSB first)
+                // QMC5883L is LSB first
                 uint8_t xl = Wire.read();
                 uint8_t xh = Wire.read();
                 uint8_t yl = Wire.read();
@@ -168,23 +144,19 @@ void loop() {
                 uint8_t zl = Wire.read();
                 uint8_t zh = Wire.read();
 
-                // Construct unsigned 16-bit, then offset by 32768 to make signed
-                // The MMC5883MA returns 0 to 65535, where 32768 is roughly zero gauss.
-                mx = (int16_t)(((uint16_t)xh << 8 | xl) - 32768);
-                my = (int16_t)(((uint16_t)yh << 8 | yl) - 32768);
-                mz = (int16_t)(((uint16_t)zh << 8 | zl) - 32768);
+                mx = (int16_t)((uint16_t)xh << 8 | xl);
+                my = (int16_t)((uint16_t)yh << 8 | yl);
+                mz = (int16_t)((uint16_t)zh << 8 | zl);
             }
         } else {
-            Serial.print("[MAG ERROR: Not ready] ");
+            Serial.print("[MAG: Waiting for DRDY] ");
         }
     }
 
     // --- Output Formatting ---
-    // Format: MPU_A( x, y, z ) MPU_G( x, y, z ) MAG( x, y, z )
     Serial.printf("MPU_A( %6d, %6d, %6d )  ", ax, ay, az);
     Serial.printf("MPU_G( %6d, %6d, %6d )  ", gx, gy, gz);
     Serial.printf("MAG( %6d, %6d, %6d )\n", mx, my, mz);
 
-    // 10 Hz loop rate
     delay(100);
 }
