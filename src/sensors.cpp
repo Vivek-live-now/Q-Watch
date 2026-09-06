@@ -138,8 +138,6 @@ void SensorManager::applyCalibrationAndMapping() {
     float raw_gz_cal = (float)raw_data.gz - offsets.gyro_bias_z;
 
     // 2. Convert MPU raw to physical units
-    // Accel 8G = 4096 LSB/g. Gyro 2000dps = 16.4 LSB/dps.
-    // Gyro requires Radians/sec for Madgwick: (val / 16.4) * (PI/180) = val * 0.001065f
     float ax = (float)raw_data.ax / 4096.0f;
     float ay = (float)raw_data.ay / 4096.0f;
     float az = (float)raw_data.az / 4096.0f;
@@ -147,7 +145,6 @@ void SensorManager::applyCalibrationAndMapping() {
     float gy = raw_gy_cal * 0.001065f;
     float gz = raw_gz_cal * 0.001065f;
 
-    // Magnetometer Hard Iron Calibration Placeholder
     float mx = (float)raw_data.mx - offsets.mag_bias_x;
     float my = (float)raw_data.my - offsets.mag_bias_y;
     float mz = (float)raw_data.mz - offsets.mag_bias_z;
@@ -157,9 +154,6 @@ void SensorManager::applyCalibrationAndMapping() {
     // User specifies: Y points FRONT. Therefore real_y = raw_y.
     // By Right-Hand Rule: If Y is forward and Z is up, X must point RIGHT.
     // If we flipped Z, we must flip X to maintain a right-handed system. real_x = -raw_x.
-    //
-    // This perfectly aligns the data to an ENU (East-North-Up) frame.
-    // Note: Assuming the Magnetometer axes are printed on its PCB identically to the MPU.
 
     cal_data.ax = -ax;  cal_data.ay = ay;  cal_data.az = -az;
     cal_data.gx = -gx;  cal_data.gy = gy;  cal_data.gz = -gz;
@@ -233,9 +227,18 @@ void SensorManager::updateMadgwick(float dt) {
 void SensorManager::computeEulerAngles() {
     orientation.roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
     orientation.pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
-    orientation.yaw   = atan2(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
-    if (orientation.yaw < 0) orientation.yaw += 360.0f;
+    // Madgwick outputs a yaw that typically increases counter-clockwise.
+    // To act as a standard compass heading (0-360, increasing clockwise),
+    // we invert the yaw calculation and add a constant -90 deg offset to align
+    // the user's "front" (Y axis) as North, since X was defaulting to North.
+    float yaw_math = atan2(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
+
+    orientation.yaw = 360.0f - yaw_math - 90.0f;
+
+    // Normalize to 0-359.9
+    while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
+    while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
 }
 
 void SensorManager::loop() {
