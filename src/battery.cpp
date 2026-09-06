@@ -1,4 +1,6 @@
 #include "battery.h"
+
+#if defined(ARDUINO)
 #include "hw_config.h"
 
 BatteryMonitor battery;
@@ -36,21 +38,28 @@ float BatteryMonitor::readVoltage() {
     // Apply the user's manual multimeter calibration multiplier
     return actual_voltage * CALIBRATION_MULTIPLIER;
 }
+#else
+// Non-Arduino host environment stub for readVoltage & begin
+void BatteryMonitor::begin() {}
+float BatteryMonitor::readVoltage() {
+    return 0.0f;
+}
+#endif
 
 int BatteryMonitor::readPercentage() {
     float v = readVoltage();
 
     // Approximate Piecewise Linear (PWL) Estimation for standard 3.7V/4.2V LiPo
-    // NOTE: This is an approximation. A true fuel gauge requires coulomb counting.
-    if (v >= 4.20) return 100;
-    if (v >= 4.10) return 90;
-    if (v >= 4.00) return 80;
-    if (v >= 3.90) return 60;
-    if (v >= 3.80) return 40;
-    if (v >= 3.70) return 20;
-    if (v >= 3.60) return 10;
-    if (v >= 3.50) return 5;
-    if (v <  3.50) return 0;
+    // NOTE: Using float literals (e.g. 4.20f) avoids double-promotion comparison precision bugs.
+    if (v >= 4.20f) return 100;
+    if (v >= 4.10f) return 90;
+    if (v >= 4.00f) return 80;
+    if (v >= 3.90f) return 60;
+    if (v >= 3.80f) return 40;
+    if (v >= 3.70f) return 20;
+    if (v >= 3.60f) return 10;
+    if (v >= 3.50f) return 5;
+    if (v <  3.50f) return 0;
 
     return 0;
 }

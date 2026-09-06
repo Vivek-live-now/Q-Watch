@@ -6,6 +6,7 @@
 #include "config.h"
 #include "ui_core.h"
 #include "sensors.h"
+#include "battery.h"
 #include <SPI.h>
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
@@ -38,6 +39,7 @@ void DisplayManager::update() {
             case UIState::APP_MOTION: drawAppMotion(); break;
             case UIState::APP_IR: drawAppIR(); break;
             case UIState::APP_GAMES: drawAppGames(); break;
+            case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
 
             case UIState::MAIN_MENU:
@@ -179,6 +181,34 @@ void DisplayManager::drawAppGames() {
     oled.setFont(u8g2_font_ncenB10_tr);
     oled.drawStr(15, 35, "OG_BOUNCE.EXE");
     drawFooter("STS: ENCRYPTED");
+}
+
+void DisplayManager::drawAppBattery() {
+    drawHeader("PWR/CELL");
+    float v = battery.readVoltage();
+    int pct = battery.readPercentage();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    String vStr = "VOLT: " + String(v, 2) + " V";
+    String pctStr = "CAP : " + String(pct) + " %";
+    oled.drawStr(10, 25, vStr.c_str());
+    oled.drawStr(10, 36, pctStr.c_str());
+
+    // Progress bar for battery percentage
+    oled.drawFrame(10, 40, 108, 10);
+    int fill_w = (pct * 104) / 100;
+    if (fill_w > 104) fill_w = 104;
+    if (fill_w > 0) {
+        oled.drawBox(12, 42, fill_w, 6);
+    }
+
+    if (pct <= 10) {
+        drawFooter("STS: LOW POWER");
+    } else if (v >= 4.20f) {
+        drawFooter("STS: FULL / USB");
+    } else {
+        drawFooter("STS: DISCHARGING");
+    }
 }
 
 void DisplayManager::drawAppAbout() {

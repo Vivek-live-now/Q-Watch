@@ -101,8 +101,9 @@ void UICore::handleMainMenuInput() {
             case 5: current_state = UIState::APP_MOTION; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_GAMES; break;
-            case 8: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
-            case 9: current_state = UIState::APP_ABOUT; break;
+            case 8: current_state = UIState::APP_BATTERY; break;
+            case 9: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
+            case 10: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
@@ -139,9 +140,7 @@ void UICore::handleSettingsMenuInput() {
         }
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         current_state = UIState::MAIN_MENU;
-        menu_selection = 8; // Reset cursor to Settings in main menu
-        menu_scroll_offset = 7; // Scroll so Settings is at the bottom of the 3-item list (index 8, offset 6)
-        // Wait, 8 - 2 = 6. Let's fix this mathematically so it's always correct:
+        menu_selection = 9; // Reset cursor to Settings in main menu
         menu_scroll_offset = menu_selection - 2;
         if(menu_scroll_offset < 0) menu_scroll_offset = 0;
         needs_redraw = true;
