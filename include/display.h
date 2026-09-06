@@ -1,8 +1,10 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
 #include <U8g2lib.h>
+#endif
 
 class DisplayManager {
 public:
@@ -18,6 +20,7 @@ private:
     void drawAppMotion();
     void drawAppIR();
     void drawAppGames();
+    void drawAppBattery();
     void drawAppAbout();
 
     void drawPortalScreen();
@@ -31,6 +34,9 @@ private:
 };
 
 extern DisplayManager displayManager;
+
+#if defined(ARDUINO)
 extern U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled;
+#endif
 
 #endif

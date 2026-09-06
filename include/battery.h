@@ -1,14 +1,19 @@
 #ifndef BATTERY_H
 #define BATTERY_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <cstdint>
+#endif
 
 class BatteryMonitor {
 public:
+    virtual ~BatteryMonitor() = default;
     void begin();
 
     // Reads and averages the ADC using hardware calibration, returning the actual physical battery voltage
-    float readVoltage();
+    virtual float readVoltage();
 
     // Returns an estimated 0-100% value based on standard LiPo discharge curves
     int readPercentage();

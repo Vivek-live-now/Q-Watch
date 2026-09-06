@@ -1,7 +1,11 @@
 #ifndef UI_CORE_H
 #define UI_CORE_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <cstdint>
+#endif
 
 enum class UIState {
     APP_HOME,
@@ -13,6 +17,7 @@ enum class UIState {
     APP_MOTION,
     APP_IR,
     APP_GAMES,
+    APP_BATTERY,
     APP_SETTINGS,
     APP_ABOUT,
     VALUE_EDIT,
@@ -34,10 +39,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 10;
+    static const int MAIN_MENU_ITEM_COUNT = 11;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "GAMES", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;
