@@ -7,6 +7,8 @@
 #include "ui_core.h"
 #include "sensors.h"
 #include <SPI.h>
+#include "battery.h"
+#include "led_manager.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -36,8 +38,10 @@ void DisplayManager::update() {
             case UIState::APP_COMPASS: drawAppCompass(); break;
             case UIState::APP_HEALTH: drawAppHealth(); break;
             case UIState::APP_MOTION: drawAppMotion(); break;
-            case UIState::APP_IR: drawAppIR(); break;
+case UIState::APP_IR: drawAppIR(); break;
             case UIState::APP_GAMES: drawAppGames(); break;
+            case UIState::APP_BATTERY: drawAppBattery(); break;
+            case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
 
             case UIState::MAIN_MENU:
@@ -66,20 +70,31 @@ void DisplayManager::drawTacticalOverlay() {
     oled.drawLine(127, 63, 121, 63); oled.drawLine(127, 63, 127, 57);
 }
 
-void DisplayManager::drawHeader(const char* title) {
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, title);
+void DisplayManager::drawTopStatusBar() {
+    oled.setFont(u8g2_font_4x6_tr);
 
+    // Time
+    String t = qclock.getTimeStr();
+    oled.drawStr(56, 6, t.c_str());
+
+    // WiFi
     if (WiFi.status() == WL_CONNECTED) {
-        oled.drawStr(100, 7, "W");
+        oled.drawStr(100, 6, "W");
     } else {
-        oled.drawStr(100, 7, "-");
+        oled.drawStr(100, 6, "-");
     }
 
-    oled.drawXBMP(116, 0, 8, 8, battery_icon);
-    oled.drawLine(0, 9, 128, 9);
-}
+    // Battery
+    int pct = battery.readPercentage();
+    String bStr = String(pct) + "%";
+    oled.drawStr(110, 6, bStr.c_str());
+    // Draw battery tiny outline
+    oled.drawFrame(1, 1, 10, 6);
+    oled.drawBox(11, 2, 2, 4);
+    oled.drawBox(2, 2, (pct * 8) / 100, 4);
 
+    oled.drawLine(0, 8, 128, 8);
+}
 void DisplayManager::drawFooter(const char* status) {
     oled.drawLine(0, 54, 128, 54);
     oled.setFont(u8g2_font_5x7_tr);
@@ -87,27 +102,21 @@ void DisplayManager::drawFooter(const char* status) {
 }
 
 void DisplayManager::drawPortalScreen() {
-    drawHeader("SYS/CFG");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 30, "LINK: Q-Watch-Setup");
     oled.drawStr(10, 45, "ADDR: 192.168.4.1");
-    drawFooter("STS: AWAITING UPLINK");
 }
 
 void DisplayManager::drawAppHome() {
-    drawHeader("Q-WATCH OP");
+    drawTopStatusBar();
     for (int i=20; i<108; i+=4) oled.drawPixel(i, 35);
 
     oled.setFont(u8g2_font_logisoso24_tn);
     String timeStr = qclock.getTimeStr();
     int w_time = oled.getStrWidth(timeStr.c_str());
     oled.drawStr((128-w_time)/2, 42, timeStr.c_str());
-
-    drawFooter(WiFi.status() == WL_CONNECTED ? "LINK: ESTABLISHED" : "LINK: SEVERED");
 }
-
 void DisplayManager::drawAppClock() {
-    drawHeader("CHRONO");
     oled.setFont(u8g2_font_logisoso28_tn);
     String timeStr = qclock.getTimeStr();
     int w_time = oled.getStrWidth(timeStr.c_str());
@@ -119,14 +128,11 @@ void DisplayManager::drawAppClock() {
 }
 
 void DisplayManager::drawAppWeather() {
-    drawHeader("ATMOS");
     oled.setFont(u8g2_font_ncenB14_tr);
     oled.drawStr(10, 30, "27\260C");
 
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 46, "HUM: 62%  WND: 1.2M/S");
-
-    drawFooter("STS: OFFLINE DEMO");
 }
 
 
@@ -217,7 +223,6 @@ void DisplayManager::drawAppCompass() {
     oled.drawStr(64 - w/2, 60, fullHdg.c_str());
 }
 void DisplayManager::drawAppCompassMetrics() {
-    drawHeader("MAG SENSOR");
 
     CalibratedSensorData data = sensors.getCalData();
     float magTotal = sqrt(data.mx*data.mx + data.my*data.my + data.mz*data.mz);
@@ -267,20 +272,15 @@ void DisplayManager::drawAppCompassMetrics() {
 
         oled.drawLine(x1, y1, x2, y2);
     }
-
-    drawFooter("PAGE 2/2");
 }
 void DisplayManager::drawAppHealth() {
-    drawHeader("BIO/METRIC");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 28, "BPM: ---");
     oled.drawStr(10, 42, "O2 : --- %");
-    drawFooter("STS: NO PULSE");
 }
 
 
 void DisplayManager::drawAppMotionSettings() {
-    drawHeader("IMU SETTINGS");
     oled.setFont(u8g2_font_6x10_tr);
 
     int sel = ui.getCompassMenuSelection();
@@ -308,8 +308,6 @@ void DisplayManager::drawAppMotionSettings() {
     int scroll_y = 15 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
     oled.drawFrame(123, 15, 3, 30);
     oled.drawBox(123, scroll_y, 3, 10);
-
-    drawFooter("PAGE 3/3");
 }
 
 void DisplayManager::drawAppMotion() {
@@ -380,7 +378,6 @@ void DisplayManager::drawAppMotionLevel() {
 }
 
 void DisplayManager::drawAppMotionData() {
-    drawHeader("IMU DATA");
     oled.setFont(u8g2_font_4x6_tr);
 
     OrientationData o = sensors.getOrientation();
@@ -400,36 +397,95 @@ void DisplayManager::drawAppMotionData() {
     oled.drawStr(30, 42, ("X:" + String(cal.gx, 1)).c_str());
     oled.drawStr(65, 42, ("Y:" + String(cal.gy, 1)).c_str());
     oled.drawStr(100, 42, ("Z:" + String(cal.gz, 1)).c_str());
-
-    drawFooter("STS: TRACKING");
 }
 
 void DisplayManager::drawAppIR() {
-    drawHeader("OPT/INFRA");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 28, "EMITTER: ARMED");
     oled.drawStr(10, 42, "SENSOR : STANDBY");
-    drawFooter("STS: NO TARGET");
 }
 
+
+void DisplayManager::drawAppBattery() {
+    int pct = battery.readPercentage();
+    float vol = battery.readVoltage();
+
+    // Draw big battery graphic (x=34, y=10, w=60, h=25)
+    oled.drawFrame(34, 10, 56, 25);
+    oled.drawBox(90, 16, 4, 13); // terminal
+
+    int fill_w = (pct * 52) / 100;
+    if (fill_w > 0) {
+        oled.drawBox(36, 12, fill_w, 21);
+    }
+
+    // Draw Text
+    oled.setFont(u8g2_font_ncenB12_tr);
+    String pctStr = String(pct) + "%";
+    int w1 = oled.getStrWidth(pctStr.c_str());
+    oled.drawStr(64 - w1/2, 50, pctStr.c_str());
+
+    oled.setFont(u8g2_font_6x10_tr);
+    String volStr = String(vol, 2) + "V";
+    int w2 = oled.getStrWidth(volStr.c_str());
+    oled.drawStr(64 - w2/2, 62, volStr.c_str());
+}
+
+void DisplayManager::drawAppLED() {
+    drawTopStatusBar();
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getLedMenuSelection();
+    int offset = ui.getLedMenuOffset();
+
+    int y_pos = 22;
+    for (int i = offset; i < offset + 3 && i < UICore::LED_MENU_ITEM_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = ui.led_menu_items[i];
+        if (i == 0) label += ledManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
+        else if (i == 1) {
+            LedMode m = ledManager.getMode();
+            if (m == LedMode::OFF) label += " [OFF]";
+            else if (m == LedMode::SOLID) label += " [SOLID]";
+            else if (m == LedMode::BREATHING) label += " [BREATH]";
+            else if (m == LedMode::RAINBOW) label += " [RNBW]";
+            else if (m == LedMode::COMPASS_SYNC) label += " [SYNC]";
+            else label += " [SYS]";
+        }
+        else if (i == 2) label += " [" + String(ledManager.getBrightness()) + "]";
+
+        oled.drawStr(4, y_pos, label.c_str());
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
+
+    int scroll_h = 30;
+    int scroll_y = 15 + ((float)offset / (UICore::LED_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
+    oled.drawFrame(123, 15, 3, 30);
+    oled.drawBox(123, scroll_y, 3, 10);
+}
+
+
 void DisplayManager::drawAppGames() {
-    drawHeader("ARCHIVE");
-    oled.setFont(u8g2_font_ncenB10_tr);
-    oled.drawStr(15, 35, "OG_BOUNCE.EXE");
-    drawFooter("STS: ENCRYPTED");
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(10, 30, "GAMES: PENDING");
 }
 
 void DisplayManager::drawAppAbout() {
-    drawHeader("SYS/INFO");
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 25, "ID: 007 Q-WATCH");
     oled.drawStr(10, 35, "CORE: ESP32-S3 S-MINI");
     oled.drawStr(10, 45, "VER: FIRST LIGHT v0.1");
-    drawFooter("AUTH: MI6 CLEARED");
 }
 
 void DisplayManager::drawMenu(const char* title, const char** items, int item_count) {
-    drawHeader(title);
+    oled.setFont(u8g2_font_5x7_tr);
+oled.drawStr(2, 7, title);
+oled.drawLine(0, 9, 128, 9);
     oled.setFont(u8g2_font_6x10_tr);
     int start_idx = ui.getMenuScrollOffset();
     int y_pos = 22;
@@ -455,7 +511,9 @@ void DisplayManager::drawMenu(const char* title, const char** items, int item_co
 }
 
 void DisplayManager::drawValueEdit(const char* title) {
-    drawHeader(title);
+    oled.setFont(u8g2_font_5x7_tr);
+oled.drawStr(2, 7, title);
+oled.drawLine(0, 9, 128, 9);
     int val = ui.getEditValue();
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 26, "ADJUST PARAMETER:");
@@ -466,12 +524,10 @@ void DisplayManager::drawValueEdit(const char* title) {
             oled.drawBox(12 + (i*10), 36, 8, 6);
         }
     }
-    drawFooter("SEL:SET  L-SEL:ABORT");
 }
 
 
 void DisplayManager::drawAppCompassCalMenu() {
-    drawHeader("MAG CAL");
     oled.setFont(u8g2_font_6x10_tr);
     int sel = ui.getCompassMenuSelection();
     int offset = ui.getCompassMenuOffset();
@@ -504,12 +560,9 @@ void DisplayManager::drawAppCompassCalMenu() {
     int scroll_y = 15 + ((float)offset / (UICore::COMPASS_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
     oled.drawFrame(123, 15, 3, 30);
     oled.drawBox(123, scroll_y, 3, 10);
-
-    drawFooter("PAGE 3/3");
 }
 
 void DisplayManager::drawAppCompassCalSweep() {
-    drawHeader("3D SWEEP CAL");
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 25, "ROTATE FIGURE 8");
     oled.drawStr(10, 35, "ALL AXES");
@@ -517,12 +570,9 @@ void DisplayManager::drawAppCompassCalSweep() {
     oled.drawFrame(10, 45, 108, 6);
     int p = sensors.getCalProgress();
     oled.drawBox(10, 45, (p * 108) / 100, 6);
-
-    drawFooter("DO NOT STOP");
 }
 
 void DisplayManager::drawAppCompassCalResult() {
-    drawHeader("CAL RESULT");
     oled.setFont(u8g2_font_5x7_tr);
 
     MagCalResult res = sensors.getCalResult();
@@ -535,12 +585,9 @@ void DisplayManager::drawAppCompassCalResult() {
 
     oled.drawStr(10, 42, "Overall:");
     oled.drawStr(60, 42, res.is_good ? "OK" : "BAD");
-
-    drawFooter("UP:SAVE  DN:DISCARD");
 }
 
 void DisplayManager::drawAppCompassTelemetry() {
-    drawHeader("TELEMETRY");
     oled.setFont(u8g2_font_4x6_tr);
 
     RawSensorData raw = sensors.getRawData();
@@ -561,12 +608,9 @@ void DisplayManager::drawAppCompassTelemetry() {
 
     MagCalibration mcal = sensors.getMagCalibration();
     oled.drawStr(65, 42, ("DEC:" + String(mcal.declination, 1)).c_str());
-
-    drawFooter("L-SEL: BACK");
 }
 
 void DisplayManager::drawAppCompassDeclination() {
-    drawHeader("DECLINATION");
 
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 26, "ADJUST OFFSET:");
@@ -575,6 +619,4 @@ void DisplayManager::drawAppCompassDeclination() {
     String dStr = String(sensors.getMagCalibration().declination, 1) + "\260";
     int w = oled.getStrWidth(dStr.c_str());
     oled.drawStr(64 - w/2, 44, dStr.c_str());
-
-    drawFooter("UP/DN: ADJ  L-SEL: OK");
 }

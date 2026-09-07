@@ -34,6 +34,8 @@ enum class UIState {
     APP_IR,
     APP_GAMES,
     APP_SETTINGS,
+    APP_BATTERY,
+    APP_LED,
     APP_ABOUT,
     VALUE_EDIT,
     SLEEPING
@@ -74,6 +76,17 @@ public:
     void setMotionState(MotionState s) { motion_state = s; needs_redraw = true; }
     void handleMotionInput();
 
+    void handleLedInput();
+
+    int getLedMenuSelection() const { return led_menu_selection; }
+    int getLedMenuOffset() const { return led_menu_offset; }
+
+    static const int LED_MENU_ITEM_COUNT = 6;
+    const char* led_menu_items[LED_MENU_ITEM_COUNT] = {
+        "Master Sw", "Mode", "Brightness", "Presets", "Effects", "Factory Rst" // Just enough to let user configure
+    };
+
+
     static const int MOTION_MENU_ITEM_COUNT = 6;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
         "Swap X/Y", "Invert X", "Invert Y", "Invert Z", "Accel Cal", "Zero Level"
@@ -84,10 +97,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 10;
+static const int MAIN_MENU_ITEM_COUNT = 12;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "GAMES", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "LED RGB", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;
@@ -100,6 +113,8 @@ private:
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
+    int led_menu_selection;
+    int led_menu_offset;
 
     CompassState compass_state;
     int compass_menu_selection;

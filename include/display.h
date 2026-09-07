@@ -35,6 +35,8 @@ private:
     void drawAppMotionSettings();
     void drawAppIR();
     void drawAppGames();
+    void drawAppBattery();
+    void drawAppLED();
     void drawAppAbout();
 
     void drawPortalScreen();
@@ -42,7 +44,7 @@ private:
     void drawValueEdit(const char* title);
 
     // Helpers
-    void drawHeader(const char* title);
+    void drawTopStatusBar();
     void drawFooter(const char* status);
     void drawTacticalOverlay();
 };

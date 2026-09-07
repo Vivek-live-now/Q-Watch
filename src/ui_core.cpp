@@ -2,6 +2,7 @@
 #include "sensors.h"
 #include "button_manager.h"
 #include "hw_config.h"
+#include "led_manager.h"
 #include "driver/rtc_io.h"
 
 UICore ui;
@@ -100,7 +101,7 @@ void UICore::handleMainMenuInput() {
     ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
     if (sel_evt == BTN_EVT_SHORT_PRESS) {
         switch(menu_selection) {
-            case 0: current_state = UIState::APP_HOME; break;
+case 0: current_state = UIState::APP_HOME; break;
             case 1: current_state = UIState::APP_CLOCK; break;
             case 2: current_state = UIState::APP_WEATHER; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
@@ -108,8 +109,10 @@ void UICore::handleMainMenuInput() {
             case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_GAMES; break;
-            case 8: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
-            case 9: current_state = UIState::APP_ABOUT; break;
+            case 8: current_state = UIState::APP_BATTERY; break;
+            case 9: current_state = UIState::APP_LED; break;
+            case 10: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
+            case 11: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
@@ -146,7 +149,7 @@ void UICore::handleSettingsMenuInput() {
         }
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         current_state = UIState::MAIN_MENU;
-        menu_selection = 8; // Reset cursor to Settings in main menu
+        menu_selection = 10; // Reset cursor to Settings in main menu
         menu_scroll_offset = 7; // Scroll so Settings is at the bottom of the 3-item list (index 8, offset 6)
         // Wait, 8 - 2 = 6. Let's fix this mathematically so it's always correct:
         menu_scroll_offset = menu_selection - 2;
