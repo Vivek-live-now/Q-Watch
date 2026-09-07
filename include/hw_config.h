@@ -25,7 +25,7 @@
 // ----------------------------------------------------------------------------
 #define BTN_UP     39
 #define BTN_SEL    21  // Dual purpose: Normal SELECT input and Deep Sleep RTC Wake
-#define BTN_DN     41
+#define BTN_DN     40
 
 // ----------------------------------------------------------------------------
 // Infrared (IR) Configuration
@@ -58,7 +58,7 @@
 // ----------------------------------------------------------------------------
 // Reserve / Unused Pins
 // ----------------------------------------------------------------------------
-// GPIO 40, 42       (Clean Reserves)
+// GPIO 41, 42       (Clean Reserves)
 // GPIO 43, 44       (UART0 / Serial Debugging)
 // GPIO 0, 3, 45, 46 (Strapping / Boot pins - DO NOT USE)
 
