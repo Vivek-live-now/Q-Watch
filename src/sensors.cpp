@@ -106,7 +106,7 @@ void SensorManager::factoryResetCalibration() {
 void SensorManager::begin() {
     loadCalibration();
     Wire.begin(I2C_SDA, I2C_SCL);
-    Wire.setClock(100000); // 100kHz Standard mode for stability
+    Wire.setClock(400000); // 400kHz Fast mode
     Wire.setTimeOut(10);   // Strict 10ms timeout to prevent watch freezing on I2C fault
     Serial.println("Initializing Sensors...");
 
