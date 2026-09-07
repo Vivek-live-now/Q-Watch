@@ -19,6 +19,13 @@ private:
     void drawAppWeather();
     void drawAppCompass();
     void drawAppCompassMetrics();
+
+    void drawAppCompassCalMenu();
+    void drawAppCompassCalSweep();
+    void drawAppCompassCalResult();
+    void drawAppCompassTelemetry();
+    void drawAppCompassDeclination();
+
     float mag_history[64];
     int mag_history_idx;
     void drawAppHealth();

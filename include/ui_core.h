@@ -3,6 +3,18 @@
 
 #include <Arduino.h>
 
+
+enum class CompassState {
+    PAGE_MAIN,
+    PAGE_METRICS,
+    PAGE_CAL_MENU,
+    CAL_SWEEP,
+    CAL_RESULT,
+    CAL_TELEMETRY,
+    CAL_DECLINATION
+};
+
+
 enum class UIState {
     APP_HOME,
     MAIN_MENU,
@@ -29,7 +41,23 @@ public:
     int getMenuSelection() const { return menu_selection; }
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
-    int getCompassPage() const { return compass_page; }
+
+    CompassState getCompassState() const { return compass_state; }
+    void setCompassState(CompassState s) { compass_state = s; needs_redraw = true; }
+    int getCompassMenuSelection() const { return compass_menu_selection; }
+    int getCompassMenuOffset() const { return compass_menu_offset; }
+
+    // Config items
+    static const int COMPASS_MENU_ITEM_COUNT = 6;
+    const char* compass_menu_items[COMPASS_MENU_ITEM_COUNT] = {
+        "3D Sweep Cal",
+        "Mount Orient",
+        "Invert Z-Axis",
+        "Mag Declin.",
+        "Telemetry",
+        "Factory Reset"
+    };
+
 
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
@@ -51,7 +79,11 @@ private:
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
-    int compass_page;
+
+    CompassState compass_state;
+    int compass_menu_selection;
+    int compass_menu_offset;
+
     bool needs_redraw;
 
     void handleHomeInput();

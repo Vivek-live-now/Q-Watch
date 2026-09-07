@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <Preferences.h>
 
 struct RawSensorData {
     int16_t ax, ay, az;
@@ -16,14 +17,36 @@ struct CalibratedSensorData {
     float mx, my, mz; // in uT (or arbitrary normalized units)
 };
 
+
+
+enum class MagCalState {
+    IDLE,
+    SWEEPING,
+    RESULT
+};
+
+struct MagCalResult {
+    bool is_good;
+    bool field_ok;
+    bool coverage_ok;
+};
+
+struct MagCalibration {
+    uint32_t version;
+    bool is_valid;
+    float hard_iron_x, hard_iron_y, hard_iron_z;
+    float soft_iron_x, soft_iron_y, soft_iron_z;
+    int orientation_mode;
+    bool invert_z;
+    float declination;
+    bool auto_declination;
+};
+
 struct CalibrationOffsets {
     float gyro_bias_x;
     float gyro_bias_y;
     float gyro_bias_z;
-    float mag_bias_x;
-    float mag_bias_y;
-    float mag_bias_z;
-};
+    };
 
 struct OrientationData {
     float roll;
@@ -38,6 +61,25 @@ public:
     void loop();
 
     OrientationData getOrientation() const;
+
+    MagCalibration getMagCalibration() const { return mag_cal; }
+    void saveMagCalibration(const MagCalibration& cal);
+    void factoryResetCalibration();
+
+    void startMagCalibration();
+    void cancelMagCalibration();
+    void updateMagCalibration();
+    void completeMagCalibration();
+    void saveCurrentCalibration(); // Saves the pending result
+
+    MagCalState getCalState() const { return cal_state; }
+    MagCalResult getCalResult() const { return cal_result; }
+    int getCalProgress() const;
+
+
+    // For Telemetry
+    RawSensorData getRawData() const { return raw_data; }
+
     CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
@@ -52,6 +94,18 @@ private:
     CalibratedSensorData cal_data;
     CalibrationOffsets offsets;
     OrientationData orientation;
+
+    MagCalibration mag_cal;
+
+    MagCalState cal_state;
+    MagCalResult cal_result;
+    uint32_t cal_start_time;
+    int16_t min_x, max_x, min_y, max_y, min_z, max_z;
+    MagCalibration pending_cal;
+
+    Preferences prefs;
+    void loadCalibration();
+
 
     // Madgwick filter state
     float q0, q1, q2, q3;

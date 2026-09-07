@@ -131,8 +131,25 @@ void DisplayManager::drawAppWeather() {
 
 
 void DisplayManager::drawAppCompass() {
-    if (ui.getCompassPage() == 1) {
+    CompassState s = ui.getCompassState();
+
+    if (s == CompassState::PAGE_METRICS) {
         drawAppCompassMetrics();
+        return;
+    } else if (s == CompassState::PAGE_CAL_MENU) {
+        drawAppCompassCalMenu();
+        return;
+    } else if (s == CompassState::CAL_SWEEP) {
+        drawAppCompassCalSweep();
+        return;
+    } else if (s == CompassState::CAL_RESULT) {
+        drawAppCompassCalResult();
+        return;
+    } else if (s == CompassState::CAL_TELEMETRY) {
+        drawAppCompassTelemetry();
+        return;
+    } else if (s == CompassState::CAL_DECLINATION) {
+        drawAppCompassDeclination();
         return;
     }
 
@@ -140,7 +157,7 @@ void DisplayManager::drawAppCompass() {
     float heading = o.yaw;
 
     // Convert heading string
-    String hdgStr = String((int)heading) + "\260";
+    String hdgStr = String((int)heading) + "°";
 
     // Base center for the compass dial
     int cx = 64;
@@ -199,7 +216,6 @@ void DisplayManager::drawAppCompass() {
     int w = oled.getStrWidth(fullHdg.c_str());
     oled.drawStr(64 - w/2, 60, fullHdg.c_str());
 }
-
 void DisplayManager::drawAppCompassMetrics() {
     drawHeader("MAG SENSOR");
 
@@ -339,4 +355,114 @@ void DisplayManager::drawValueEdit(const char* title) {
         }
     }
     drawFooter("SEL:SET  L-SEL:ABORT");
+}
+
+
+void DisplayManager::drawAppCompassCalMenu() {
+    drawHeader("MAG CAL");
+    oled.setFont(u8g2_font_6x10_tr);
+    int sel = ui.getCompassMenuSelection();
+    int offset = ui.getCompassMenuOffset();
+    int y_pos = 22;
+
+    for (int i = offset; i < offset + 3 && i < UICore::COMPASS_MENU_ITEM_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+
+            // Dynamic value appending
+            String label = String(ui.compass_menu_items[i]);
+            if (i == 1) { // Orient
+                int o = sensors.getMagCalibration().orientation_mode;
+                label += o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
+            } else if (i == 2) {
+                label += sensors.getMagCalibration().invert_z ? " [ON]" : " [OFF]";
+            }
+
+            oled.drawStr(4, y_pos, label.c_str());
+            oled.setDrawColor(1);
+        } else {
+            String label = String(ui.compass_menu_items[i]);
+            oled.drawStr(4, y_pos, label.c_str());
+        }
+        y_pos += 12;
+    }
+
+    int scroll_h = 30;
+    int scroll_y = 15 + ((float)offset / (UICore::COMPASS_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
+    oled.drawFrame(123, 15, 3, 30);
+    oled.drawBox(123, scroll_y, 3, 10);
+
+    drawFooter("PAGE 3/3");
+}
+
+void DisplayManager::drawAppCompassCalSweep() {
+    drawHeader("3D SWEEP CAL");
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(10, 25, "ROTATE FIGURE 8");
+    oled.drawStr(10, 35, "ALL AXES");
+
+    oled.drawFrame(10, 45, 108, 6);
+    int p = sensors.getCalProgress();
+    oled.drawBox(10, 45, (p * 108) / 100, 6);
+
+    drawFooter("DO NOT STOP");
+}
+
+void DisplayManager::drawAppCompassCalResult() {
+    drawHeader("CAL RESULT");
+    oled.setFont(u8g2_font_5x7_tr);
+
+    MagCalResult res = sensors.getCalResult();
+
+    oled.drawStr(10, 22, "Coverage:");
+    oled.drawStr(60, 22, res.coverage_ok ? "GOOD" : "POOR");
+
+    oled.drawStr(10, 32, "Field:");
+    oled.drawStr(60, 32, res.field_ok ? "GOOD" : "ERR");
+
+    oled.drawStr(10, 42, "Overall:");
+    oled.drawStr(60, 42, res.is_good ? "OK" : "BAD");
+
+    drawFooter("UP:SAVE  DN:DISCARD");
+}
+
+void DisplayManager::drawAppCompassTelemetry() {
+    drawHeader("TELEMETRY");
+    oled.setFont(u8g2_font_4x6_tr);
+
+    RawSensorData raw = sensors.getRawData();
+    CalibratedSensorData cal = sensors.getCalData();
+
+    oled.drawStr(2, 22, "RAW");
+    oled.drawStr(30, 22, ("X:" + String(raw.mx)).c_str());
+    oled.drawStr(65, 22, ("Y:" + String(raw.my)).c_str());
+    oled.drawStr(100, 22, ("Z:" + String(raw.mz)).c_str());
+
+    oled.drawStr(2, 32, "CAL");
+    oled.drawStr(30, 32, ("X:" + String(cal.mx, 1)).c_str());
+    oled.drawStr(65, 32, ("Y:" + String(cal.my, 1)).c_str());
+    oled.drawStr(100, 32, ("Z:" + String(cal.mz, 1)).c_str());
+
+    oled.drawStr(2, 42, "HDG:");
+    oled.drawStr(30, 42, String(sensors.getOrientation().yaw, 1).c_str());
+
+    MagCalibration mcal = sensors.getMagCalibration();
+    oled.drawStr(65, 42, ("DEC:" + String(mcal.declination, 1)).c_str());
+
+    drawFooter("L-SEL: BACK");
+}
+
+void DisplayManager::drawAppCompassDeclination() {
+    drawHeader("DECLINATION");
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(10, 26, "ADJUST OFFSET:");
+
+    oled.setFont(u8g2_font_ncenB12_tr);
+    String dStr = String(sensors.getMagCalibration().declination, 1) + "\260";
+    int w = oled.getStrWidth(dStr.c_str());
+    oled.drawStr(64 - w/2, 44, dStr.c_str());
+
+    drawFooter("UP/DN: ADJ  L-SEL: OK");
 }

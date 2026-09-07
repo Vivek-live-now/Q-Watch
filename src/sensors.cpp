@@ -20,11 +20,11 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
-    offsets.mag_bias_x = 0; offsets.mag_bias_y = 0; offsets.mag_bias_z = 0;
+
 }
 
 uint8_t SensorManager::readRegister(uint8_t deviceAddr, uint8_t regAddr) {
@@ -43,7 +43,68 @@ void SensorManager::writeRegister(uint8_t deviceAddr, uint8_t regAddr, uint8_t d
     Wire.endTransmission();
 }
 
+
+void SensorManager::loadCalibration() {
+    prefs.begin("sensors", false);
+
+    uint32_t ver = prefs.getUInt("mag_ver", 0);
+    if (ver != 1) {
+        factoryResetCalibration();
+    } else {
+        mag_cal.version = 1;
+        mag_cal.is_valid = prefs.getBool("mag_valid", false);
+        mag_cal.hard_iron_x = prefs.getFloat("hi_x", 0.0f);
+        mag_cal.hard_iron_y = prefs.getFloat("hi_y", 0.0f);
+        mag_cal.hard_iron_z = prefs.getFloat("hi_z", 0.0f);
+        mag_cal.soft_iron_x = prefs.getFloat("si_x", 1.0f);
+        mag_cal.soft_iron_y = prefs.getFloat("si_y", 1.0f);
+        mag_cal.soft_iron_z = prefs.getFloat("si_z", 1.0f);
+        mag_cal.orientation_mode = prefs.getInt("orient", 0);
+        mag_cal.invert_z = prefs.getBool("inv_z", false);
+        mag_cal.declination = prefs.getFloat("decl", 0.0f);
+        mag_cal.auto_declination = prefs.getBool("auto_decl", false);
+    }
+
+    prefs.end();
+}
+
+void SensorManager::saveMagCalibration(const MagCalibration& cal) {
+    mag_cal = cal;
+    prefs.begin("sensors", false);
+    prefs.putUInt("mag_ver", mag_cal.version);
+    prefs.putBool("mag_valid", mag_cal.is_valid);
+    prefs.putFloat("hi_x", mag_cal.hard_iron_x);
+    prefs.putFloat("hi_y", mag_cal.hard_iron_y);
+    prefs.putFloat("hi_z", mag_cal.hard_iron_z);
+    prefs.putFloat("si_x", mag_cal.soft_iron_x);
+    prefs.putFloat("si_y", mag_cal.soft_iron_y);
+    prefs.putFloat("si_z", mag_cal.soft_iron_z);
+    prefs.putInt("orient", mag_cal.orientation_mode);
+    prefs.putBool("inv_z", mag_cal.invert_z);
+    prefs.putFloat("decl", mag_cal.declination);
+    prefs.putBool("auto_decl", mag_cal.auto_declination);
+    prefs.end();
+}
+
+void SensorManager::factoryResetCalibration() {
+    mag_cal.version = 1;
+    mag_cal.is_valid = false;
+    mag_cal.hard_iron_x = 0.0f;
+    mag_cal.hard_iron_y = 0.0f;
+    mag_cal.hard_iron_z = 0.0f;
+    mag_cal.soft_iron_x = 1.0f;
+    mag_cal.soft_iron_y = 1.0f;
+    mag_cal.soft_iron_z = 1.0f;
+    mag_cal.orientation_mode = 0; // 0 = default (Y-Fwd, X-Left)
+    mag_cal.invert_z = false;
+    mag_cal.declination = 0.0f;
+    mag_cal.auto_declination = false;
+
+    saveMagCalibration(mag_cal);
+}
+
 void SensorManager::begin() {
+    loadCalibration();
     Wire.begin(I2C_SDA, I2C_SCL);
     Wire.setClock(400000);
 
@@ -145,21 +206,40 @@ void SensorManager::applyCalibrationAndMapping() {
     float gy = raw_gy_cal * 0.001065f;
     float gz = raw_gz_cal * 0.001065f;
 
-    float mx = (float)raw_data.mx - offsets.mag_bias_x;
-    float my = (float)raw_data.my - offsets.mag_bias_y;
-    float mz = (float)raw_data.mz - offsets.mag_bias_z;
-
-    // 3. Axis Remapping (Critical step)
-    // Board is Flipped: Z+ points DOWN. Therefore real_z = -raw_z.
-    // User specifies: Y points FRONT. Therefore real_y = raw_y.
-    // By Right-Hand Rule: If Y is forward and Z is up, X must point RIGHT.
-    // If we flipped Z, we must flip X to maintain a right-handed system. real_x = -raw_x.
-
+    // MPU Mapping (Z flipped, Y fwd)
     cal_data.ax = -ax;  cal_data.ay = ay;  cal_data.az = -az;
     cal_data.gx = -gx;  cal_data.gy = gy;  cal_data.gz = -gz;
-    cal_data.mx = -mx;  cal_data.my = my;  cal_data.mz = -mz;
-}
 
+    // MAG Pipeline
+    float rx = (float)raw_data.mx;
+    float ry = (float)raw_data.my;
+    float rz = (float)raw_data.mz;
+
+    // Step A: Orientation Remap
+    float mapped_x, mapped_y, mapped_z;
+    if (mag_cal.orientation_mode == 0) { // Default Y-Fwd, X-Left
+        mapped_x = -rx; mapped_y = ry; mapped_z = -rz;
+    } else if (mag_cal.orientation_mode == 1) { // X-Fwd, Y-Right
+        mapped_x = -ry; mapped_y = -rx; mapped_z = -rz;
+    } else if (mag_cal.orientation_mode == 2) { // Y-Back, X-Right
+        mapped_x = rx; mapped_y = -ry; mapped_z = -rz;
+    } else if (mag_cal.orientation_mode == 3) { // X-Back, Y-Left
+        mapped_x = ry; mapped_y = rx; mapped_z = -rz;
+    } else {
+        mapped_x = -rx; mapped_y = ry; mapped_z = -rz;
+    }
+
+    // Step B: Z-Invert
+    if (mag_cal.invert_z) {
+        mapped_z = -mapped_z;
+        mapped_x = -mapped_x; // Maintain right-hand rule
+    }
+
+    // Step C: Hard-Iron (Offset) & Soft-Iron (Scale)
+    cal_data.mx = (mapped_x - mag_cal.hard_iron_x) * mag_cal.soft_iron_x;
+    cal_data.my = (mapped_y - mag_cal.hard_iron_y) * mag_cal.soft_iron_y;
+    cal_data.mz = (mapped_z - mag_cal.hard_iron_z) * mag_cal.soft_iron_z;
+}
 void SensorManager::updateMadgwick(float dt) {
     float recipNorm;
     float s0, s1, s2, s3;
@@ -228,17 +308,105 @@ void SensorManager::computeEulerAngles() {
     orientation.roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
     orientation.pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
 
-    // Madgwick outputs a yaw that typically increases counter-clockwise.
-    // To act as a standard compass heading (0-360, increasing clockwise),
-    // we invert the yaw calculation and add a constant -90 deg offset to align
-    // the user's "front" (Y axis) as North, since X was defaulting to North.
     float yaw_math = atan2(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
     orientation.yaw = 360.0f - yaw_math - 90.0f;
 
-    // Normalize to 0-359.9
+    // Apply Declination
+    orientation.yaw += mag_cal.declination;
+
+    // Normalize
     while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
     while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
+}
+
+void SensorManager::startMagCalibration() {
+    cal_state = MagCalState::SWEEPING;
+    cal_start_time = millis();
+    min_x = 32767; max_x = -32768;
+    min_y = 32767; max_y = -32768;
+    min_z = 32767; max_z = -32768;
+}
+
+void SensorManager::cancelMagCalibration() {
+    cal_state = MagCalState::IDLE;
+}
+
+int SensorManager::getCalProgress() const {
+    if (cal_state != MagCalState::SWEEPING) return 0;
+    uint32_t elapsed = millis() - cal_start_time;
+    int pct = (elapsed * 100) / 15000;
+    return (pct > 100) ? 100 : pct;
+}
+
+void SensorManager::updateMagCalibration() {
+    if (cal_state != MagCalState::SWEEPING) return;
+
+    // Read raw to find min/max boundaries
+    // Important: we map axes first so offsets align with the user's chosen coordinate frame.
+    float rx = (float)raw_data.mx;
+    float ry = (float)raw_data.my;
+    float rz = (float)raw_data.mz;
+
+    float mx, my, mz;
+    if (mag_cal.orientation_mode == 0) { mx = -rx; my = ry; mz = -rz; }
+    else if (mag_cal.orientation_mode == 1) { mx = -ry; my = -rx; mz = -rz; }
+    else if (mag_cal.orientation_mode == 2) { mx = rx; my = -ry; mz = -rz; }
+    else if (mag_cal.orientation_mode == 3) { mx = ry; my = rx; mz = -rz; }
+    else { mx = -rx; my = ry; mz = -rz; }
+
+    if (mag_cal.invert_z) { mz = -mz; mx = -mx; }
+
+    if (mx < min_x) min_x = mx; if (mx > max_x) max_x = mx;
+    if (my < min_y) min_y = my; if (my > max_y) max_y = my;
+    if (mz < min_z) min_z = mz; if (mz > max_z) max_z = mz;
+
+    if (millis() - cal_start_time >= 15000) {
+        completeMagCalibration();
+    }
+}
+
+void SensorManager::completeMagCalibration() {
+    cal_state = MagCalState::RESULT;
+
+    float hx = (max_x + min_x) / 2.0f;
+    float hy = (max_y + min_y) / 2.0f;
+    float hz = (max_z + min_z) / 2.0f;
+
+    float diff_x = max_x - min_x;
+    float diff_y = max_y - min_y;
+    float diff_z = max_z - min_z;
+
+    float avg_delta = (diff_x + diff_y + diff_z) / 3.0f;
+
+    float sx = diff_x > 0 ? (avg_delta / diff_x) : 1.0f;
+    float sy = diff_y > 0 ? (avg_delta / diff_y) : 1.0f;
+    float sz = diff_z > 0 ? (avg_delta / diff_z) : 1.0f;
+
+    pending_cal = mag_cal;
+    pending_cal.hard_iron_x = hx;
+    pending_cal.hard_iron_y = hy;
+    pending_cal.hard_iron_z = hz;
+    pending_cal.soft_iron_x = sx;
+    pending_cal.soft_iron_y = sy;
+    pending_cal.soft_iron_z = sz;
+    pending_cal.is_valid = true;
+
+    // Quality Checks
+    // Coverage: We expect the user to rotate it well, so min-max difference should be > 500 units on all axes
+    cal_result.coverage_ok = (diff_x > 500 && diff_y > 500 && diff_z > 500);
+
+    // Field: We don't expect crazy spikes (e.g., > 10000 which indicates magnets too close)
+    cal_result.field_ok = (diff_x < 10000 && diff_y < 10000 && diff_z < 10000);
+
+    cal_result.is_good = cal_result.coverage_ok && cal_result.field_ok;
+}
+
+void SensorManager::saveCurrentCalibration() {
+    if (cal_state == MagCalState::RESULT) {
+        saveMagCalibration(pending_cal);
+        cal_state = MagCalState::IDLE;
+    }
 }
 
 void SensorManager::loop() {
@@ -252,6 +420,7 @@ void SensorManager::loop() {
 
         if (now - last_mag_update >= 20) {
             readMag();
+            updateMagCalibration();
             last_mag_update = now;
         }
 

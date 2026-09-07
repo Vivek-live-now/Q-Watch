@@ -1,4 +1,5 @@
 #include "ui_core.h"
+#include "sensors.h"
 #include "button_manager.h"
 #include "hw_config.h"
 #include "driver/rtc_io.h"
@@ -9,7 +10,7 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     menu_selection(0),
     menu_scroll_offset(0),
-    edit_value(5), compass_page(0),
+    edit_value(5), compass_state(CompassState::PAGE_MAIN), compass_menu_selection(0), compass_menu_offset(0),
     needs_redraw(true) {}
 
 void UICore::begin() {
@@ -99,7 +100,7 @@ void UICore::handleMainMenuInput() {
             case 0: current_state = UIState::APP_HOME; break;
             case 1: current_state = UIState::APP_CLOCK; break;
             case 2: current_state = UIState::APP_WEATHER; break;
-            case 3: current_state = UIState::APP_COMPASS; compass_page = 0; break;
+            case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
             case 4: current_state = UIState::APP_HEALTH; break;
             case 5: current_state = UIState::APP_MOTION; break;
             case 6: current_state = UIState::APP_IR; break;
@@ -184,26 +185,116 @@ void UICore::enterDeepSleep() {
     esp_deep_sleep_start();
 }
 
+
+
 void UICore::handleCompassInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
-    if (up_evt == BTN_EVT_SHORT_PRESS) {
-        if (compass_page > 0) {
-            compass_page--;
-            needs_redraw = true;
-        }
-    }
-
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    if (dn_evt == BTN_EVT_SHORT_PRESS) {
-        if (compass_page < 1) {
-            compass_page++;
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+
+    if (compass_state == CompassState::PAGE_MAIN) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            compass_state = CompassState::PAGE_METRICS;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }
-
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_LONG_PRESS) {
-        current_state = UIState::APP_HOME;
-        needs_redraw = true;
+    else if (compass_state == CompassState::PAGE_METRICS) {
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            compass_state = CompassState::PAGE_MAIN;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            current_state = UIState::APP_HOME;
+            needs_redraw = true;
+        }
+    }
+    else if (compass_state == CompassState::PAGE_CAL_MENU) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection--;
+            if (compass_menu_selection < 0) compass_menu_selection = 0;
+            if (compass_menu_selection < compass_menu_offset) compass_menu_offset = compass_menu_selection;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection++;
+            if (compass_menu_selection >= COMPASS_MENU_ITEM_COUNT) compass_menu_selection = COMPASS_MENU_ITEM_COUNT - 1;
+            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+            if (compass_menu_selection == 0) {
+                sensors.startMagCalibration();
+                compass_state = CompassState::CAL_SWEEP;
+            } else if (compass_menu_selection == 1) {
+                MagCalibration cal = sensors.getMagCalibration();
+                cal.orientation_mode = (cal.orientation_mode + 1) % 4;
+                sensors.saveMagCalibration(cal);
+            } else if (compass_menu_selection == 2) {
+                MagCalibration cal = sensors.getMagCalibration();
+                cal.invert_z = !cal.invert_z;
+                sensors.saveMagCalibration(cal);
+            } else if (compass_menu_selection == 3) {
+                compass_state = CompassState::CAL_DECLINATION;
+            } else if (compass_menu_selection == 4) {
+                compass_state = CompassState::CAL_TELEMETRY;
+            } else if (compass_menu_selection == 5) {
+                sensors.factoryResetCalibration();
+            }
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            compass_state = CompassState::PAGE_METRICS;
+            needs_redraw = true;
+        }
+    }
+    else if (compass_state == CompassState::CAL_SWEEP) {
+        if (sensors.getCalState() == MagCalState::RESULT) {
+            compass_state = CompassState::CAL_RESULT;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+            sensors.cancelMagCalibration();
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        }
+        needs_redraw = true; // Constantly redraw progress bar
+    }
+    else if (compass_state == CompassState::CAL_RESULT) {
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            // YES
+            sensors.saveCurrentCalibration();
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            // NO
+            sensors.cancelMagCalibration();
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        }
+    }
+    else if (compass_state == CompassState::CAL_TELEMETRY) {
+        if (sel_evt == BTN_EVT_LONG_PRESS || sel_evt == BTN_EVT_SHORT_PRESS) {
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        }
+        needs_redraw = true; // Constantly redraw telemetry
+    }
+    else if (compass_state == CompassState::CAL_DECLINATION) {
+        MagCalibration cal = sensors.getMagCalibration();
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            cal.declination += 1.0f;
+            if (cal.declination > 180.0f) cal.declination = -180.0f;
+            sensors.saveMagCalibration(cal);
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            cal.declination -= 1.0f;
+            if (cal.declination < -180.0f) cal.declination = 180.0f;
+            sensors.saveMagCalibration(cal);
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS || sel_evt == BTN_EVT_SHORT_PRESS) {
+            compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        }
     }
 }
