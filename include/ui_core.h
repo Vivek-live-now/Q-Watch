@@ -15,6 +15,13 @@ enum class CompassState {
 };
 
 
+
+enum class MotionState {
+    PAGE_LEVEL,
+    PAGE_DATA
+};
+
+
 enum class UIState {
     APP_HOME,
     MAIN_MENU,
@@ -59,6 +66,13 @@ public:
     };
 
 
+
+
+
+    MotionState getMotionState() const { return motion_state; }
+    void setMotionState(MotionState s) { motion_state = s; needs_redraw = true; }
+    void handleMotionInput();
+
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
@@ -83,6 +97,7 @@ private:
     CompassState compass_state;
     int compass_menu_selection;
     int compass_menu_offset;
+    MotionState motion_state;
 
     bool needs_redraw;
 
@@ -92,6 +107,11 @@ private:
     void handleValueEditInput();
     void handleGenericAppInput(); // Shared handler for dummy apps
     void handleCompassInput();
+
+
+
+
+
 
     void processNavUp();
     void processNavDown();

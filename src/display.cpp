@@ -279,17 +279,93 @@ void DisplayManager::drawAppHealth() {
 }
 
 void DisplayManager::drawAppMotion() {
-    drawHeader("IMU/GYRO");
+    if (ui.getMotionState() == MotionState::PAGE_LEVEL) {
+        drawAppMotionLevel();
+    } else {
+        drawAppMotionData();
+    }
+}
+
+void DisplayManager::drawAppMotionLevel() {
+    OrientationData o = sensors.getOrientation();
+
+    // Smooth layout for 128x64
+    // 1. Big Bullseye on the left (x=32, y=32, r=30)
+    int cx = 32;
+    int cy = 32;
+    int r = 30;
+
+    oled.drawCircle(cx, cy, r);
+    oled.drawCircle(cx, cy, 6);
+    oled.drawLine(cx - r, cy, cx + r, cy);
+    oled.drawLine(cx, cy - r, cx, cy + r);
+
+    // Scale for visual: 30 degrees = max edge
+    float scale = 30.0f;
+    float r_roll = o.roll; if (r_roll > scale) r_roll = scale; if (r_roll < -scale) r_roll = -scale;
+    float r_pitch = o.pitch; if (r_pitch > scale) r_pitch = scale; if (r_pitch < -scale) r_pitch = -scale;
+
+    int bx = cx + (r_roll / scale) * (r - 4);
+    int by = cy + (r_pitch / scale) * (r - 4);
+
+    // Constrain bullseye bubble
+    float dx = bx - cx; float dy = by - cy;
+    float dist = sqrt(dx*dx + dy*dy);
+    if (dist > (r - 4)) {
+        bx = cx + (dx / dist) * (r - 4);
+        by = cy + (dy / dist) * (r - 4);
+    }
+    oled.drawDisc(bx, by, 4);
+
+    // 2. Vertical Pitch Bar (Right edge)
+    int vp_x = 112; int vp_y = 2; int vp_w = 12; int vp_h = 60;
+    oled.drawFrame(vp_x, vp_y, vp_w, vp_h);
+    oled.drawLine(vp_x, cy, vp_x + vp_w - 1, cy); // center line
+
+    int vp_by = cy + (r_pitch / scale) * (vp_h/2 - 5);
+    oled.drawBox(vp_x + 2, vp_by - 4, vp_w - 4, 8);
+
+    // 3. Horizontal Roll Bar (Top right corner, above text?)
+    // Actually the image has Horizontal Roll at bottom.
+    // Let's put Horizontal Roll Bar next to bullseye.
+    int hr_x = 68; int hr_y = 48; int hr_w = 40; int hr_h = 12;
+    oled.drawFrame(hr_x, hr_y, hr_w, hr_h);
+    oled.drawLine(hr_x + hr_w/2, hr_y, hr_x + hr_w/2, hr_y + hr_h - 1); // center line
+
+    int hr_bx = (hr_x + hr_w/2) + (r_roll / scale) * (hr_w/2 - 5);
+    oled.drawBox(hr_bx - 4, hr_y + 2, 8, hr_h - 4);
+
+    // 4. Data readout
+    oled.setFont(u8g2_font_5x7_tr);
+    String pStr = "P: " + String((int)o.pitch) + "°";
+    String rStr = "R: " + String((int)o.roll) + "°";
+    oled.drawStr(70, 20, pStr.c_str());
+    oled.drawStr(70, 32, rStr.c_str());
+}
+
+void DisplayManager::drawAppMotionData() {
+    drawHeader("IMU DATA");
+    oled.setFont(u8g2_font_4x6_tr);
 
     OrientationData o = sensors.getOrientation();
-    String pStr = "PITCH: " + String((int)o.pitch) + "\260";
-    String rStr = "ROLL : " + String((int)o.roll) + "\260";
+    CalibratedSensorData cal = sensors.getCalData();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(10, 28, pStr.c_str());
-    oled.drawStr(10, 42, rStr.c_str());
+    oled.drawStr(2, 22, "TILT/HDG");
+    oled.drawStr(30, 22, ("P:" + String(o.pitch, 1)).c_str());
+    oled.drawStr(65, 22, ("R:" + String(o.roll, 1)).c_str());
+    oled.drawStr(100, 22, ("Y:" + String(o.yaw, 1)).c_str());
 
-    drawFooter(sensors.isMpuOk() ? "STS: TRACKING" : "STS: MPU FAIL");
+    oled.drawStr(2, 32, "ACC(g)");
+    oled.drawStr(30, 32, ("X:" + String(cal.ax, 2)).c_str());
+    oled.drawStr(65, 32, ("Y:" + String(cal.ay, 2)).c_str());
+    oled.drawStr(100, 32, ("Z:" + String(cal.az, 2)).c_str());
+
+    oled.drawStr(2, 42, "GYR(d/s)");
+    oled.drawStr(30, 42, ("X:" + String(cal.gx, 1)).c_str());
+    oled.drawStr(65, 42, ("Y:" + String(cal.gy, 1)).c_str());
+    oled.drawStr(100, 42, ("Z:" + String(cal.gz, 1)).c_str());
+
+    drawFooter("STS: TRACKING");
 }
 
 void DisplayManager::drawAppIR() {

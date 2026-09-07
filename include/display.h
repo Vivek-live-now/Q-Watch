@@ -30,6 +30,8 @@ private:
     int mag_history_idx;
     void drawAppHealth();
     void drawAppMotion();
+    void drawAppMotionLevel();
+    void drawAppMotionData();
     void drawAppIR();
     void drawAppGames();
     void drawAppAbout();

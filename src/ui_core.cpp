@@ -10,7 +10,7 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     menu_selection(0),
     menu_scroll_offset(0),
-    edit_value(5), compass_state(CompassState::PAGE_MAIN), compass_menu_selection(0), compass_menu_offset(0),
+    edit_value(5), compass_state(CompassState::PAGE_MAIN), compass_menu_selection(0), compass_menu_offset(0), motion_state(MotionState::PAGE_LEVEL),
     needs_redraw(true) {}
 
 void UICore::begin() {
@@ -38,6 +38,9 @@ void UICore::loop() {
             break;
         case UIState::APP_COMPASS:
             handleCompassInput();
+            break;
+        case UIState::APP_MOTION:
+            handleMotionInput();
             break;
         default:
             handleGenericAppInput();
@@ -102,7 +105,7 @@ void UICore::handleMainMenuInput() {
             case 2: current_state = UIState::APP_WEATHER; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
             case 4: current_state = UIState::APP_HEALTH; break;
-            case 5: current_state = UIState::APP_MOTION; break;
+            case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_GAMES; break;
             case 8: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
@@ -294,6 +297,36 @@ void UICore::handleCompassInput() {
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_LONG_PRESS || sel_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_CAL_MENU;
+            needs_redraw = true;
+        }
+    }
+}
+
+
+void UICore::handleMotionInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+
+    if (motion_state == MotionState::PAGE_LEVEL) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_DATA;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+            // Zero the level!
+            sensors.zeroLevel();
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            current_state = UIState::APP_HOME;
+            needs_redraw = true;
+        }
+    }
+    else if (motion_state == MotionState::PAGE_DATA) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_LEVEL;
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }

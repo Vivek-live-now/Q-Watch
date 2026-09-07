@@ -23,7 +23,7 @@ SensorManager sensors;
 SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
-    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
+    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0; offsets.pitch_offset = 0; offsets.roll_offset = 0;
 
 }
 
@@ -46,6 +46,10 @@ void SensorManager::writeRegister(uint8_t deviceAddr, uint8_t regAddr, uint8_t d
 
 void SensorManager::loadCalibration() {
     prefs.begin("sensors", false);
+
+
+    offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
+    offsets.roll_offset = prefs.getFloat("r_off", 0.0f);
 
     uint32_t ver = prefs.getUInt("mag_ver", 0);
     if (ver != 1) {
@@ -83,6 +87,21 @@ void SensorManager::saveMagCalibration(const MagCalibration& cal) {
     prefs.putBool("inv_z", mag_cal.invert_z);
     prefs.putFloat("decl", mag_cal.declination);
     prefs.putBool("auto_decl", mag_cal.auto_declination);
+    prefs.end();
+}
+
+
+void SensorManager::zeroLevel() {
+    // Current uncompensated euler angles (raw from madgwick)
+    float raw_roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
+    float raw_pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+
+    offsets.roll_offset = raw_roll;
+    offsets.pitch_offset = raw_pitch;
+
+    prefs.begin("sensors", false);
+    prefs.putFloat("p_off", offsets.pitch_offset);
+    prefs.putFloat("r_off", offsets.roll_offset);
     prefs.end();
 }
 
@@ -305,8 +324,11 @@ void SensorManager::updateMadgwick(float dt) {
 }
 
 void SensorManager::computeEulerAngles() {
-    orientation.roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    orientation.pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+    float raw_roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
+    float raw_pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+
+    orientation.roll = raw_roll - offsets.roll_offset;
+    orientation.pitch = raw_pitch - offsets.pitch_offset;
 
     float yaw_math = atan2(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 

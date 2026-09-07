@@ -46,7 +46,9 @@ struct CalibrationOffsets {
     float gyro_bias_x;
     float gyro_bias_y;
     float gyro_bias_z;
-    };
+    float pitch_offset;
+    float roll_offset;
+};
 
 struct OrientationData {
     float roll;
@@ -65,6 +67,7 @@ public:
     MagCalibration getMagCalibration() const { return mag_cal; }
     void saveMagCalibration(const MagCalibration& cal);
     void factoryResetCalibration();
+    void zeroLevel();
 
     void startMagCalibration();
     void cancelMagCalibration();
