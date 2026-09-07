@@ -18,7 +18,8 @@ enum class CompassState {
 
 enum class MotionState {
     PAGE_LEVEL,
-    PAGE_DATA
+    PAGE_DATA,
+    PAGE_SETTINGS
 };
 
 

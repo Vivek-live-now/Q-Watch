@@ -32,6 +32,7 @@ private:
     void drawAppMotion();
     void drawAppMotionLevel();
     void drawAppMotionData();
+    void drawAppMotionSettings();
     void drawAppIR();
     void drawAppGames();
     void drawAppAbout();

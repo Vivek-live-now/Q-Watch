@@ -278,14 +278,47 @@ void DisplayManager::drawAppHealth() {
     drawFooter("STS: NO PULSE");
 }
 
-void DisplayManager::drawAppMotion() {
-    if (ui.getMotionState() == MotionState::PAGE_LEVEL) {
-        drawAppMotionLevel();
-    } else {
-        drawAppMotionData();
+
+void DisplayManager::drawAppMotionSettings() {
+    drawHeader("IMU SETTINGS");
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getCompassMenuSelection(); // Reusing variable
+
+    // Menu items
+    const char* items[] = {"IMU Orient", "Zero Reset"};
+
+    int y_pos = 25;
+    for (int i = 0; i < 2; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 120, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = items[i];
+        if (i == 0) {
+            int o = sensors.getImuOrientation();
+            label += o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
+        }
+
+        oled.drawStr(4, y_pos, label.c_str());
+        oled.setDrawColor(1);
+        y_pos += 15;
     }
+
+    drawFooter("PAGE 3/3");
 }
 
+void DisplayManager::drawAppMotion() {
+    MotionState s = ui.getMotionState();
+    if (s == MotionState::PAGE_LEVEL) {
+        drawAppMotionLevel();
+    } else if (s == MotionState::PAGE_DATA) {
+        drawAppMotionData();
+    } else if (s == MotionState::PAGE_SETTINGS) {
+        drawAppMotionSettings();
+    }
+}
 void DisplayManager::drawAppMotionLevel() {
     OrientationData o = sensors.getOrientation();
 

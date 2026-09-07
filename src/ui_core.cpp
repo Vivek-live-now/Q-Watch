@@ -303,17 +303,18 @@ void UICore::handleCompassInput() {
 }
 
 
+
+
 void UICore::handleMotionInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
 
     if (motion_state == MotionState::PAGE_LEVEL) {
-        if (dn_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
             motion_state = MotionState::PAGE_DATA;
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
-            // Zero the level!
             sensors.zeroLevel();
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_LONG_PRESS) {
@@ -322,11 +323,37 @@ void UICore::handleMotionInput() {
         }
     }
     else if (motion_state == MotionState::PAGE_DATA) {
-        if (dn_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_SETTINGS;
+            compass_menu_selection = 0; // reuse this variable for memory saving
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
             motion_state = MotionState::PAGE_LEVEL;
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_LONG_PRESS) {
             current_state = UIState::APP_HOME;
+            needs_redraw = true;
+        }
+    }
+    else if (motion_state == MotionState::PAGE_SETTINGS) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection--;
+            if (compass_menu_selection < 0) compass_menu_selection = 0;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection++;
+            if (compass_menu_selection > 1) compass_menu_selection = 1; // 2 items total
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+            if (compass_menu_selection == 0) { // IMU Orient
+                int m = sensors.getImuOrientation();
+                sensors.setImuOrientation(m + 1);
+            } else if (compass_menu_selection == 1) { // Zero Reset
+                sensors.zeroLevel();
+            }
+            needs_redraw = true;
+        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+            motion_state = MotionState::PAGE_DATA;
             needs_redraw = true;
         }
     }

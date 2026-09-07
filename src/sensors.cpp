@@ -23,7 +23,7 @@ SensorManager sensors;
 SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
-    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0; offsets.pitch_offset = 0; offsets.roll_offset = 0;
+    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0; offsets.pitch_offset = 0; offsets.roll_offset = 0; offsets.imu_orientation_mode = 0;
 
 }
 
@@ -48,8 +48,10 @@ void SensorManager::loadCalibration() {
     prefs.begin("sensors", false);
 
 
+
     offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
     offsets.roll_offset = prefs.getFloat("r_off", 0.0f);
+    offsets.imu_orientation_mode = prefs.getInt("imu_ori", 0);
 
     uint32_t ver = prefs.getUInt("mag_ver", 0);
     if (ver != 1) {
@@ -90,6 +92,14 @@ void SensorManager::saveMagCalibration(const MagCalibration& cal) {
     prefs.end();
 }
 
+
+
+void SensorManager::setImuOrientation(int mode) {
+    offsets.imu_orientation_mode = mode % 4;
+    prefs.begin("sensors", false);
+    prefs.putInt("imu_ori", offsets.imu_orientation_mode);
+    prefs.end();
+}
 
 void SensorManager::zeroLevel() {
     // Current uncompensated euler angles (raw from madgwick)
@@ -225,9 +235,20 @@ void SensorManager::applyCalibrationAndMapping() {
     float gy = raw_gy_cal * 0.001065f;
     float gz = raw_gz_cal * 0.001065f;
 
-    // MPU Mapping (Z flipped, Y fwd)
-    cal_data.ax = -ax;  cal_data.ay = ay;  cal_data.az = -az;
-    cal_data.gx = -gx;  cal_data.gy = gy;  cal_data.gz = -gz;
+    // MPU Mapping
+    if (offsets.imu_orientation_mode == 0) { // Default Y-Fwd, X-Left (Z Flipped)
+        cal_data.ax = -ax;  cal_data.ay = ay;  cal_data.az = -az;
+        cal_data.gx = -gx;  cal_data.gy = gy;  cal_data.gz = -gz;
+    } else if (offsets.imu_orientation_mode == 1) { // X-Fwd, Y-Right
+        cal_data.ax = -ay;  cal_data.ay = -ax;  cal_data.az = -az;
+        cal_data.gx = -gy;  cal_data.gy = -gx;  cal_data.gz = -gz;
+    } else if (offsets.imu_orientation_mode == 2) { // Y-Back, X-Right
+        cal_data.ax = ax;   cal_data.ay = -ay;  cal_data.az = -az;
+        cal_data.gx = gx;   cal_data.gy = -gy;  cal_data.gz = -gz;
+    } else if (offsets.imu_orientation_mode == 3) { // X-Back, Y-Left
+        cal_data.ax = ay;   cal_data.ay = ax;   cal_data.az = -az;
+        cal_data.gx = gy;   cal_data.gy = gx;   cal_data.gz = -gz;
+    }
 
     // MAG Pipeline
     float rx = (float)raw_data.mx;
