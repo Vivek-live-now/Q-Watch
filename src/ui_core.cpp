@@ -283,12 +283,12 @@ void UICore::handleCompassInput() {
     else if (compass_state == CompassState::CAL_DECLINATION) {
         MagCalibration cal = sensors.getMagCalibration();
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
-            cal.declination += 1.0f;
+            cal.declination += 0.1f;
             if (cal.declination > 180.0f) cal.declination = -180.0f;
             sensors.saveMagCalibration(cal);
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
-            cal.declination -= 1.0f;
+            cal.declination -= 0.1f;
             if (cal.declination < -180.0f) cal.declination = 180.0f;
             sensors.saveMagCalibration(cal);
             needs_redraw = true;
