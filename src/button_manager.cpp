@@ -60,7 +60,9 @@ void ButtonManager::loop() {
                     if (!buttons[i].long_press_handled) {
                         uint32_t duration = millis() - buttons[i].pressed_time;
                         if (duration > DEBOUNCE_DELAY_MS && duration < LONG_PRESS_MS) {
-                            buttons[i].pending_event = BTN_EVT_SHORT_PRESS;
+                            if (buttons[i].pending_event == BTN_EVT_NONE) {
+                                buttons[i].pending_event = BTN_EVT_SHORT_PRESS;
+                            }
                         }
                     }
                 }
@@ -68,22 +70,23 @@ void ButtonManager::loop() {
                 uint32_t duration = millis() - buttons[i].pressed_time;
 
                 if (!buttons[i].long_press_handled && duration >= LONG_PRESS_MS) {
-                    buttons[i].pending_event = BTN_EVT_LONG_PRESS;
+                    if (buttons[i].pending_event == BTN_EVT_NONE) {
+                        buttons[i].pending_event = BTN_EVT_LONG_PRESS;
+                    }
                     buttons[i].long_press_handled = true;
                 }
 
                 if (buttons[i].long_press_handled && (millis() - buttons[i].last_repeat_time >= REPEAT_DELAY_MS)) {
-                    if(i == BTN_ID_UP || i == BTN_ID_DN) {
+                    if((i == BTN_ID_UP || i == BTN_ID_DN) && buttons[i].pending_event == BTN_EVT_NONE) {
                         buttons[i].pending_event = BTN_EVT_REPEAT;
+                        buttons[i].last_repeat_time = millis();
                     }
-                    buttons[i].last_repeat_time = millis();
                 }
             }
         }
         buttons[i].last_state = reading;
     }
 }
-
 ButtonEvent ButtonManager::getEvent(ButtonID id) {
     ButtonEvent evt = buttons[id].pending_event;
     buttons[id].pending_event = BTN_EVT_NONE;
