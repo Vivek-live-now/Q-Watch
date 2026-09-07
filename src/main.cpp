@@ -9,6 +9,7 @@
 #include "battery.h"
 #include "sensors.h"
 #include "led_manager.h"
+#include "sound_manager.h"
 
 String last_drawn_time = "";
 uint32_t last_portal_draw = 0;
@@ -23,7 +24,9 @@ void setup() {
   ui.begin();
   battery.begin();
   sensors.begin();
-  ledManager.begin(); // Start 9-DOF fusion
+  ledManager.begin();
+  soundManager.begin();
+  soundManager.playBoot(); // Start 9-DOF fusion
 
   wifiPortal.begin();
   qclock.begin(configManager.get().timezone);
@@ -37,7 +40,8 @@ void loop() {
   btnManager.loop();
   ui.loop();
   sensors.loop();
-  ledManager.loop(); // Runs at 100Hz non-blocking internally
+  ledManager.loop();
+  soundManager.loop(); // Runs at 100Hz non-blocking internally
 
   // Energy Efficiency & UI Updates
   String current_time = qclock.getSecondsStr();

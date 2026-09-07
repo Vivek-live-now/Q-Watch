@@ -37,6 +37,7 @@ private:
     void drawAppGames();
     void drawAppBattery();
     void drawAppLED();
+    void drawAppAudio();
     void drawAppAbout();
 
     void drawPortalScreen();

@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include "battery.h"
 #include "led_manager.h"
+#include "sound_manager.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -40,8 +41,9 @@ void DisplayManager::update() {
             case UIState::APP_MOTION: drawAppMotion(); break;
 case UIState::APP_IR: drawAppIR(); break;
             case UIState::APP_GAMES: drawAppGames(); break;
-            case UIState::APP_BATTERY: drawAppBattery(); break;
+case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_LED: drawAppLED(); break;
+            case UIState::APP_AUDIO: drawAppAudio(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
 
             case UIState::MAIN_MENU:
@@ -473,6 +475,37 @@ void DisplayManager::drawAppLED() {
 void DisplayManager::drawAppGames() {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 30, "GAMES: PENDING");
+}
+
+
+void DisplayManager::drawAppAudio() {
+    drawTopStatusBar();
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getAudioMenuSelection();
+    int offset = ui.getAudioMenuOffset();
+
+    int y_pos = 22;
+    for (int i = offset; i < offset + 3 && i < UICore::AUDIO_MENU_ITEM_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = ui.audio_menu_items[i];
+        if (i == 0) label += soundManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
+        else if (i == 1) {
+            SoundStyle s = soundManager.getStyle();
+            if (s == SoundStyle::SILENT) label += " [SILENT]";
+            else if (s == SoundStyle::MODERN) label += " [MODERN]";
+            else if (s == SoundStyle::TACTICAL) label += " [TACTICAL]";
+            else if (s == SoundStyle::RETRO) label += " [RETRO]";
+        }
+
+        oled.drawStr(4, y_pos, label.c_str());
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
 }
 
 void DisplayManager::drawAppAbout() {

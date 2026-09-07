@@ -36,6 +36,7 @@ enum class UIState {
     APP_SETTINGS,
     APP_BATTERY,
     APP_LED,
+    APP_AUDIO,
     APP_ABOUT,
     VALUE_EDIT,
     SLEEPING
@@ -78,6 +79,15 @@ public:
 
     void handleLedInput();
 
+    void handleAudioInput();
+    static const int AUDIO_MENU_ITEM_COUNT = 2;
+    const char* audio_menu_items[AUDIO_MENU_ITEM_COUNT] = {
+        "Master Sw", "Theme Style"
+    };
+    int getAudioMenuSelection() const { return audio_menu_selection; }
+    int getAudioMenuOffset() const { return audio_menu_offset; }
+
+
     int getLedMenuSelection() const { return led_menu_selection; }
     int getLedMenuOffset() const { return led_menu_offset; }
 
@@ -115,6 +125,8 @@ private:
     int edit_value;
     int led_menu_selection;
     int led_menu_offset;
+    int audio_menu_selection;
+    int audio_menu_offset;
 
     CompassState compass_state;
     int compass_menu_selection;
