@@ -23,7 +23,10 @@ SensorManager sensors;
 SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
-    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0; offsets.pitch_offset = 0; offsets.roll_offset = 0; offsets.imu_orientation_mode = 0;
+    offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
+    offsets.accel_bias_x = 0; offsets.accel_bias_y = 0; offsets.accel_bias_z = 0;
+    offsets.pitch_offset = 0; offsets.roll_offset = 0;
+    offsets.swap_xy = false; offsets.inv_x = false; offsets.inv_y = false; offsets.inv_z = false;
 
 }
 
@@ -49,9 +52,15 @@ void SensorManager::loadCalibration() {
 
 
 
-    offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
+offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
     offsets.roll_offset = prefs.getFloat("r_off", 0.0f);
-    offsets.imu_orientation_mode = prefs.getInt("imu_ori", 0);
+    offsets.accel_bias_x = prefs.getFloat("ab_x", 0.0f);
+    offsets.accel_bias_y = prefs.getFloat("ab_y", 0.0f);
+    offsets.accel_bias_z = prefs.getFloat("ab_z", 0.0f);
+    offsets.swap_xy = prefs.getBool("swap_xy", false);
+    offsets.inv_x = prefs.getBool("inv_x", false);
+    offsets.inv_y = prefs.getBool("inv_y", false);
+    offsets.inv_z = prefs.getBool("inv_z", false);
 
     uint32_t ver = prefs.getUInt("mag_ver", 0);
     if (ver != 1) {
@@ -94,10 +103,33 @@ void SensorManager::saveMagCalibration(const MagCalibration& cal) {
 
 
 
-void SensorManager::setImuOrientation(int mode) {
-    offsets.imu_orientation_mode = mode % 4;
+void SensorManager::setImuSwapXY(bool swap) { offsets.swap_xy = swap; prefs.begin("sensors", false); prefs.putBool("swap_xy", swap); prefs.end(); }
+void SensorManager::setImuInvX(bool inv) { offsets.inv_x = inv; prefs.begin("sensors", false); prefs.putBool("inv_x", inv); prefs.end(); }
+void SensorManager::setImuInvY(bool inv) { offsets.inv_y = inv; prefs.begin("sensors", false); prefs.putBool("inv_y", inv); prefs.end(); }
+void SensorManager::setImuInvZ(bool inv) { offsets.inv_z = inv; prefs.begin("sensors", false); prefs.putBool("inv_z", inv); prefs.end(); }
+
+void SensorManager::calibrateAccel() {
+    Serial.println("Calibrating Accel...");
+    int32_t ax_sum = 0, ay_sum = 0, az_sum = 0;
+    const int CAL_SAMPLES = 200;
+
+    for (int i = 0; i < CAL_SAMPLES; i++) {
+        readMpu();
+        ax_sum += raw_data.ax;
+        ay_sum += raw_data.ay;
+        az_sum += raw_data.az;
+        delay(5);
+    }
+
+    // Z is gravity (1G), which is 4096 in 8G range
+    offsets.accel_bias_x = (float)ax_sum / CAL_SAMPLES;
+    offsets.accel_bias_y = (float)ay_sum / CAL_SAMPLES;
+    offsets.accel_bias_z = ((float)az_sum / CAL_SAMPLES) - 4096.0f;
+
     prefs.begin("sensors", false);
-    prefs.putInt("imu_ori", offsets.imu_orientation_mode);
+    prefs.putFloat("ab_x", offsets.accel_bias_x);
+    prefs.putFloat("ab_y", offsets.accel_bias_y);
+    prefs.putFloat("ab_z", offsets.accel_bias_z);
     prefs.end();
 }
 
@@ -222,33 +254,36 @@ void SensorManager::readMag() {
 }
 
 void SensorManager::applyCalibrationAndMapping() {
-    // 1. Subtract Gyro Bias
+    // 1. Subtract Bias
     float raw_gx_cal = (float)raw_data.gx - offsets.gyro_bias_x;
     float raw_gy_cal = (float)raw_data.gy - offsets.gyro_bias_y;
     float raw_gz_cal = (float)raw_data.gz - offsets.gyro_bias_z;
 
+    float raw_ax_cal = (float)raw_data.ax - offsets.accel_bias_x;
+    float raw_ay_cal = (float)raw_data.ay - offsets.accel_bias_y;
+    float raw_az_cal = (float)raw_data.az - offsets.accel_bias_z;
+
     // 2. Convert MPU raw to physical units
-    float ax = (float)raw_data.ax / 4096.0f;
-    float ay = (float)raw_data.ay / 4096.0f;
-    float az = (float)raw_data.az / 4096.0f;
+    float ax = raw_ax_cal / 4096.0f;
+    float ay = raw_ay_cal / 4096.0f;
+    float az = raw_az_cal / 4096.0f;
     float gx = raw_gx_cal * 0.001065f;
     float gy = raw_gy_cal * 0.001065f;
     float gz = raw_gz_cal * 0.001065f;
 
-    // MPU Mapping
-    if (offsets.imu_orientation_mode == 0) { // Default Y-Fwd, X-Left (Z Flipped)
-        cal_data.ax = -ax;  cal_data.ay = ay;  cal_data.az = -az;
-        cal_data.gx = -gx;  cal_data.gy = gy;  cal_data.gz = -gz;
-    } else if (offsets.imu_orientation_mode == 1) { // X-Fwd, Y-Right
-        cal_data.ax = -ay;  cal_data.ay = -ax;  cal_data.az = -az;
-        cal_data.gx = -gy;  cal_data.gy = -gx;  cal_data.gz = -gz;
-    } else if (offsets.imu_orientation_mode == 2) { // Y-Back, X-Right
-        cal_data.ax = ax;   cal_data.ay = -ay;  cal_data.az = -az;
-        cal_data.gx = gx;   cal_data.gy = -gy;  cal_data.gz = -gz;
-    } else if (offsets.imu_orientation_mode == 3) { // X-Back, Y-Left
-        cal_data.ax = ay;   cal_data.ay = ax;   cal_data.az = -az;
-        cal_data.gx = gy;   cal_data.gy = gx;   cal_data.gz = -gz;
+    // 3. MPU Mapping
+    if (offsets.swap_xy) {
+        cal_data.ax = ay; cal_data.ay = ax;
+        cal_data.gx = gy; cal_data.gy = gx;
+    } else {
+        cal_data.ax = ax; cal_data.ay = ay;
+        cal_data.gx = gx; cal_data.gy = gy;
     }
+    cal_data.az = az; cal_data.gz = gz;
+
+    if (offsets.inv_x) { cal_data.ax = -cal_data.ax; cal_data.gx = -cal_data.gx; }
+    if (offsets.inv_y) { cal_data.ay = -cal_data.ay; cal_data.gy = -cal_data.gy; }
+    if (offsets.inv_z) { cal_data.az = -cal_data.az; cal_data.gz = -cal_data.gz; }
 
     // MAG Pipeline
     float rx = (float)raw_data.mx;

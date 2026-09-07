@@ -74,6 +74,12 @@ public:
     void setMotionState(MotionState s) { motion_state = s; needs_redraw = true; }
     void handleMotionInput();
 
+    static const int MOTION_MENU_ITEM_COUNT = 6;
+    const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
+        "Swap X/Y", "Invert X", "Invert Y", "Invert Z", "Accel Cal", "Zero Level"
+    };
+
+
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }

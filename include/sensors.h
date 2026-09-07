@@ -46,9 +46,15 @@ struct CalibrationOffsets {
     float gyro_bias_x;
     float gyro_bias_y;
     float gyro_bias_z;
+    float accel_bias_x;
+    float accel_bias_y;
+    float accel_bias_z;
     float pitch_offset;
     float roll_offset;
-    int imu_orientation_mode;
+    bool swap_xy;
+    bool inv_x;
+    bool inv_y;
+    bool inv_z;
 };
 
 struct OrientationData {
@@ -69,8 +75,15 @@ public:
     void saveMagCalibration(const MagCalibration& cal);
     void factoryResetCalibration();
 
-    void setImuOrientation(int mode);
-    int getImuOrientation() const { return offsets.imu_orientation_mode; }
+void setImuSwapXY(bool swap);
+    void setImuInvX(bool inv);
+    void setImuInvY(bool inv);
+    void setImuInvZ(bool inv);
+    bool getImuSwapXY() const { return offsets.swap_xy; }
+    bool getImuInvX() const { return offsets.inv_x; }
+    bool getImuInvY() const { return offsets.inv_y; }
+    bool getImuInvZ() const { return offsets.inv_z; }
+    void calibrateAccel();
     void zeroLevel();
 
 

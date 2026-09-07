@@ -335,22 +335,24 @@ void UICore::handleMotionInput() {
             needs_redraw = true;
         }
     }
-    else if (motion_state == MotionState::PAGE_SETTINGS) {
+else if (motion_state == MotionState::PAGE_SETTINGS) {
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
             compass_menu_selection--;
             if (compass_menu_selection < 0) compass_menu_selection = 0;
+            if (compass_menu_selection < compass_menu_offset) compass_menu_offset = compass_menu_selection;
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             compass_menu_selection++;
-            if (compass_menu_selection > 1) compass_menu_selection = 1; // 2 items total
+            if (compass_menu_selection >= MOTION_MENU_ITEM_COUNT) compass_menu_selection = MOTION_MENU_ITEM_COUNT - 1;
+            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
-            if (compass_menu_selection == 0) { // IMU Orient
-                int m = sensors.getImuOrientation();
-                sensors.setImuOrientation(m + 1);
-            } else if (compass_menu_selection == 1) { // Zero Reset
-                sensors.zeroLevel();
-            }
+            if (compass_menu_selection == 0) sensors.setImuSwapXY(!sensors.getImuSwapXY());
+            else if (compass_menu_selection == 1) sensors.setImuInvX(!sensors.getImuInvX());
+            else if (compass_menu_selection == 2) sensors.setImuInvY(!sensors.getImuInvY());
+            else if (compass_menu_selection == 3) sensors.setImuInvZ(!sensors.getImuInvZ());
+            else if (compass_menu_selection == 4) sensors.calibrateAccel();
+            else if (compass_menu_selection == 5) sensors.zeroLevel();
             needs_redraw = true;
         } else if (sel_evt == BTN_EVT_LONG_PRESS) {
             motion_state = MotionState::PAGE_DATA;

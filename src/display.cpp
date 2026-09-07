@@ -283,28 +283,31 @@ void DisplayManager::drawAppMotionSettings() {
     drawHeader("IMU SETTINGS");
     oled.setFont(u8g2_font_6x10_tr);
 
-    int sel = ui.getCompassMenuSelection(); // Reusing variable
+    int sel = ui.getCompassMenuSelection();
+    int offset = ui.getCompassMenuOffset();
 
-    // Menu items
-    const char* items[] = {"IMU Orient", "Zero Reset"};
-
-    int y_pos = 25;
-    for (int i = 0; i < 2; i++) {
+    int y_pos = 22;
+    for (int i = offset; i < offset + 3 && i < UICore::MOTION_MENU_ITEM_COUNT; i++) {
         if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 120, 10);
+            oled.drawBox(2, y_pos - 8, 118, 10);
             oled.setDrawColor(0);
         }
 
-        String label = items[i];
-        if (i == 0) {
-            int o = sensors.getImuOrientation();
-            label += o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
-        }
+        String label = ui.motion_menu_items[i];
+        if (i == 0) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
+        else if (i == 1) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
+        else if (i == 2) label += sensors.getImuInvY() ? " [ON]" : " [OFF]";
+        else if (i == 3) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
 
         oled.drawStr(4, y_pos, label.c_str());
         oled.setDrawColor(1);
-        y_pos += 15;
+        y_pos += 12;
     }
+
+    int scroll_h = 30;
+    int scroll_y = 15 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
+    oled.drawFrame(123, 15, 3, 30);
+    oled.drawBox(123, scroll_y, 3, 10);
 
     drawFooter("PAGE 3/3");
 }
