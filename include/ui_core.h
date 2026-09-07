@@ -18,6 +18,7 @@ enum class UIState {
     APP_IR,
     APP_GAMES,
     APP_BATTERY,
+    APP_LED,
     APP_SETTINGS,
     APP_ABOUT,
     VALUE_EDIT,
@@ -39,10 +40,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 11;
+    static const int MAIN_MENU_ITEM_COUNT = 12;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "LED MATRIX", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;
@@ -59,6 +60,7 @@ private:
 
     void handleHomeInput();
     void handleMainMenuInput();
+    void handleLEDAppInput();
     void handleSettingsMenuInput();
     void handleValueEditInput();
     void handleGenericAppInput(); // Shared handler for dummy apps

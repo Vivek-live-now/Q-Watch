@@ -17,6 +17,18 @@ A James Bond "First Light" inspired smartwatch built on the ESP32-S3 SuperMini.
 *   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
 *   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
+### Milestone 4: Battery Monitoring & Onboard LED System
+*   **Battery App:** Dedicated app tab for real-time battery voltage reading, remaining capacity percentage estimation (piecewise LiPo curve), and graphical progress bar.
+*   **LED Controller App:** Interactive onboard WS2812 RGB LED controller featuring:
+    *   **Main Switch & Brightness Control:** Master toggle and adjustable brightness to optimize power usage.
+    *   **Presets & Custom Color:** Red, Green, Blue, Purple, Amber, White, Rainbow, and custom RGB/HSV selection.
+    *   **Lighting Effects:** Solid, Breathing, Pulse, Fade, Rainbow, Color Cycle, Flash, and Heartbeat pulse.
+    *   **Watch Status Integration:** Context-aware reactions (Compass heading feedback, Battery level indication green→yellow→red, Health pulse, IR transmission feedback, Sleep dimming, Error alert).
+    *   **Q-Branch Notification Signals:** Unique operational signals for Boot (short blue pulse), Success (green double pulse), Warning (amber pulse), Error (red triple flash), and Low Battery (slow red pulse).
+
+### Future Roadmap
+*   **Android App Connectivity:** BLE / Wi-Fi synchronization for notifications, telemetry data, and remote watch controls.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
@@ -44,7 +56,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | :--- | :--- | :--- | :--- |
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
 | Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
-| Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
+| Button Down | INPUT_PULLUP | 41 | Updated pin for Down button (Reclaims JTAG MTDI) |
 | Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |

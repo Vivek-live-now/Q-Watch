@@ -7,6 +7,7 @@
 #include "ui_core.h"
 #include "sensors.h"
 #include "battery.h"
+#include "led_controller.h"
 #include <SPI.h>
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
@@ -40,6 +41,7 @@ void DisplayManager::update() {
             case UIState::APP_IR: drawAppIR(); break;
             case UIState::APP_GAMES: drawAppGames(); break;
             case UIState::APP_BATTERY: drawAppBattery(); break;
+            case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
 
             case UIState::MAIN_MENU:
@@ -82,30 +84,21 @@ void DisplayManager::drawHeader(const char* title) {
     oled.drawLine(0, 9, 128, 9);
 }
 
-void DisplayManager::drawFooter(const char* status) {
-    oled.drawLine(0, 54, 128, 54);
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 62, status);
-}
-
 void DisplayManager::drawPortalScreen() {
     drawHeader("SYS/CFG");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 30, "LINK: Q-Watch-Setup");
-    oled.drawStr(10, 45, "ADDR: 192.168.4.1");
-    drawFooter("STS: AWAITING UPLINK");
+    oled.drawStr(10, 48, "ADDR: 192.168.4.1");
 }
 
 void DisplayManager::drawAppHome() {
     drawHeader("Q-WATCH OP");
-    for (int i=20; i<108; i+=4) oled.drawPixel(i, 35);
+    for (int i=20; i<108; i+=4) oled.drawPixel(i, 20);
 
     oled.setFont(u8g2_font_logisoso24_tn);
     String timeStr = qclock.getTimeStr();
     int w_time = oled.getStrWidth(timeStr.c_str());
-    oled.drawStr((128-w_time)/2, 42, timeStr.c_str());
-
-    drawFooter(WiFi.status() == WL_CONNECTED ? "LINK: ESTABLISHED" : "LINK: SEVERED");
+    oled.drawStr((128-w_time)/2, 48, timeStr.c_str());
 }
 
 void DisplayManager::drawAppClock() {
@@ -113,11 +106,10 @@ void DisplayManager::drawAppClock() {
     oled.setFont(u8g2_font_logisoso28_tn);
     String timeStr = qclock.getTimeStr();
     int w_time = oled.getStrWidth(timeStr.c_str());
-    oled.drawStr((128-w_time)/2, 45, timeStr.c_str());
+    oled.drawStr((128-w_time)/2, 48, timeStr.c_str());
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(110, 62, "[  ]");
-    oled.drawStr(113, 62, qclock.getSecondsStr().c_str());
+    oled.drawStr(108, 60, qclock.getSecondsStr().c_str());
 }
 
 void DisplayManager::drawAppWeather() {
@@ -126,9 +118,7 @@ void DisplayManager::drawAppWeather() {
     oled.drawStr(10, 30, "27\260C");
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 46, "HUM: 62%  WND: 1.2M/S");
-
-    drawFooter("STS: OFFLINE DEMO");
+    oled.drawStr(10, 48, "HUM: 62%  WND: 1.2M/S");
 }
 
 void DisplayManager::drawAppCompass() {
@@ -141,17 +131,14 @@ void DisplayManager::drawAppCompass() {
     oled.drawStr(10, 30, hdgStr.c_str());
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 46, "TILT COMPENSATED");
-
-    drawFooter(sensors.isMagOk() ? "STS: ACTIVE" : "STS: MAG FAIL");
+    oled.drawStr(10, 48, "TILT COMPENSATED");
 }
 
 void DisplayManager::drawAppHealth() {
     drawHeader("BIO/METRIC");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 28, "BPM: ---");
-    oled.drawStr(10, 42, "O2 : --- %");
-    drawFooter("STS: NO PULSE");
+    oled.drawStr(10, 44, "O2 : --- %");
 }
 
 void DisplayManager::drawAppMotion() {
@@ -163,24 +150,20 @@ void DisplayManager::drawAppMotion() {
 
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 28, pStr.c_str());
-    oled.drawStr(10, 42, rStr.c_str());
-
-    drawFooter(sensors.isMpuOk() ? "STS: TRACKING" : "STS: MPU FAIL");
+    oled.drawStr(10, 44, rStr.c_str());
 }
 
 void DisplayManager::drawAppIR() {
     drawHeader("OPT/INFRA");
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 28, "EMITTER: ARMED");
-    oled.drawStr(10, 42, "SENSOR : STANDBY");
-    drawFooter("STS: NO TARGET");
+    oled.drawStr(10, 44, "SENSOR : STANDBY");
 }
 
 void DisplayManager::drawAppGames() {
     drawHeader("ARCHIVE");
     oled.setFont(u8g2_font_ncenB10_tr);
-    oled.drawStr(15, 35, "OG_BOUNCE.EXE");
-    drawFooter("STS: ENCRYPTED");
+    oled.drawStr(15, 38, "OG_BOUNCE.EXE");
 }
 
 void DisplayManager::drawAppBattery() {
@@ -195,19 +178,38 @@ void DisplayManager::drawAppBattery() {
     oled.drawStr(10, 36, pctStr.c_str());
 
     // Progress bar for battery percentage
-    oled.drawFrame(10, 40, 108, 10);
+    oled.drawFrame(10, 42, 108, 12);
     int fill_w = (pct * 104) / 100;
     if (fill_w > 104) fill_w = 104;
     if (fill_w > 0) {
-        oled.drawBox(12, 42, fill_w, 6);
+        oled.drawBox(12, 44, fill_w, 8);
     }
+}
 
-    if (pct <= 10) {
-        drawFooter("STS: LOW POWER");
-    } else if (v >= 4.20f) {
-        drawFooter("STS: FULL / USB");
-    } else {
-        drawFooter("STS: DISCHARGING");
+void DisplayManager::drawAppLED() {
+    drawHeader("LED MATRIX");
+    oled.setFont(u8g2_font_5x7_tr);
+
+    String pwrStr = "PWR: " + String(ledController.isEnabled() ? "ON" : "OFF");
+    String brtStr = "BRT: " + String((ledController.getBrightness() * 100) / 255) + "%";
+
+    oled.drawStr(10, 24, pwrStr.c_str());
+    oled.drawStr(70, 24, brtStr.c_str());
+
+    const char* presetNames[] = {"RED", "GREEN", "BLUE", "PURPLE", "AMBER", "WHITE", "RAINBOW", "CUSTOM"};
+    int pIdx = (int)ledController.getPreset();
+    if (pIdx < 0 || pIdx > 7) pIdx = 0;
+    String modeStr = "PRESET: " + String(presetNames[pIdx]);
+    oled.drawStr(10, 36, modeStr.c_str());
+
+    RGBColor col = ledController.getCurrentColor();
+    String rgbStr = "RGB: " + String(col.r) + "," + String(col.g) + "," + String(col.b);
+    oled.drawStr(10, 48, rgbStr.c_str());
+
+    oled.drawFrame(10, 52, 108, 8);
+    int fill = (ledController.getBrightness() * 104) / 255;
+    if (fill > 0 && ledController.isEnabled()) {
+        oled.drawBox(12, 54, fill, 4);
     }
 }
 
@@ -217,31 +219,30 @@ void DisplayManager::drawAppAbout() {
     oled.drawStr(10, 25, "ID: 007 Q-WATCH");
     oled.drawStr(10, 35, "CORE: ESP32-S3 S-MINI");
     oled.drawStr(10, 45, "VER: FIRST LIGHT v0.1");
-    drawFooter("AUTH: MI6 CLEARED");
 }
 
 void DisplayManager::drawMenu(const char* title, const char** items, int item_count) {
     drawHeader(title);
     oled.setFont(u8g2_font_6x10_tr);
     int start_idx = ui.getMenuScrollOffset();
-    int y_pos = 22;
+    int y_pos = 24;
 
     for (int i = start_idx; i < start_idx + 3 && i < item_count; i++) {
         if (i == ui.getMenuSelection()) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.drawBox(2, y_pos - 8, 118, 11);
             oled.setDrawColor(0);
             oled.drawStr(4, y_pos, items[i]);
             oled.setDrawColor(1);
         } else {
             oled.drawStr(4, y_pos, items[i]);
         }
-        y_pos += 12;
+        y_pos += 13;
     }
 
     if (item_count > 3) {
-        int scroll_h = 30;
+        int scroll_h = 36;
         int scroll_y = 15 + ((float)start_idx / (item_count - 3)) * (scroll_h - 10);
-        oled.drawFrame(123, 15, 3, 30);
+        oled.drawFrame(123, 15, 3, 36);
         oled.drawBox(123, scroll_y, 3, 10);
     }
 }
@@ -252,11 +253,10 @@ void DisplayManager::drawValueEdit(const char* title) {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(10, 26, "ADJUST PARAMETER:");
 
-    oled.drawFrame(10, 34, 104, 10);
+    oled.drawFrame(10, 38, 104, 12);
     if (val > 0) {
         for(int i = 0; i < val; i++) {
-            oled.drawBox(12 + (i*10), 36, 8, 6);
+            oled.drawBox(12 + (i*10), 40, 8, 8);
         }
     }
-    drawFooter("SEL:SET  L-SEL:ABORT");
 }
