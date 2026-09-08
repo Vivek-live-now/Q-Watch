@@ -127,12 +127,19 @@ void WifiPortal::handleWeatherForce() {
 
 void WifiPortal::handleScanTrigger() {
     if (!scan_in_progress) {
-        WiFi.scanNetworks(true); // true = async
+        WiFi.scanDelete(); // Clear old results
+        WiFi.disconnect(); // Disconnect STA to free up radio for scanning
+        delay(100);
+        int result = WiFi.scanNetworks(true); // true = async
+        if (result == WIFI_SCAN_FAILED) {
+            scan_in_progress = false;
+            server.send(500, "text/plain", "FAILED_TO_START");
+            return;
+        }
         scan_in_progress = true;
     }
     server.send(200, "text/plain", "STARTED");
 }
-
 void WifiPortal::handleScanResults() {
     int n = WiFi.scanComplete();
     if (n == WIFI_SCAN_RUNNING) {
