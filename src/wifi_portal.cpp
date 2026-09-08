@@ -47,7 +47,12 @@ void WifiPortal::setupRoutes() {
     server.on("/scan_results", HTTP_GET, std::bind(&WifiPortal::handleScanResults, this));
     server.on("/status_json", HTTP_GET, std::bind(&WifiPortal::handleStatusJson, this));
     server.on("/weather_force", HTTP_GET, std::bind(&WifiPortal::handleWeatherForce, this));
-    server.onNotFound(std::bind(&WifiPortal::handleRoot, this));
+
+    server.onNotFound([this]() {
+        server.sendHeader("Location", "http://192.168.4.1/", true);
+        server.send(302, "text/plain", "");
+    });
+
 }
 
 void WifiPortal::loop() {
