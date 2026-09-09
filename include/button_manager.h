@@ -38,7 +38,7 @@ private:
     };
 
     ButtonState buttons[BTN_COUNT];
-    static const uint32_t DEBOUNCE_DELAY_MS = 50;
+    static const uint32_t DEBOUNCE_DELAY_MS = 80;
     static const uint32_t LONG_PRESS_MS = 700;
     static const uint32_t REPEAT_DELAY_MS = 300; // Time between repeats when holding
 };
