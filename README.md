@@ -44,7 +44,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | :--- | :--- | :--- | :--- |
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
 | Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
-| Button Down | INPUT_PULLUP | 40 | |
+| Button Down | INPUT_PULLUP | 42 | |
 | Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
