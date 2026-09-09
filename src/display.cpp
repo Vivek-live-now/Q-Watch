@@ -40,7 +40,7 @@ void DisplayManager::update() {
             case UIState::APP_HEALTH: drawAppHealth(); break;
             case UIState::APP_MOTION: drawAppMotion(); break;
 case UIState::APP_IR: drawAppIR(); break;
-            case UIState::APP_DEBUG: drawAppDebug(); break;
+            case UIState::APP_GAMES: drawAppGames(); break;
 case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_AUDIO: drawAppAudio(); break;
@@ -472,6 +472,41 @@ void DisplayManager::drawAppLED() {
 }
 
 
+void DisplayManager::drawAppGames() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(10, 30, "GAMES: PENDING");
+}
+
+
+void DisplayManager::drawAppAudio() {
+    drawTopStatusBar();
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getAudioMenuSelection();
+    int offset = ui.getAudioMenuOffset();
+
+    int y_pos = 22;
+    for (int i = offset; i < offset + 3 && i < UICore::AUDIO_MENU_ITEM_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = ui.audio_menu_items[i];
+        if (i == 0) label += soundManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
+        else if (i == 1) {
+            SoundStyle s = soundManager.getStyle();
+            if (s == SoundStyle::SILENT) label += " [SILENT]";
+            else if (s == SoundStyle::MODERN) label += " [MODERN]";
+            else if (s == SoundStyle::TACTICAL) label += " [TACTICAL]";
+            else if (s == SoundStyle::RETRO) label += " [RETRO]";
+        }
+
+        oled.drawStr(4, y_pos, label.c_str());
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
+}
 
 void DisplayManager::drawAppAbout() {
     oled.setFont(u8g2_font_5x7_tr);
@@ -617,60 +652,4 @@ void DisplayManager::drawAppCompassDeclination() {
     String dStr = String(sensors.getMagCalibration().declination, 1) + "\260";
     int w = oled.getStrWidth(dStr.c_str());
     oled.drawStr(64 - w/2, 44, dStr.c_str());
-}
-
-void DisplayManager::drawAppDebug() {
-    oled.clearBuffer();
-    drawTopStatusBar();
-
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(0, 20, "--- PIN DEBUG ---");
-
-    char buf[32];
-
-    // Read the pins
-    // OK = 21, DN = 40, UP = 39
-
-    int ok_state = digitalRead(21);
-    int dn_state = digitalRead(40);
-    int up_state = digitalRead(39);
-
-    sprintf(buf, "PIN 21 (OK): %d", ok_state);
-    oled.drawStr(0, 32, buf);
-
-    sprintf(buf, "PIN 40 (DN): %d", dn_state);
-    oled.drawStr(0, 44, buf);
-
-    sprintf(buf, "PIN 39 (UP): %d", up_state);
-    oled.drawStr(0, 56, buf);
-}
-
-void DisplayManager::drawAppAudio() {
-    drawTopStatusBar();
-    oled.setFont(u8g2_font_6x10_tr);
-
-    int sel = ui.getAudioMenuSelection();
-    int offset = ui.getAudioMenuOffset();
-
-    int y_pos = 22;
-    for (int i = offset; i < offset + 3 && i < UICore::AUDIO_MENU_ITEM_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-        }
-
-        String label = ui.audio_menu_items[i];
-        if (i == 0) label += soundManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
-        else if (i == 1) {
-            SoundStyle s = soundManager.getStyle();
-            if (s == SoundStyle::SILENT) label += " [SILENT]";
-            else if (s == SoundStyle::MODERN) label += " [MODERN]";
-            else if (s == SoundStyle::TACTICAL) label += " [TACTICAL]";
-            else if (s == SoundStyle::RETRO) label += " [RETRO]";
-        }
-
-        oled.drawStr(4, y_pos, label.c_str());
-        oled.setDrawColor(1);
-        y_pos += 12;
-    }
 }
