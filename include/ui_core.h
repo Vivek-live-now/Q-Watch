@@ -32,7 +32,7 @@ enum class UIState {
     APP_HEALTH,
     APP_MOTION,
     APP_IR,
-    APP_GAMES,
+    APP_DEBUG,
     APP_SETTINGS,
     APP_BATTERY,
     APP_LED,
@@ -107,10 +107,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-static const int MAIN_MENU_ITEM_COUNT = 12;
+static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "LED RGB", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "DEBUG", "BATTERY", "LED RGB", "AUDIO", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;

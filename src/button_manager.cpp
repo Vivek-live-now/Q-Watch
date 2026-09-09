@@ -50,6 +50,21 @@ void ButtonManager::loop() {
 
         if ((millis() - buttons[i].last_debounce_time) > DEBOUNCE_DELAY_MS) {
             if (reading != buttons[i].current_state) {
+
+                // Mutual Exclusion: If another button is already pressed, ignore this state change (crosstalk mitigation)
+                if (reading == LOW) {
+                    bool another_pressed = false;
+                    for(int j=0; j<BTN_COUNT; j++) {
+                        if (j != i && buttons[j].current_state == LOW) {
+                            another_pressed = true;
+                            break;
+                        }
+                    }
+                    if (another_pressed) {
+                        continue; // Skip updating state for this button, effectively ignoring the crosstalk
+                    }
+                }
+
                 buttons[i].current_state = reading;
 
                 if (buttons[i].current_state == LOW) { // PRESSED

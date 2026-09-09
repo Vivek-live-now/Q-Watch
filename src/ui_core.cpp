@@ -113,11 +113,12 @@ case 0: current_state = UIState::APP_HOME; break;
             case 4: current_state = UIState::APP_HEALTH; break;
             case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
             case 6: current_state = UIState::APP_IR; break;
-            case 7: current_state = UIState::APP_GAMES; break;
+            case 7: current_state = UIState::APP_DEBUG; break;
             case 8: current_state = UIState::APP_BATTERY; break;
             case 9: current_state = UIState::APP_LED; break;
-            case 10: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
-            case 11: current_state = UIState::APP_ABOUT; break;
+            case 10: current_state = UIState::APP_AUDIO; break;
+            case 11: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
+            case 12: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {

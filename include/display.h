@@ -34,7 +34,7 @@ private:
     void drawAppMotionData();
     void drawAppMotionSettings();
     void drawAppIR();
-    void drawAppGames();
+    void drawAppDebug();
     void drawAppBattery();
     void drawAppLED();
     void drawAppAudio();
