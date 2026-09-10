@@ -15,7 +15,7 @@
 #define OLED_RST   8
 
 // ----------------------------------------------------------------------------
-// Shared I2C Bus Configuration [BME280, MPU-6500, HMC5883L, MAX30100]
+// Shared I2C Bus Configuration [BME280, MPU-6500, HMC5883L, MAX30102]
 // ----------------------------------------------------------------------------
 #define I2C_SDA    15
 #define I2C_SCL    16

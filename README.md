@@ -33,11 +33,10 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 ### 2. I2C Sensors (Shared Bus)
 | Peripheral | Function | GPIO |
 | :--- | :--- | :--- |
-| BME280 / MPU-6500 / HMC5883L / MAX30100 | SDA | 15 |
-| BME280 / MPU-6500 / HMC5883L / MAX30100 | SCL | 16 |
+| BME280 / MPU-6500 / HMC5883L / MAX30102 | SDA | 15 |
+| BME280 / MPU-6500 / HMC5883L / MAX30102 | SCL | 16 |
 
 *Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
-*Note on MAX30100:* This project utilizes a specific physical modification to allow the 1.8V MAX30100 breakout to safely interface with the 3.3V logic of the ESP32.
 
 ### 3. Inputs & Audio/Visual
 | Peripheral | Function | GPIO | Notes |
@@ -61,6 +60,13 @@ The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unass
 
 ### 5. Decoupling Capacitor Strategy (104 Ceramic)
 The ESP32-S3, OLED, and individual sensor breakouts already contain adequate local decoupling. However, because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is highly recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
+
+
+
+*Note on MAX30102 placement:* If placing the MAX30102 sensor behind a thick acrylic backplate (e.g., 2-3mm), you will experience severe IR light bleeding/internal reflection inside the plastic, rendering the sensor blind. To fix this, you must either:
+1. Provide an optical barrier (like a rubber ring) tightly sealing the gap between the LEDs and the detector against the skin.
+2. Use a much thinner window (<1mm) specifically for the sensor area.
+3. Mount the sensor so it is flush with or slightly protruding from the backplate to ensure firm skin contact.
 
 ## Getting Started
 
