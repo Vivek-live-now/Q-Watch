@@ -217,6 +217,23 @@ void SensorManager::calibrateGyro() {
     Serial.printf("Gyro Bias -> X:%.2f Y:%.2f Z:%.2f\n", offsets.gyro_bias_x, offsets.gyro_bias_y, offsets.gyro_bias_z);
 }
 
+
+void SensorManager::readBme() {
+    if (!bme_ok) return;
+
+    env_data.temperature = bme.readTemperature();
+    env_data.humidity = bme.readHumidity();
+    env_data.pressure = bme.readPressure() / 100.0F;
+    env_data.altitude = bme.readAltitude(reference_pressure);
+}
+
+void SensorManager::zeroAltitude() {
+    if (!bme_ok) return;
+    // Set current pressure as the 0 reference
+    reference_pressure = bme.readPressure() / 100.0F;
+    env_data.altitude = 0.0f;
+}
+
 void SensorManager::readMpu() {
     if (!mpu_ok) return;
     Wire.beginTransmission(MPU6500_ADDR);
@@ -500,6 +517,11 @@ void SensorManager::loop() {
             readMag();
             updateMagCalibration();
             last_mag_update = now;
+        }
+
+        if (now - last_bme_update >= 1000) {
+            readBme();
+            last_bme_update = now;
         }
 
         applyCalibrationAndMapping();

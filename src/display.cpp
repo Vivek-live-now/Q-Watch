@@ -40,7 +40,7 @@ void DisplayManager::update() {
             case UIState::APP_HEALTH: drawAppHealth(); break;
             case UIState::APP_MOTION: drawAppMotion(); break;
 case UIState::APP_IR: drawAppIR(); break;
-            case UIState::APP_GAMES: drawAppGames(); break;
+            case UIState::APP_ALTIMETER: drawAppAltimeter(); break;
 case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_AUDIO: drawAppAudio(); break;
@@ -472,10 +472,32 @@ void DisplayManager::drawAppLED() {
 }
 
 
-void DisplayManager::drawAppGames() {
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 30, "GAMES: PENDING");
+
+void DisplayManager::drawAppAltimeter() {
+    oled.clearBuffer();
+    drawTopStatusBar();
+
+    EnvironmentData env = sensors.getEnvData();
+
+    // Main Altitude Display
+    oled.setFont(u8g2_font_logisoso16_tr);
+    char buf[32];
+    sprintf(buf, "%.1f m", env.altitude);
+    int w = oled.getStrWidth(buf);
+    oled.drawStr(64 - w/2, 34, buf);
+
+    // Pressure & Temp
+    oled.setFont(u8g2_font_4x6_tr);
+    sprintf(buf, "PRESS: %.1f hPa", env.pressure);
+    oled.drawStr(2, 48, buf);
+
+    sprintf(buf, "TEMP: %.1f C", env.temperature);
+    oled.drawStr(2, 56, buf);
+
+    // Hint
+    oled.drawStr(70, 56, "[ANY] ZERO");
 }
+
 
 
 void DisplayManager::drawAppAudio() {

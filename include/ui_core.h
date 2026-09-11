@@ -32,7 +32,7 @@ enum class UIState {
     APP_HEALTH,
     APP_MOTION,
     APP_IR,
-    APP_GAMES,
+    APP_ALTIMETER,
     APP_SETTINGS,
     APP_BATTERY,
     APP_LED,
@@ -110,7 +110,7 @@ public:
 static const int MAIN_MENU_ITEM_COUNT = 12;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "GAMES", "BATTERY", "LED RGB", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;

@@ -3,7 +3,18 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <Arduino.h>
+#include <Wire.h>
 #include <Preferences.h>
+#include <Adafruit_BME280.h>
+
+
+struct EnvironmentData {
+    float temperature;
+    float humidity;
+    float pressure;
+    float altitude; // Relative
+};
 
 struct RawSensorData {
     int16_t ax, ay, az;
@@ -105,9 +116,22 @@ void setImuSwapXY(bool swap);
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
 
+
+    EnvironmentData getEnvData() const { return env_data; }
+    void zeroAltitude();
+    bool isBmeOk() const { return bme_ok; }
+
 private:
     bool mpu_ok;
     bool mag_ok;
+    bool bme_ok;
+
+    Adafruit_BME280 bme;
+    EnvironmentData env_data;
+    float reference_pressure;
+    uint32_t last_bme_update;
+    void readBme();
+
     uint32_t last_fusion_update;
     uint32_t last_mag_update;
 
