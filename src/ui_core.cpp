@@ -157,11 +157,9 @@ void UICore::handleSettingsMenuInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         current_state = UIState::MAIN_MENU;
-        menu_selection = 11; // Reset cursor to Settings in main menu
-        menu_scroll_offset = 7; // Scroll so Settings is at the bottom of the 3-item list (index 8, offset 6)
-        // Wait, 8 - 2 = 6. Let's fix this mathematically so it's always correct:
-        menu_scroll_offset = menu_selection - 2;
-        if(menu_scroll_offset < 0) menu_scroll_offset = 0;
+        menu_selection = 10; // Reset cursor to Settings in main menu (index 10)
+        menu_scroll_offset = menu_selection - 2; // Scroll so Settings is at the bottom of the 3-item window (offset 8)
+        if (menu_scroll_offset < 0) menu_scroll_offset = 0;
         needs_redraw = true;
     }
 }
