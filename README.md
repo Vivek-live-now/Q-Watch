@@ -17,6 +17,12 @@ A James Bond "First Light" inspired smartwatch built on the ESP32-S3 SuperMini.
 *   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
 *   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
+
+### Milestone 4: Local Storage & File Management
+*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, future calibration data, and binary assets (e.g., IR signal captures).
+*   **FileManager Abstraction:** A lightweight C++ wrapper class around LittleFS for robust read/write/append operations for both standard `String` text and raw binary (`uint8_t*`) data.
+*   **File Browser UI:** Added a native 'FILE MANAGER' app to the Q-Watch menu. Features dynamic directory browsing, file size inspection, and a unified storage information panel (displaying Total/Used/Free space on the ESP32), all operating entirely within the OLED's 3-item tactical UI viewport.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
