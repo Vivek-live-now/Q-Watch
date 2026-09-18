@@ -2,6 +2,7 @@
 #define UI_CORE_H
 
 #include <Arduino.h>
+#include "file_manager.h"
 
 
 enum class CompassState {
@@ -38,6 +39,8 @@ enum class UIState {
     APP_LED,
     APP_AUDIO,
     APP_ABOUT,
+    APP_FILE_MANAGER,
+    APP_STORAGE_INFO,
     VALUE_EDIT,
     SLEEPING
 };
@@ -107,10 +110,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-static const int MAIN_MENU_ITEM_COUNT = 12;
+static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MENU_ITEM_COUNT = 4;
@@ -118,6 +121,12 @@ static const int MAIN_MENU_ITEM_COUNT = 12;
         "Display", "Sound", "Theme", "Sleep"
     };
 
+public:
+    String getFmCurrentPath() const { return fm_current_path; }
+    int getFmSelection() const { return fm_selection; }
+    int getFmScrollOffset() const { return fm_scroll_offset; }
+    int getFmEntryCount() const { return fm_entry_count; }
+    const struct FileInfo* getFmEntries() const { return fm_entries; }
 private:
     UIState current_state;
     int menu_selection;
@@ -141,6 +150,24 @@ private:
     void handleValueEditInput();
     void handleGenericAppInput(); // Shared handler for dummy apps
     void handleCompassInput();
+
+    // File Manager State
+    String fm_current_path;
+    int fm_selection;
+    int fm_scroll_offset;
+    int fm_entry_count;
+    struct FileInfo* fm_entries; // Dynamically allocated to save SRAM when not in use
+    void handleFileManagerInput();
+    void handleStorageInfoInput();
+    void loadDirectory(const String& path);
+    void freeFileManager();
+
+
+
+
+
+
+
 
 
 

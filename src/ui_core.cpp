@@ -12,7 +12,7 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     menu_selection(0),
     menu_scroll_offset(0),
-    edit_value(5), compass_state(CompassState::PAGE_MAIN), compass_menu_selection(0), compass_menu_offset(0), motion_state(MotionState::PAGE_LEVEL),
+    edit_value(5), compass_state(CompassState::PAGE_MAIN), compass_menu_selection(0), compass_menu_offset(0), motion_state(MotionState::PAGE_LEVEL), fm_current_path("/"), fm_selection(0), fm_scroll_offset(0), fm_entry_count(0), fm_entries(nullptr),
     needs_redraw(true) {}
 
 void UICore::begin() {
@@ -116,8 +116,9 @@ case 0: current_state = UIState::APP_HOME; break;
             case 7: current_state = UIState::APP_ALTIMETER; break;
             case 8: current_state = UIState::APP_BATTERY; break;
             case 9: current_state = UIState::APP_LED; break;
-            case 10: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
-            case 11: current_state = UIState::APP_ABOUT; break;
+            case 10: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
+            case 11: current_state = UIState::APP_SETTINGS; menu_selection=0; menu_scroll_offset=0; break;
+            case 12: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
@@ -134,6 +135,80 @@ void UICore::handleGenericAppInput() {
     ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
     if (sel_evt == BTN_EVT_LONG_PRESS) {
         current_state = UIState::APP_HOME;
+        needs_redraw = true;
+    }
+}
+
+
+void UICore::freeFileManager() {
+    if (fm_entries) {
+        delete[] fm_entries;
+        fm_entries = nullptr;
+    }
+    fm_entry_count = 0;
+}
+
+void UICore::loadDirectory(const String& path) {
+    freeFileManager();
+    fm_entries = new FileInfo[32]; // Max 32 items for now to save SRAM
+    if (!fm_entries) return;
+
+    fm_entry_count = fileManager.listDir(path, fm_entries, 32);
+    fm_selection = 0;
+    fm_scroll_offset = 0;
+}
+
+void UICore::handleFileManagerInput() {
+    int total_entries = fm_entry_count + (fm_current_path == "/" ? 1 : 0); // +1 for STORAGE INFO at root
+
+    if (btnManager.getEvent(BTN_ID_UP) == BTN_EVT_SHORT_PRESS) {
+        if (total_entries > 0 && fm_selection > 0) {
+            fm_selection--;
+            if (fm_selection < fm_scroll_offset) fm_scroll_offset = fm_selection;
+            needs_redraw = true;
+        }
+    } else if (btnManager.getEvent(BTN_ID_DN) == BTN_EVT_SHORT_PRESS) {
+        if (total_entries > 0 && fm_selection < total_entries - 1) {
+            fm_selection++;
+            if (fm_selection >= fm_scroll_offset + 3) fm_scroll_offset = fm_selection - 2;
+            needs_redraw = true;
+        }
+    } else if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_SHORT_PRESS) {
+        if (fm_current_path == "/" && fm_selection == fm_entry_count) {
+            current_state = UIState::APP_STORAGE_INFO;
+        } else if (fm_selection < fm_entry_count) {
+            if (fm_entries[fm_selection].isDir) {
+                String next_path = fm_current_path;
+                if (!next_path.endsWith("/")) next_path += "/";
+                next_path += fm_entries[fm_selection].name;
+                fm_current_path = next_path;
+                loadDirectory(fm_current_path);
+            } else {
+                // Future: File actions
+            }
+        }
+        needs_redraw = true;
+    } else if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_LONG_PRESS) {
+        if (fm_current_path == "/") {
+            freeFileManager();
+            current_state = UIState::MAIN_MENU;
+        } else {
+            // Go to parent
+            int last_slash = fm_current_path.lastIndexOf('/', fm_current_path.length() - 2);
+            if (last_slash == -1 || last_slash == 0) {
+                fm_current_path = "/";
+            } else {
+                fm_current_path = fm_current_path.substring(0, last_slash);
+            }
+            loadDirectory(fm_current_path);
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleStorageInfoInput() {
+    if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_LONG_PRESS) {
+        current_state = UIState::APP_FILE_MANAGER;
         needs_redraw = true;
     }
 }

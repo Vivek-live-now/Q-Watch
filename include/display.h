@@ -39,6 +39,8 @@ private:
     void drawAppLED();
     void drawAppAudio();
     void drawAppAbout();
+    void drawFileManager();
+    void drawStorageInfo();
 
     void drawPortalScreen();
     void drawMenu(const char* title, const char** items, int item_count);

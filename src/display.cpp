@@ -8,6 +8,7 @@
 #include "sensors.h"
 #include <SPI.h>
 #include "battery.h"
+#include "file_manager.h"
 #include "led_manager.h"
 #include "sound_manager.h"
 
@@ -537,6 +538,87 @@ void DisplayManager::drawAppAbout() {
     oled.drawStr(10, 25, "ID: 007 Q-WATCH");
     oled.drawStr(10, 35, "CORE: ESP32-S3 S-MINI");
     oled.drawStr(10, 45, "VER: FIRST LIGHT v0.1");
+}
+
+
+void DisplayManager::drawFileManager() {
+    drawTopStatusBar();
+
+    String path = ui.getFmCurrentPath();
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(0, 18, path.c_str());
+    oled.drawHLine(0, 21, 128);
+
+    int count = ui.getFmEntryCount();
+    bool isRoot = (path == "/");
+    int total_items = count + (isRoot ? 1 : 0);
+
+    if (total_items == 0) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(10, 40, "(Empty)");
+        return;
+    }
+
+    const struct FileInfo* entries = ui.getFmEntries();
+    int sel = ui.getFmSelection();
+    int offset = ui.getFmScrollOffset();
+
+    for (int i = 0; i < 3; i++) {
+        int idx = offset + i;
+        if (idx >= total_items) break;
+
+        int y = 35 + (i * 12);
+
+        if (idx == sel) {
+            oled.drawStr(0, y, ">");
+        }
+
+        String displayName;
+        if (isRoot && idx == count) {
+            displayName = "STORAGE INFO";
+        } else {
+            displayName = entries[idx].name;
+            if (entries[idx].isDir) {
+                displayName += "/";
+            }
+        }
+
+        oled.drawStr(10, y, displayName.c_str());
+
+        // Show size for files
+        if (!isRoot || idx < count) {
+            if (!entries[idx].isDir) {
+                char sizeStr[16];
+                snprintf(sizeStr, sizeof(sizeStr), "%u B", entries[idx].size);
+                int sw = oled.getStrWidth(sizeStr);
+                oled.drawStr(128 - sw, y, sizeStr);
+            }
+        }
+    }
+}
+
+void DisplayManager::drawStorageInfo() {
+    drawTopStatusBar();
+
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(0, 18, "STORAGE INFO");
+    oled.drawHLine(0, 21, 128);
+
+    size_t total = fileManager.totalSpace();
+    size_t free = fileManager.freeSpace();
+    size_t used = total - free;
+
+    oled.setFont(u8g2_font_6x10_tf);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Total: %u B", total);
+    oled.drawStr(0, 35, buf);
+
+    snprintf(buf, sizeof(buf), "Used:  %u B", used);
+    oled.drawStr(0, 48, buf);
+
+    snprintf(buf, sizeof(buf), "Free:  %u B", free);
+    oled.drawStr(0, 61, buf);
 }
 
 void DisplayManager::drawMenu(const char* title, const char** items, int item_count) {
