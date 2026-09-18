@@ -11,6 +11,7 @@
 #include "led_manager.h"
 #include "sound_manager.h"
 #include "file_manager.h"
+#include "settings_data.h"
 
 String last_drawn_time = "";
 uint32_t last_portal_draw = 0;
@@ -21,6 +22,7 @@ void setup() {
   Serial.println("Booting Q-Watch...");
 
   fileManager.begin();
+  settingsManager.begin();
 
   displayManager.begin();
   btnManager.begin();
@@ -29,7 +31,7 @@ void setup() {
   sensors.begin();
   ledManager.begin();
   soundManager.begin();
-  soundManager.playBoot(); // Start 9-DOF fusion
+  soundManager.playBoot();
 
   wifiPortal.begin();
   qclock.begin(configManager.get().timezone);
@@ -44,14 +46,13 @@ void loop() {
   ui.loop();
   sensors.loop();
   ledManager.loop();
-  soundManager.loop(); // Runs at 100Hz non-blocking internally
+  soundManager.loop();
 
   // Energy Efficiency & UI Updates
   String current_time = qclock.getSecondsStr();
   bool time_changed = (current_time != last_drawn_time);
   bool portal_update_due = (wifiPortal.getState() == WifiState::PORTAL && millis() - last_portal_draw >= 1000);
 
-  // If we are on a sensor-heavy screen, force a 10Hz redraw
   bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION)
                             && millis() - last_ui_draw >= 100);
 

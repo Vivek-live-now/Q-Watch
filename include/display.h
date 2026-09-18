@@ -42,6 +42,11 @@ private:
     void drawFileManager();
     void drawStorageInfo();
 
+    // Settings Screens Rendering
+    void drawAppSettings();
+    void drawSettingsMenuWithValues(const char* title, const char** items, const String* values, int item_count, int selection, int offset);
+    void drawResetConfirm();
+
     void drawPortalScreen();
     void drawMenu(const char* title, const char** items, int item_count);
     void drawValueEdit(const char* title);
@@ -50,6 +55,7 @@ private:
     void drawTopStatusBar();
     void drawFooter(const char* status);
     void drawTacticalOverlay();
+    void drawToastOverlay();
 };
 
 extern DisplayManager displayManager;
