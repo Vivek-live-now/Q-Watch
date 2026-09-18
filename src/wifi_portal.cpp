@@ -55,7 +55,7 @@ void WifiPortal::startScan() {
 
     WiFi.mode(WIFI_STA);
     WiFi.scanDelete();
-    int res = WiFi.scanNetworks(true); // async scan
+    int res = WiFi.scanNetworks(true);
     if (res != WIFI_SCAN_FAILED) {
         scan_in_progress = true;
         scanned_count = 0;
@@ -138,6 +138,11 @@ void WifiPortal::loop() {
             setupRoutes();
             server.begin();
             state = WifiState::CONNECTED;
+
+            // Trigger auto NTP sync on Wi-Fi connection if enabled
+            if (settingsManager.get().auto_sync) {
+                qclock.syncNtp();
+            }
         } else if (millis() - connect_start_time > 15000) {
             Serial.println("Wi-Fi connection attempt failed/timed out.");
             state = WifiState::FAILED;
@@ -154,6 +159,9 @@ void WifiPortal::loop() {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("Wi-Fi reconnected.");
             state = WifiState::CONNECTED;
+            if (settingsManager.get().auto_sync) {
+                qclock.syncNtp();
+            }
         } else if (last_reconnect_attempt > 0 && (millis() - last_reconnect_attempt > 30000)) {
             AppConfig& cfg = configManager.get();
             if (cfg.wifi_ssid.length() > 0) {

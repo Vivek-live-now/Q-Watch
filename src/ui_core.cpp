@@ -6,6 +6,7 @@
 #include "sound_manager.h"
 #include "settings_data.h"
 #include "wifi_portal.h"
+#include "clock.h"
 #include "driver/rtc_io.h"
 
 UICore ui;
@@ -411,7 +412,12 @@ void UICore::handleTimeInput() {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
-            showToast("[SYNCING...]", 1500);
+            if (WiFi.status() == WL_CONNECTED) {
+                qclock.syncNtp();
+                showToast("[SYNCING...]", 1500);
+            } else {
+                showToast("[NO WI-FI]", 1500);
+            }
         } else if (settings_selection == 1) {
             s.auto_sync = !s.auto_sync;
             settingsManager.save();
