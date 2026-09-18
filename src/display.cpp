@@ -109,6 +109,8 @@ void DisplayManager::drawAppSettings() {
         drawWifiDetailsScreen();
     } else if (sub == SettingsSubmenu::WIFI_SCAN) {
         drawWifiScanScreen();
+    } else if (sub == SettingsSubmenu::FILE_SERVER_DETAILS) {
+        drawFileServerDetailsScreen();
     } else if (sub == SettingsSubmenu::TIME) {
         String vals[4] = {
             "",
@@ -969,4 +971,24 @@ void DisplayManager::drawWifiScanScreen() {
         oled.drawFrame(123, 15, 3, 30);
         oled.drawBox(123, scroll_y, 3, 10);
     }
+}
+
+
+void DisplayManager::drawFileServerDetailsScreen() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "FILE SERVER");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_6x10_tr);
+
+    SettingsData& s = settingsManager.get();
+    String pwrStr = "Power : " + String(s.fileserver_enabled ? "ON" : "OFF");
+    String stStr  = "Status: " + String(s.fileserver_enabled ? "RUNNING" : "OFF");
+    String urlStr = "URL   : q-watch.local/fm";
+    String filesStr= "Files : " + String(wifiPortal.getTotalFileCount());
+
+    oled.drawStr(2, 22, pwrStr.c_str());
+    oled.drawStr(2, 34, stStr.c_str());
+    oled.drawStr(2, 46, urlStr.c_str());
+    oled.drawStr(2, 58, filesStr.c_str());
 }

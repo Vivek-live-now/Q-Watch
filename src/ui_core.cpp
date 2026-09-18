@@ -201,6 +201,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::CONNECTIVITY: handleConnectivityInput(); break;
         case SettingsSubmenu::WIFI_DETAILS: handleWifiDetailsInput(); break;
         case SettingsSubmenu::WIFI_SCAN: handleWifiScanInput(); break;
+        case SettingsSubmenu::FILE_SERVER_DETAILS: handleFileServerDetailsInput(); break;
         case SettingsSubmenu::TIME: handleTimeInput(); break;
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
@@ -286,9 +287,7 @@ void UICore::handleConnectivityInput() {
             s.ble_enabled = !s.ble_enabled;
             settingsManager.save();
         } else if (settings_selection == 3) {
-            SettingsData& s = settingsManager.get();
-            s.fileserver_enabled = !s.fileserver_enabled;
-            settingsManager.save();
+            settings_submenu = SettingsSubmenu::FILE_SERVER_DETAILS;
         }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
@@ -932,6 +931,24 @@ void UICore::handleAudioInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         current_state = UIState::MAIN_MENU;
+        needs_redraw = true;
+    }
+}
+
+
+void UICore::handleFileServerDetailsInput() {
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        SettingsData& s = settingsManager.get();
+        s.fileserver_enabled = !s.fileserver_enabled;
+        settingsManager.save();
+        needs_redraw = true;
+    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        settings_submenu = SettingsSubmenu::CONNECTIVITY;
+        settings_selection = 3;
+        settings_scroll_offset = 1;
         needs_redraw = true;
     }
 }

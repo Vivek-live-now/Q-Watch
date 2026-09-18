@@ -11,6 +11,7 @@ enum class SettingsSubmenu {
     CONNECTIVITY,
     WIFI_DETAILS,
     WIFI_SCAN,
+    FILE_SERVER_DETAILS,
     TIME,
     POWER,
     SUB_DISPLAY,
@@ -211,6 +212,7 @@ private:
     void handleConnectivityInput();
     void handleWifiDetailsInput();
     void handleWifiScanInput();
+    void handleFileServerDetailsInput();
     void handleTimeInput();
     void handlePowerInput();
     void handleDisplayInput();

@@ -44,6 +44,9 @@ public:
     // Direct Connection API
     void connectToNetwork(const String& ssid, const String& password);
 
+    // File Server Helper Queries
+    int getTotalFileCount();
+
 private:
     WebServer server;
     DNSServer dnsServer;
@@ -63,7 +66,19 @@ private:
     void handleScanResults();
     void handleStatusJson();
     void handleWeatherForce();
+
+    // Web File Manager Endpoints
+    void handleFileManagerGui();
+    void handleFileList();
+    void handleFileUpload();
+    void handleFileDownload();
+    void handleFileDelete();
+    void handleFileMkdir();
+    void handleFileRename();
+
     String getHtml();
+    String getFileManagerHtml();
+    int countFilesRecursive(const String& path);
 };
 
 extern WifiPortal wifiPortal;

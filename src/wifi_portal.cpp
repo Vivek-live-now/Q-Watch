@@ -94,6 +94,15 @@ void WifiPortal::setupRoutes() {
     server.on("/scan_results", HTTP_GET, std::bind(&WifiPortal::handleScanResults, this));
     server.on("/status_json", HTTP_GET, std::bind(&WifiPortal::handleStatusJson, this));
     server.on("/weather_force", HTTP_GET, std::bind(&WifiPortal::handleWeatherForce, this));
+    server.on("/fm", HTTP_GET, std::bind(&WifiPortal::handleFileManagerGui, this));
+    server.on("/file_list", HTTP_GET, std::bind(&WifiPortal::handleFileList, this));
+    server.on("/file_download", HTTP_GET, std::bind(&WifiPortal::handleFileDownload, this));
+    server.on("/file_delete", HTTP_POST, std::bind(&WifiPortal::handleFileDelete, this));
+    server.on("/file_mkdir", HTTP_POST, std::bind(&WifiPortal::handleFileMkdir, this));
+    server.on("/file_rename", HTTP_POST, std::bind(&WifiPortal::handleFileRename, this));
+    server.on("/file_upload", HTTP_POST, [this]() {
+        server.send(200, "text/plain", "Upload Successful");
+    }, std::bind(&WifiPortal::handleFileUpload, this));
 
     server.onNotFound([this]() {
         server.sendHeader("Location", "http://192.168.4.1/", true);
@@ -411,5 +420,173 @@ String WifiPortal::getHtml() {
     html += "</body>\n";
     html += "</html>\n";
 
+    return html;
+}
+
+#include "file_manager.h"
+
+int WifiPortal::countFilesRecursive(const String& path) {
+    int count = 0;
+    FileInfo entries[32];
+    size_t num = fileManager.listDir(path, entries, 32);
+    for (size_t i = 0; i < num; i++) {
+        if (entries[i].isDir) {
+            String sub = path;
+            if (!sub.endsWith("/")) sub += "/";
+            sub += entries[i].name;
+            count += countFilesRecursive(sub);
+        } else {
+            count++;
+        }
+    }
+    return count;
+}
+
+int WifiPortal::getTotalFileCount() {
+    return countFilesRecursive("/");
+}
+
+void WifiPortal::handleFileManagerGui() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "text/plain", "File Server Disabled in Settings");
+        return;
+    }
+    server.send(200, "text/html", getFileManagerHtml());
+}
+
+void WifiPortal::handleFileList() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "application/json", "{\"error\":\"File Server Disabled\"}");
+        return;
+    }
+    String path = server.hasArg("path") ? server.arg("path") : "/";
+    FileInfo entries[32];
+    size_t num = fileManager.listDir(path, entries, 32);
+
+    String json = "{\"path\":\"" + path + "\",\"entries\":[";
+    for (size_t i = 0; i < num; i++) {
+        if (i > 0) json += ",";
+        json += "{\"name\":\"" + entries[i].name + "\",\"size\":" + String(entries[i].size) + ",\"isDir\":" + String(entries[i].isDir ? "true" : "false") + "}";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
+}
+
+void WifiPortal::handleFileDownload() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "text/plain", "File Server Disabled");
+        return;
+    }
+    if (!server.hasArg("path")) {
+        server.send(400, "text/plain", "Missing Path");
+        return;
+    }
+    String path = server.arg("path");
+    if (!fileManager.exists(path)) {
+        server.send(404, "text/plain", "File Not Found");
+        return;
+    }
+
+    File file = LittleFS.open(path, FILE_READ);
+    server.streamFile(file, "application/octet-stream");
+    file.close();
+}
+
+void WifiPortal::handleFileDelete() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "text/plain", "File Server Disabled");
+        return;
+    }
+    if (server.hasArg("path")) {
+        fileManager.remove(server.arg("path"));
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing Path");
+    }
+}
+
+void WifiPortal::handleFileMkdir() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "text/plain", "File Server Disabled");
+        return;
+    }
+    if (server.hasArg("path")) {
+        String p = server.arg("path");
+        if (!p.endsWith("/")) p += "/.keep";
+        fileManager.create(p);
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing Path");
+    }
+}
+
+void WifiPortal::handleFileRename() {
+    if (!settingsManager.get().fileserver_enabled) {
+        server.send(403, "text/plain", "File Server Disabled");
+        return;
+    }
+    if (server.hasArg("from") && server.hasArg("to")) {
+        fileManager.rename(server.arg("from"), server.arg("to"));
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing Params");
+    }
+}
+
+static File uploadFile;
+
+void WifiPortal::handleFileUpload() {
+    if (!settingsManager.get().fileserver_enabled) return;
+
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        String filename = upload.filename;
+        if (!filename.startsWith("/")) filename = "/" + filename;
+        uploadFile = LittleFS.open(filename, FILE_WRITE);
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (uploadFile) {
+            uploadFile.write(upload.buf, upload.currentSize);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (uploadFile) {
+            uploadFile.close();
+        }
+    }
+}
+
+String WifiPortal::getFileManagerHtml() {
+    String html = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Q-Watch File Manager</title><style>";
+    html += "body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#121212;color:#eee;margin:0;padding:20px;}";
+    html += ".container{max-width:700px;margin:auto;background:#1e1e1e;padding:20px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}";
+    html += "h1{color:#00bcd4;margin-top:0;border-bottom:1px solid #333;padding-bottom:10px;}";
+    html += ".row{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #2a2a2a;}";
+    html += "button{background:#00bcd4;color:#fff;border:none;padding:8px 12px;border-radius:4px;cursor:pointer;margin-left:5px;}";
+    html += "button.del{background:#f44336;} input[type=file]{color:#aaa;}";
+    html += "</style><script>";
+    html += "let curPath='/';";
+    html += "function loadFiles(path){curPath=path;fetch('/file_list?path='+encodeURIComponent(path)).then(r=>r.json()).then(data=>{";
+    html += "let list=document.getElementById('list');list.innerHTML='';";
+    html += "document.getElementById('path').innerText=data.path;";
+    html += "data.entries.forEach(item=>{";
+    html += "let d=document.createElement('div');d.className='row';";
+    html += "let name=item.isDir?'📁 '+item.name+'/':'📄 '+item.name;";
+    html += "let size=item.isDir?'':(item.size+' B');";
+    html += "let btns=item.isDir?\"<button onclick=\\\"loadFiles('\"+(path=='/'?'':path)+\"/\"+item.name+\"')\\\">Open</button>\":\"<button onclick=\\\"location.href='/file_download?path=\"+encodeURIComponent((path=='/'?'':path)+'/'+item.name)+\"'\\\">Download</button>\";";
+    html += "btns+=\"<button class='del' onclick=\\\"delFile('\"+(path=='/'?'':path)+\"/\"+item.name+\"')\\\">Delete</button>\";";
+    html += "d.innerHTML=\"<span>\"+name+\"</span><span>\"+size+\" \"+btns+\"</span>\";";
+    html += "list.appendChild(d);});";
+    html += "});}";
+    html += "function delFile(p){if(confirm('Delete '+p+'?')){fetch('/file_delete?path='+encodeURIComponent(p),{method:'POST'}).then(()=>loadFiles(curPath));}}";
+    html += "function uploadFile(){let f=document.getElementById('f').files[0];if(!f)return;";
+    html += "let formData=new FormData();formData.append('data',f,curPath=='/'?'/'+f.name:curPath+'/'+f.name);";
+    html += "fetch('/file_upload',{method:'POST',body:formData}).then(()=>loadFiles(curPath));}";
+    html += "function mkDir(){let n=prompt('New Folder Name:');if(n){fetch('/file_mkdir?path='+encodeURIComponent((curPath=='/'?'':curPath)+'/'+n),{method:'POST'}).then(()=>loadFiles(curPath));}}";
+    html += "window.onload=()=>loadFiles('/');";
+    html += "</script></head><body><div class='container'><h1>Q-Watch File Manager</h1>";
+    html += "<h3>Path: <span id='path'>/</span></h3>";
+    html += "<div style='margin-bottom:15px;'><button onclick=\"loadFiles('/')\">Root</button><button onclick=\"mkDir()\">New Folder</button></div>";
+    html += "<div id='list'></div>";
+    html += "<div style='margin-top:20px;border-top:1px solid #333;padding-top:15px;'><input type='file' id='f'><button onclick='uploadFile()'>Upload File</button></div>";
+    html += "</div></body></html>";
     return html;
 }
