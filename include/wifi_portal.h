@@ -16,6 +16,12 @@ enum class WifiState {
     PORTAL
 };
 
+struct ScannedNetwork {
+    String ssid;
+    int rssi;
+    bool encrypted;
+};
+
 class WifiPortal {
 public:
     WifiPortal();
@@ -29,6 +35,15 @@ public:
     String getSSID();
     String getIP();
 
+    // Wi-Fi Scanner API
+    void startScan();
+    bool isScanning() const { return scan_in_progress; }
+    int getScannedNetworkCount() const { return scanned_count; }
+    const ScannedNetwork* getScannedNetworks() const { return scanned_networks; }
+
+    // Direct Connection API
+    void connectToNetwork(const String& ssid, const String& password);
+
 private:
     WebServer server;
     DNSServer dnsServer;
@@ -36,6 +51,9 @@ private:
     uint32_t connect_start_time;
     uint32_t last_reconnect_attempt;
     bool scan_in_progress;
+
+    ScannedNetwork scanned_networks[16];
+    int scanned_count;
 
     void startPortal();
     void setupRoutes();

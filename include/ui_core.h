@@ -10,6 +10,7 @@ enum class SettingsSubmenu {
     MAIN,
     CONNECTIVITY,
     WIFI_DETAILS,
+    WIFI_SCAN,
     TIME,
     POWER,
     SUB_DISPLAY,
@@ -67,7 +68,6 @@ public:
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
 
-    // Settings Navigation & Submenus
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
     int getSettingsScrollOffset() const { return settings_scroll_offset; }
@@ -75,7 +75,6 @@ public:
     uint32_t getToastEndTime() const { return toast_end_time; }
     void showToast(const char* msg, uint32_t duration_ms = 1500);
 
-    // Keyboard Launcher Helper
     void openKeyboard(const String& initial_text, const String& title, KeyboardMode mode = KeyboardMode::ALPHA, bool mask = false, int max_len = 32, void (*on_complete)(bool success, const String& result) = nullptr);
 
     CompassState getCompassState() const { return compass_state; }
@@ -135,9 +134,9 @@ public:
         "CONNECTIVITY", "TIME", "POWER", "DISPLAY", "SENSORS", "SYSTEM"
     };
 
-    static const int CONNECTIVITY_ITEM_COUNT = 3;
+    static const int CONNECTIVITY_ITEM_COUNT = 4;
     const char* connectivity_items[CONNECTIVITY_ITEM_COUNT] = {
-        "Wi-Fi", "BLE", "FILE SERVER"
+        "Wi-Fi", "SCAN NETWORKS", "BLE", "FILE SERVER"
     };
 
     static const int TIME_ITEM_COUNT = 4;
@@ -172,6 +171,8 @@ public:
     int getFmEntryCount() const { return fm_entry_count; }
     const struct FileInfo* getFmEntries() const { return fm_entries; }
 
+    static String pending_selected_ssid;
+
 private:
     UIState current_state;
     UIState return_state;
@@ -183,14 +184,12 @@ private:
     int audio_menu_selection;
     int audio_menu_offset;
 
-    // Settings Navigation State
     SettingsSubmenu settings_submenu;
     int settings_selection;
     int settings_scroll_offset;
     char toast_msg[32];
     uint32_t toast_end_time;
 
-    // Keyboard Completion Callback
     void (*kb_callback)(bool success, const String& result);
 
     CompassState compass_state;
@@ -211,6 +210,7 @@ private:
     void handleSettingsMainInput();
     void handleConnectivityInput();
     void handleWifiDetailsInput();
+    void handleWifiScanInput();
     void handleTimeInput();
     void handlePowerInput();
     void handleDisplayInput();

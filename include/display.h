@@ -46,6 +46,7 @@ private:
     void drawAppSettings();
     void drawSettingsMenuWithValues(const char* title, const char** items, const String* values, int item_count, int selection, int offset);
     void drawWifiDetailsScreen();
+    void drawWifiScanScreen();
     void drawResetConfirm();
 
     // Keyboard Screen Rendering

@@ -9,6 +9,7 @@
 #include "driver/rtc_io.h"
 
 UICore ui;
+String UICore::pending_selected_ssid = "";
 
 UICore::UICore() :
     current_state(UIState::APP_HOME),
@@ -198,6 +199,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::MAIN: handleSettingsMainInput(); break;
         case SettingsSubmenu::CONNECTIVITY: handleConnectivityInput(); break;
         case SettingsSubmenu::WIFI_DETAILS: handleWifiDetailsInput(); break;
+        case SettingsSubmenu::WIFI_SCAN: handleWifiScanInput(); break;
         case SettingsSubmenu::TIME: handleTimeInput(); break;
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
@@ -274,10 +276,15 @@ void UICore::handleConnectivityInput() {
         if (settings_selection == 0) {
             settings_submenu = SettingsSubmenu::WIFI_DETAILS;
         } else if (settings_selection == 1) {
+            settings_submenu = SettingsSubmenu::WIFI_SCAN;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
+            wifiPortal.startScan();
+        } else if (settings_selection == 2) {
             SettingsData& s = settingsManager.get();
             s.ble_enabled = !s.ble_enabled;
             settingsManager.save();
-        } else if (settings_selection == 2) {
+        } else if (settings_selection == 3) {
             SettingsData& s = settingsManager.get();
             s.fileserver_enabled = !s.fileserver_enabled;
             settingsManager.save();
@@ -287,6 +294,71 @@ void UICore::handleConnectivityInput() {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
         settings_selection = 0;
+        settings_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
+static void onWifiPasswordEntered(bool success, const String& password) {
+    if (success) {
+        wifiPortal.connectToNetwork(UICore::pending_selected_ssid, password);
+        ui.showToast("[CONNECTING...]", 2000);
+    }
+}
+
+void UICore::handleWifiScanInput() {
+    if (wifiPortal.isScanning()) {
+        ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+        if (sel_evt == BTN_EVT_LONG_PRESS) {
+            soundManager.playNavBack();
+            settings_submenu = SettingsSubmenu::CONNECTIVITY;
+            settings_selection = 1;
+            settings_scroll_offset = 0;
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    int count = wifiPortal.getScannedNetworkCount();
+
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        settings_selection--;
+        if (settings_selection < 0) settings_selection = 0;
+        if (settings_selection < settings_scroll_offset) settings_scroll_offset = settings_selection;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        settings_selection++;
+        if (settings_selection >= count) settings_selection = (count > 0) ? count - 1 : 0;
+        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        if (count > 0 && settings_selection < count) {
+            soundManager.playNavSelect();
+            const ScannedNetwork* nets = wifiPortal.getScannedNetworks();
+            ScannedNetwork target = nets[settings_selection];
+            pending_selected_ssid = target.ssid;
+
+            if (target.encrypted) {
+                openKeyboard("", "Pass for " + target.ssid, KeyboardMode::ALPHA, true, 32, onWifiPasswordEntered);
+            } else {
+                wifiPortal.connectToNetwork(target.ssid, "");
+                showToast("[CONNECTING...]", 2000);
+                settings_submenu = SettingsSubmenu::WIFI_DETAILS;
+            }
+        }
+    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        settings_submenu = SettingsSubmenu::CONNECTIVITY;
+        settings_selection = 1;
         settings_scroll_offset = 0;
         needs_redraw = true;
     }

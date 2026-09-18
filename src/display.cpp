@@ -107,6 +107,8 @@ void DisplayManager::drawAppSettings() {
         drawSettingsMenuWithValues("CONNECTIVITY", ui.connectivity_items, vals, UICore::CONNECTIVITY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::WIFI_DETAILS) {
         drawWifiDetailsScreen();
+    } else if (sub == SettingsSubmenu::WIFI_SCAN) {
+        drawWifiScanScreen();
     } else if (sub == SettingsSubmenu::TIME) {
         String vals[4] = {
             "",
@@ -914,5 +916,57 @@ void DisplayManager::drawKeyboardScreen() {
                 oled.drawStr(x + (col_w - lw) / 2, y + 7, label);
             }
         }
+    }
+}
+
+
+void DisplayManager::drawWifiScanScreen() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "WIFI SCAN");
+    oled.drawLine(0, 9, 128, 9);
+
+    if (wifiPortal.isScanning()) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(20, 35, "SCANNING...");
+        return;
+    }
+
+    int count = wifiPortal.getScannedNetworkCount();
+    if (count == 0) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(10, 35, "NO NETWORKS");
+        return;
+    }
+
+    const ScannedNetwork* nets = wifiPortal.getScannedNetworks();
+    int sel = ui.getSettingsSelection();
+    int offset = ui.getSettingsScrollOffset();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    int y_pos = 22;
+
+    for (int i = offset; i < offset + 3 && i < count; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = nets[i].ssid;
+        if (label.length() > 10) label = label.substring(0, 10);
+        oled.drawStr(4, y_pos, label.c_str());
+
+        String meta = String(nets[i].rssi) + "d " + (nets[i].encrypted ? "*" : " ");
+        int mw = oled.getStrWidth(meta.c_str());
+        oled.drawStr(118 - mw, y_pos, meta.c_str());
+
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
+
+    if (count > 3) {
+        int scroll_h = 30;
+        int scroll_y = 15 + ((float)offset / (count - 3)) * (scroll_h - 10);
+        oled.drawFrame(123, 15, 3, 30);
+        oled.drawBox(123, scroll_y, 3, 10);
     }
 }

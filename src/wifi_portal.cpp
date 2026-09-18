@@ -9,7 +9,7 @@ WifiPortal wifiPortal;
 
 const byte DNS_PORT = 53;
 
-WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), scan_in_progress(false) {}
+WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), scan_in_progress(false), scanned_count(0) {}
 
 void WifiPortal::begin() {
     configManager.load();
@@ -47,6 +47,34 @@ void WifiPortal::disableWifi() {
     state = WifiState::OFF;
 }
 
+void WifiPortal::startScan() {
+    if (!settingsManager.get().wifi_enabled) {
+        settingsManager.get().wifi_enabled = true;
+        settingsManager.save();
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.scanDelete();
+    int res = WiFi.scanNetworks(true); // async scan
+    if (res != WIFI_SCAN_FAILED) {
+        scan_in_progress = true;
+        scanned_count = 0;
+    }
+}
+
+void WifiPortal::connectToNetwork(const String& ssid, const String& password) {
+    AppConfig cfg = configManager.get();
+    cfg.wifi_ssid = ssid;
+    cfg.wifi_password = password;
+    configManager.set(cfg);
+    configManager.save();
+
+    settingsManager.get().wifi_enabled = true;
+    settingsManager.save();
+
+    enableWifi();
+}
+
 void WifiPortal::startPortal() {
     Serial.println("Starting Captive Portal...");
     state = WifiState::PORTAL;
@@ -74,6 +102,23 @@ void WifiPortal::setupRoutes() {
 }
 
 void WifiPortal::loop() {
+    if (scan_in_progress) {
+        int n = WiFi.scanComplete();
+        if (n >= 0) {
+            scan_in_progress = false;
+            scanned_count = min(n, 16);
+            for (int i = 0; i < scanned_count; ++i) {
+                scanned_networks[i].ssid = WiFi.SSID(i);
+                scanned_networks[i].rssi = WiFi.RSSI(i);
+                scanned_networks[i].encrypted = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+            }
+            WiFi.scanDelete();
+        } else if (n == WIFI_SCAN_FAILED) {
+            scan_in_progress = false;
+            scanned_count = 0;
+        }
+    }
+
     if (!settingsManager.get().wifi_enabled) {
         if (state != WifiState::OFF) {
             disableWifi();
@@ -188,36 +233,21 @@ void WifiPortal::handleWeatherForce() {
 
 void WifiPortal::handleScanTrigger() {
     if (!scan_in_progress) {
-        WiFi.scanDelete();
-        WiFi.disconnect();
-        delay(100);
-        int result = WiFi.scanNetworks(true);
-        if (result == WIFI_SCAN_FAILED) {
-            scan_in_progress = false;
-            server.send(500, "text/plain", "FAILED_TO_START");
-            return;
-        }
-        scan_in_progress = true;
+        startScan();
     }
     server.send(200, "text/plain", "STARTED");
 }
 
 void WifiPortal::handleScanResults() {
-    int n = WiFi.scanComplete();
-    if (n == WIFI_SCAN_RUNNING) {
+    if (scan_in_progress) {
         server.send(200, "application/json", "{\"status\":\"running\"}");
-    } else if (n == WIFI_SCAN_FAILED) {
-        scan_in_progress = false;
-        server.send(200, "application/json", "{\"status\":\"failed\"}");
     } else {
-        scan_in_progress = false;
         String json = "{\"status\":\"complete\",\"networks\":[";
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < scanned_count; ++i) {
             if (i > 0) json += ",";
-            json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + ",\"enc\":" + String(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? 0 : 1) + "}";
+            json += "{\"ssid\":\"" + scanned_networks[i].ssid + "\",\"rssi\":" + String(scanned_networks[i].rssi) + ",\"enc\":" + String(scanned_networks[i].encrypted ? 1 : 0) + "}";
         }
         json += "]}";
-        WiFi.scanDelete();
         server.send(200, "application/json", json);
     }
 }
