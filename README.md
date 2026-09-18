@@ -18,12 +18,18 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 *   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
 *   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
-### Milestone 4: Local Storage & Settings Framework
-*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, future calibration data, and settings (`/config/settings`).
+### Milestone 4: Local Storage, File Manager & Opt-In Web File Server
+*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, calibration data, and settings (`/config/settings`).
 *   **FileManager Abstraction:** A lightweight C++ wrapper class around LittleFS for robust read/write/append operations for both standard `String` text and raw binary (`uint8_t*`) data.
 *   **File Browser UI:** Native 'FILE MANAGER' app in the Q-Watch menu. Features dynamic directory browsing, file size inspection, and a unified storage information panel (Total/Used/Free space on ESP32), operating within the 3-item OLED viewport.
+*   **Opt-In Web File Server:** When enabled via `SETTINGS -> CONNECTIVITY -> FILE SERVER`, visiting `http://q-watch.local/fm` launches a full web-based LittleFS file manager interface:
+    *   Dynamic directory and file browser
+    *   File upload via HTTP multipart
+    *   Direct file streaming and download
+    *   File/directory deletion and folder creation
+    *   Excludes destructive filesystem formatting for safety
 *   **Settings Control Center:** Structured Settings hub with 6 top-level categories:
-    *   `CONNECTIVITY` (Wi-Fi details, Wi-Fi Scanner, BLE, File Server)
+    *   `CONNECTIVITY` (Wi-Fi details, Wi-Fi Scanner, BLE, File Server status)
     *   `TIME` (Sync Now, Auto Sync, Timezone, 24 Hour)
     *   `POWER` (Display Timeout, Sleep Time, Low Power)
     *   `DISPLAY` (Contrast, Invert, UI Options)
@@ -86,4 +92,4 @@ Because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it 
 3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
 4.  On first boot, configure Wi-Fi directly on the watch via `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS` or connect to the **Q-Watch-Setup** Wi-Fi captive portal network at `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
-6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local`.
+6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.
