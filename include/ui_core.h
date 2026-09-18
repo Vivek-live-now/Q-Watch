@@ -8,6 +8,7 @@
 enum class SettingsSubmenu {
     MAIN,
     CONNECTIVITY,
+    WIFI_DETAILS,
     TIME,
     POWER,
     SUB_DISPLAY,
@@ -203,6 +204,7 @@ private:
     // Settings Submenu Specific Input Handlers
     void handleSettingsMainInput();
     void handleConnectivityInput();
+    void handleWifiDetailsInput();
     void handleTimeInput();
     void handlePowerInput();
     void handleDisplayInput();

@@ -5,6 +5,7 @@
 #include "led_manager.h"
 #include "sound_manager.h"
 #include "settings_data.h"
+#include "wifi_portal.h"
 #include "driver/rtc_io.h"
 
 UICore ui;
@@ -166,6 +167,7 @@ void UICore::handleSettingsMenuInput() {
     switch (settings_submenu) {
         case SettingsSubmenu::MAIN: handleSettingsMainInput(); break;
         case SettingsSubmenu::CONNECTIVITY: handleConnectivityInput(); break;
+        case SettingsSubmenu::WIFI_DETAILS: handleWifiDetailsInput(); break;
         case SettingsSubmenu::TIME: handleTimeInput(); break;
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
@@ -239,15 +241,44 @@ void UICore::handleConnectivityInput() {
     ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
     if (sel_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
-        SettingsData& s = settingsManager.get();
-        if (settings_selection == 0) s.wifi_enabled = !s.wifi_enabled;
-        else if (settings_selection == 1) s.ble_enabled = !s.ble_enabled;
-        else if (settings_selection == 2) s.fileserver_enabled = !s.fileserver_enabled;
-        settingsManager.save();
+        if (settings_selection == 0) {
+            settings_submenu = SettingsSubmenu::WIFI_DETAILS;
+        } else if (settings_selection == 1) {
+            SettingsData& s = settingsManager.get();
+            s.ble_enabled = !s.ble_enabled;
+            settingsManager.save();
+        } else if (settings_selection == 2) {
+            SettingsData& s = settingsManager.get();
+            s.fileserver_enabled = !s.fileserver_enabled;
+            settingsManager.save();
+        }
         needs_redraw = true;
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
+        settings_selection = 0;
+        settings_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleWifiDetailsInput() {
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        SettingsData& s = settingsManager.get();
+        s.wifi_enabled = !s.wifi_enabled;
+        settingsManager.save();
+
+        if (s.wifi_enabled) {
+            wifiPortal.enableWifi();
+        } else {
+            wifiPortal.disableWifi();
+        }
+        needs_redraw = true;
+    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        settings_submenu = SettingsSubmenu::CONNECTIVITY;
         settings_selection = 0;
         settings_scroll_offset = 0;
         needs_redraw = true;
@@ -293,7 +324,7 @@ void UICore::handleTimeInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 1; // TIME in top-level
+        settings_selection = 1;
         settings_scroll_offset = 0;
         needs_redraw = true;
     }
@@ -336,7 +367,7 @@ void UICore::handlePowerInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 2; // POWER
+        settings_selection = 2;
         settings_scroll_offset = 0;
         needs_redraw = true;
     }
@@ -380,7 +411,7 @@ void UICore::handleDisplayInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 3; // DISPLAY
+        settings_selection = 3;
         settings_scroll_offset = 1;
         needs_redraw = true;
     }
@@ -419,7 +450,7 @@ void UICore::handleSensorsInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 4; // SENSORS
+        settings_selection = 4;
         settings_scroll_offset = 2;
         needs_redraw = true;
     }
@@ -456,7 +487,7 @@ void UICore::handleSystemInput() {
     } else if (sel_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 5; // SYSTEM
+        settings_selection = 5;
         settings_scroll_offset = 3;
         needs_redraw = true;
     }

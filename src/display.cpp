@@ -31,7 +31,7 @@ void DisplayManager::begin() {
 void DisplayManager::update() {
     oled.clearBuffer();
 
-    if (wifiPortal.getState() == WifiState::PORTAL) {
+    if (wifiPortal.getState() == WifiState::PORTAL && ui.getState() != UIState::APP_SETTINGS) {
         drawPortalScreen();
     } else {
         switch (ui.getState()) {
@@ -100,6 +100,8 @@ void DisplayManager::drawAppSettings() {
             s.fileserver_enabled ? "ON" : "OFF"
         };
         drawSettingsMenuWithValues("CONNECTIVITY", ui.connectivity_items, vals, UICore::CONNECTIVITY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
+    } else if (sub == SettingsSubmenu::WIFI_DETAILS) {
+        drawWifiDetailsScreen();
     } else if (sub == SettingsSubmenu::TIME) {
         String vals[4] = {
             "",
@@ -131,6 +133,25 @@ void DisplayManager::drawAppSettings() {
     } else if (sub == SettingsSubmenu::RESET_CONFIRM) {
         drawResetConfirm();
     }
+}
+
+void DisplayManager::drawWifiDetailsScreen() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "WI-FI");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_6x10_tr);
+
+    SettingsData& s = settingsManager.get();
+    String pwrStr = "Power : " + String(s.wifi_enabled ? "ON" : "OFF");
+    String stStr  = "Status: " + String(wifiPortal.getDetailedStatusStr());
+    String ssidStr= "SSID  : " + wifiPortal.getSSID();
+    String ipStr  = "IP    : " + wifiPortal.getIP();
+
+    oled.drawStr(2, 22, pwrStr.c_str());
+    oled.drawStr(2, 34, stStr.c_str());
+    oled.drawStr(2, 46, ssidStr.c_str());
+    oled.drawStr(2, 58, ipStr.c_str());
 }
 
 void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** items, const String* values, int item_count, int selection, int offset) {

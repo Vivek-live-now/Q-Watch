@@ -7,8 +7,11 @@
 #include <DNSServer.h>
 
 enum class WifiState {
+    OFF,
+    NO_CREDS,
     CONNECTING,
     CONNECTED,
+    FAILED,
     DISCONNECTED,
     PORTAL
 };
@@ -19,6 +22,12 @@ public:
     void begin();
     void loop();
     WifiState getState();
+
+    void enableWifi();
+    void disableWifi();
+    const char* getDetailedStatusStr();
+    String getSSID();
+    String getIP();
 
 private:
     WebServer server;

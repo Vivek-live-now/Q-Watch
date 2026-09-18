@@ -2,18 +2,28 @@
 #include "config.h"
 #include "weather.h"
 #include "clock.h"
+#include "settings_data.h"
 #include <ESPmDNS.h>
 
 WifiPortal wifiPortal;
 
 const byte DNS_PORT = 53;
 
-WifiPortal::WifiPortal() : server(80), state(WifiState::CONNECTING), last_reconnect_attempt(0), scan_in_progress(false) {}
+WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), scan_in_progress(false) {}
 
 void WifiPortal::begin() {
     configManager.load();
-    AppConfig& cfg = configManager.get();
 
+    if (!settingsManager.get().wifi_enabled) {
+        disableWifi();
+        return;
+    }
+
+    enableWifi();
+}
+
+void WifiPortal::enableWifi() {
+    AppConfig& cfg = configManager.get();
     WiFi.hostname("Q-Watch");
 
     if (cfg.wifi_ssid.length() > 0) {
@@ -24,14 +34,23 @@ void WifiPortal::begin() {
         state = WifiState::CONNECTING;
         connect_start_time = millis();
     } else {
-        startPortal();
+        Serial.println("Wi-Fi enabled but no credentials found.");
+        WiFi.mode(WIFI_STA);
+        state = WifiState::NO_CREDS;
     }
+}
+
+void WifiPortal::disableWifi() {
+    Serial.println("Disabling Wi-Fi radio...");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    state = WifiState::OFF;
 }
 
 void WifiPortal::startPortal() {
     Serial.println("Starting Captive Portal...");
     state = WifiState::PORTAL;
-    WiFi.mode(WIFI_AP_STA); // AP_STA needed for background scanning while hosting AP
+    WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("Q-Watch-Setup");
 
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
@@ -52,10 +71,16 @@ void WifiPortal::setupRoutes() {
         server.sendHeader("Location", "http://192.168.4.1/", true);
         server.send(302, "text/plain", "");
     });
-
 }
 
 void WifiPortal::loop() {
+    if (!settingsManager.get().wifi_enabled) {
+        if (state != WifiState::OFF) {
+            disableWifi();
+        }
+        return;
+    }
+
     if (state == WifiState::CONNECTING) {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("Wi-Fi connected.");
@@ -69,8 +94,8 @@ void WifiPortal::loop() {
             server.begin();
             state = WifiState::CONNECTED;
         } else if (millis() - connect_start_time > 15000) {
-            Serial.println("Initial Wi-Fi connection failed. Falling back to Portal.");
-            startPortal();
+            Serial.println("Wi-Fi connection attempt failed/timed out.");
+            state = WifiState::FAILED;
         }
     } else if (state == WifiState::CONNECTED) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -80,14 +105,19 @@ void WifiPortal::loop() {
         } else {
             server.handleClient();
         }
-    } else if (state == WifiState::DISCONNECTED) {
+    } else if (state == WifiState::DISCONNECTED || state == WifiState::FAILED) {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("Wi-Fi reconnected.");
             state = WifiState::CONNECTED;
-        } else if (millis() - last_reconnect_attempt > 30000) {
-            Serial.println("Attempting Wi-Fi reconnect...");
-            WiFi.reconnect();
-            last_reconnect_attempt = millis();
+        } else if (last_reconnect_attempt > 0 && (millis() - last_reconnect_attempt > 30000)) {
+            AppConfig& cfg = configManager.get();
+            if (cfg.wifi_ssid.length() > 0) {
+                Serial.println("Attempting Wi-Fi reconnect...");
+                WiFi.reconnect();
+                state = WifiState::CONNECTING;
+                connect_start_time = millis();
+                last_reconnect_attempt = millis();
+            }
         }
     } else if (state == WifiState::PORTAL) {
         dnsServer.processNextRequest();
@@ -97,6 +127,37 @@ void WifiPortal::loop() {
 
 WifiState WifiPortal::getState() {
     return state;
+}
+
+const char* WifiPortal::getDetailedStatusStr() {
+    switch (state) {
+        case WifiState::OFF: return "OFF";
+        case WifiState::NO_CREDS: return "NO CREDS";
+        case WifiState::CONNECTING: return "CONNECTING";
+        case WifiState::CONNECTED: return "CONNECTED";
+        case WifiState::FAILED: return "FAILED";
+        case WifiState::DISCONNECTED: return "DISCONNECTED";
+        case WifiState::PORTAL: return "PORTAL";
+    }
+    return "UNKNOWN";
+}
+
+String WifiPortal::getSSID() {
+    if (state == WifiState::CONNECTED) {
+        return WiFi.SSID();
+    }
+    AppConfig& cfg = configManager.get();
+    if (cfg.wifi_ssid.length() > 0) {
+        return cfg.wifi_ssid;
+    }
+    return "-";
+}
+
+String WifiPortal::getIP() {
+    if (state == WifiState::CONNECTED) {
+        return WiFi.localIP().toString();
+    }
+    return "-";
 }
 
 void WifiPortal::handleRoot() {
@@ -127,10 +188,10 @@ void WifiPortal::handleWeatherForce() {
 
 void WifiPortal::handleScanTrigger() {
     if (!scan_in_progress) {
-        WiFi.scanDelete(); // Clear old results
-        WiFi.disconnect(); // Disconnect STA to free up radio for scanning
+        WiFi.scanDelete();
+        WiFi.disconnect();
         delay(100);
-        int result = WiFi.scanNetworks(true); // true = async
+        int result = WiFi.scanNetworks(true);
         if (result == WIFI_SCAN_FAILED) {
             scan_in_progress = false;
             server.send(500, "text/plain", "FAILED_TO_START");
@@ -140,6 +201,7 @@ void WifiPortal::handleScanTrigger() {
     }
     server.send(200, "text/plain", "STARTED");
 }
+
 void WifiPortal::handleScanResults() {
     int n = WiFi.scanComplete();
     if (n == WIFI_SCAN_RUNNING) {
@@ -171,7 +233,6 @@ void WifiPortal::handleSave() {
     if (server.hasArg("lat")) cfg.latitude = server.arg("lat").toFloat();
     if (server.hasArg("lon")) cfg.longitude = server.arg("lon").toFloat();
 
-    // Only update OWM API key if user typed something new, avoiding saving the blank placeholder
     if (server.hasArg("owm_key") && server.arg("owm_key").length() > 0) {
         cfg.owm_api_key = server.arg("owm_key");
     }
