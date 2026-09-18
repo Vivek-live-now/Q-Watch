@@ -258,21 +258,23 @@ void DisplayManager::drawAppCompassMetrics() {
         if (mag_history[i] > max_val) max_val = mag_history[i];
     }
 
+    int prev_x = graph_x + 1;
+    int prev_y = graph_y - (int)((mag_history[mag_history_idx % 64] / max_val) * graph_h);
+    if (prev_y < graph_y - graph_h + 1) prev_y = graph_y - graph_h + 1;
+
     for (int i = 0; i < 63; i++) {
-        int idx1 = (mag_history_idx + i) % 64;
         int idx2 = (mag_history_idx + i + 1) % 64;
 
-        int x1 = graph_x + 1 + (i * (graph_w - 2) / 63);
-        int x2 = graph_x + 1 + ((i + 1) * (graph_w - 2) / 63);
-
-        int y1 = graph_y - (mag_history[idx1] / max_val * graph_h);
-        int y2 = graph_y - (mag_history[idx2] / max_val * graph_h);
+        int curr_x = graph_x + 1 + ((i + 1) * (graph_w - 2) / 63);
+        int curr_y = graph_y - (int)((mag_history[idx2] / max_val) * graph_h);
 
         // Clamp to frame
-        if (y1 < graph_y - graph_h + 1) y1 = graph_y - graph_h + 1;
-        if (y2 < graph_y - graph_h + 1) y2 = graph_y - graph_h + 1;
+        if (curr_y < graph_y - graph_h + 1) curr_y = graph_y - graph_h + 1;
 
-        oled.drawLine(x1, y1, x2, y2);
+        oled.drawLine(prev_x, prev_y, curr_x, curr_y);
+
+        prev_x = curr_x;
+        prev_y = curr_y;
     }
 }
 void DisplayManager::drawAppHealth() {
