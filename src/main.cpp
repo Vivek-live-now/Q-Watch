@@ -10,6 +10,7 @@
 #include "sensors.h"
 #include "led_manager.h"
 #include "sound_manager.h"
+#include "file_manager.h"
 
 String last_drawn_time = "";
 uint32_t last_portal_draw = 0;
@@ -18,6 +19,8 @@ uint32_t last_ui_draw = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting Q-Watch...");
+
+  fileManager.begin();
 
   displayManager.begin();
   btnManager.begin();
