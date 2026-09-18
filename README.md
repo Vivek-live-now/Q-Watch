@@ -1,27 +1,45 @@
 # 007 Q-Watch
 
-A James Bond "First Light" inspired smartwatch built on the ESP32-S3 SuperMini.
+A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 
 ## Milestones & Features
 
 ### Milestone 1: Hardware Foundation
-*   **Microcontroller:** ESP32-S3 SuperMini (4MB Flash, 2MB PSRAM)
-*   **Display:** 1.3" 128x64 OLED Display (White Color)
+*   **Microcontroller:** ESP32-S3 SuperMini (4MB Flash, 2MB PSRAM).
+*   **Display:** 1.3" 128x64 OLED Display (White Color).
 *   **Controller:** SH1106 via 4-wire Hardware SPI.
 *   **Configuration:** Custom `esp32s3_supermini` PlatformIO board definition to ensure correct memory and USB routing.
 
 ### Milestone 2 & 3: Connectivity, Time & Weather
 *   **Captive Portal:** A mobile-friendly setup dashboard accessible at `192.168.4.1` (when Wi-Fi is unconfigured/disconnected) or `q-watch.local` via mDNS on your home network.
-*   **Wi-Fi Management:** Asynchronous background connecting and a captive portal scanner to easily connect to local networks.
-*   **NTP Clock:** Asynchronous time synchronization using standard ESP32 SNTP, allowing the clock to continue accurately without internet.
+*   **Wi-Fi Management & Settings:** Dedicated `SETTINGS -> CONNECTIVITY -> Wi-Fi` status screen displaying Power (ON/OFF), Status (`OFF`, `NO CREDS`, `CONNECTING`, `CONNECTED`, `FAILED`, `DISCONNECTED`), current SSID, and IP address. Features battery-saving radio shutdown (`WiFi.mode(WIFI_OFF)`) when disabled.
+*   **Wi-Fi Scanner & Direct Connect:** Search local networks directly on the OLED (`SETTINGS -> CONNECTIVITY -> SCAN NETWORKS`), displaying RSSI and security locks. Select any open or encrypted network and input credentials right on the watch.
+*   **NTP Time Synchronization:** Non-blocking SNTP time synchronization. Auto-syncs when Wi-Fi connects or on demand via `SETTINGS -> TIME -> SYNC NOW`. Features POSIX timezone support and 12-hour (AM/PM) / 24-hour time formatting toggles.
 *   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
 *   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
 
-
-### Milestone 4: Local Storage & File Management
-*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, future calibration data, and binary assets (e.g., IR signal captures).
+### Milestone 4: Local Storage, File Manager & Opt-In Web File Server
+*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, calibration data, and settings (`/config/settings`).
 *   **FileManager Abstraction:** A lightweight C++ wrapper class around LittleFS for robust read/write/append operations for both standard `String` text and raw binary (`uint8_t*`) data.
-*   **File Browser UI:** Added a native 'FILE MANAGER' app to the Q-Watch menu. Features dynamic directory browsing, file size inspection, and a unified storage information panel (displaying Total/Used/Free space on the ESP32), all operating entirely within the OLED's 3-item tactical UI viewport.
+*   **File Browser UI:** Native 'FILE MANAGER' app in the Q-Watch menu. Features dynamic directory browsing, file size inspection, and a unified storage information panel (Total/Used/Free space on ESP32), operating within the 3-item OLED viewport.
+*   **Opt-In Web File Server:** When enabled via `SETTINGS -> CONNECTIVITY -> FILE SERVER`, visiting `http://q-watch.local/fm` launches a full web-based LittleFS file manager interface:
+    *   Dynamic directory and file browser
+    *   File upload via HTTP multipart
+    *   Direct file streaming and download
+    *   File/directory deletion and folder creation
+    *   Excludes destructive filesystem formatting for safety
+*   **Settings Control Center:** Structured Settings hub with 6 top-level categories:
+    *   `CONNECTIVITY` (Wi-Fi details, Wi-Fi Scanner, BLE, File Server status)
+    *   `TIME` (Sync Now, Auto Sync, Timezone, 24 Hour)
+    *   `POWER` (Display Timeout, Sleep Time, Low Power)
+    *   `DISPLAY` (Contrast, Invert, UI Options)
+    *   `SENSORS` (Compass Cal, IMU Cal, Sensor Status)
+    *   `SYSTEM` (Storage Info, Reset Settings)
+
+### Milestone 5: 3-Button Virtual Keyboard Framework
+*   **On-Screen Input:** Multi-layout virtual keyboard (`KeyboardManager`) designed specifically for 3-button watch navigation and 128x64 OLED displays.
+*   **Modes:** Alpha (QWERTY), Numeric, and Hex keysets.
+*   **Controls:** 3-button navigation (UP = prev key/row, DOWN = next key/row, Short SELECT = type/confirm, Long SELECT = backspace/cancel). Includes password masking (`*`), cursor visualization, and text truncation.
 
 ## Hardware Architecture & Pinout
 
@@ -39,8 +57,8 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 ### 2. I2C Sensors (Shared Bus)
 | Peripheral | Function | GPIO |
 | :--- | :--- | :--- |
-| BME280 / MPU-6500 / HMC5883L / MAX30102 | SDA | 15 |
-| BME280 / MPU-6500 / HMC5883L / MAX30102 | SCL | 16 |
+| BME280 / MPU-6500 / HMC5883L / MAX30100 | SDA | 15 |
+| BME280 / MPU-6500 / HMC5883L / MAX30100 | SCL | 16 |
 
 *Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
 
@@ -49,36 +67,29 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | :--- | :--- | :--- | :--- |
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
 | Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
-| Button Down | INPUT_PULLUP | 42 | |
+| Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
 | Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
 | Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
-| RGB LED | WS2812 DATA | 48 | Preserved for onboard LED |
+| RGB LED | WS2812 DATA | 48 | Onboard RGB LED |
 
 ### 4. Available / Reserved Pins
 The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging.
-*   **GPIO 41:** Clean reserve pin (Reclaims JTAG MTDI).
+*   **GPIO 40:** Digital-only reserve pin.
 *   **GPIO 42:** Clean reserve pin.
-*   **GPIO 43:** Reserved (Used for hardware UART0 TX / Serial Debugging if USB CDC fails).
-*   **GPIO 44:** Reserved (Used for hardware UART0 RX / Serial Debugging if USB CDC fails).
+*   **GPIO 43:** Reserved (Hardware UART0 TX / Serial Debugging if USB CDC fails).
+*   **GPIO 44:** Reserved (Hardware UART0 RX / Serial Debugging if USB CDC fails).
 *   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*
 
 ### 5. Decoupling Capacitor Strategy (104 Ceramic)
-The ESP32-S3, OLED, and individual sensor breakouts already contain adequate local decoupling. However, because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is highly recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
-
-
-
-*Note on MAX30102 placement:* If placing the MAX30102 sensor behind a thick acrylic backplate (e.g., 2-3mm), you will experience severe IR light bleeding/internal reflection inside the plastic, rendering the sensor blind. To fix this, you must either:
-1. Provide an optical barrier (like a rubber ring) tightly sealing the gap between the LEDs and the detector against the skin.
-2. Use a much thinner window (<1mm) specifically for the sensor area.
-3. Mount the sensor so it is flush with or slightly protruding from the backplate to ensure firm skin contact.
+Because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
 
 ## Getting Started
 
 1.  Open the project in PlatformIO.
 2.  Connect the hardware according to the pinout above.
 3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
-4.  On first boot, connect to the **Q-Watch-Setup** Wi-Fi network and navigate to `http://192.168.4.1`.
+4.  On first boot, configure Wi-Fi directly on the watch via `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS` or connect to the **Q-Watch-Setup** Wi-Fi captive portal network at `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
-6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local`.
+6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.

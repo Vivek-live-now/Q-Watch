@@ -3,7 +3,22 @@
 
 #include <Arduino.h>
 #include "file_manager.h"
+#include "settings_data.h"
+#include "keyboard.h"
 
+enum class SettingsSubmenu {
+    MAIN,
+    CONNECTIVITY,
+    WIFI_DETAILS,
+    WIFI_SCAN,
+    FILE_SERVER_DETAILS,
+    TIME,
+    POWER,
+    SUB_DISPLAY,
+    SENSORS,
+    SYSTEM,
+    RESET_CONFIRM
+};
 
 enum class CompassState {
     PAGE_MAIN,
@@ -15,14 +30,11 @@ enum class CompassState {
     CAL_DECLINATION
 };
 
-
-
 enum class MotionState {
     PAGE_LEVEL,
     PAGE_DATA,
     PAGE_SETTINGS
 };
-
 
 enum class UIState {
     APP_HOME,
@@ -41,6 +53,7 @@ enum class UIState {
     APP_ABOUT,
     APP_FILE_MANAGER,
     APP_STORAGE_INFO,
+    APP_KEYBOARD,
     VALUE_EDIT,
     SLEEPING
 };
@@ -56,12 +69,20 @@ public:
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
 
+    SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
+    int getSettingsSelection() const { return settings_selection; }
+    int getSettingsScrollOffset() const { return settings_scroll_offset; }
+    const char* getToastMessage() const { return toast_msg; }
+    uint32_t getToastEndTime() const { return toast_end_time; }
+    void showToast(const char* msg, uint32_t duration_ms = 1500);
+
+    void openKeyboard(const String& initial_text, const String& title, KeyboardMode mode = KeyboardMode::ALPHA, bool mask = false, int max_len = 32, void (*on_complete)(bool success, const String& result) = nullptr);
+
     CompassState getCompassState() const { return compass_state; }
     void setCompassState(CompassState s) { compass_state = s; needs_redraw = true; }
     int getCompassMenuSelection() const { return compass_menu_selection; }
     int getCompassMenuOffset() const { return compass_menu_offset; }
 
-    // Config items
     static const int COMPASS_MENU_ITEM_COUNT = 6;
     const char* compass_menu_items[COMPASS_MENU_ITEM_COUNT] = {
         "3D Sweep Cal",
@@ -71,10 +92,6 @@ public:
         "Telemetry",
         "Factory Reset"
     };
-
-
-
-
 
     MotionState getMotionState() const { return motion_state; }
     void setMotionState(MotionState s) { motion_state = s; needs_redraw = true; }
@@ -90,35 +107,62 @@ public:
     int getAudioMenuSelection() const { return audio_menu_selection; }
     int getAudioMenuOffset() const { return audio_menu_offset; }
 
-
     int getLedMenuSelection() const { return led_menu_selection; }
     int getLedMenuOffset() const { return led_menu_offset; }
 
     static const int LED_MENU_ITEM_COUNT = 6;
     const char* led_menu_items[LED_MENU_ITEM_COUNT] = {
-        "Master Sw", "Mode", "Brightness", "Presets", "Effects", "Factory Rst" // Just enough to let user configure
+        "Master Sw", "Mode", "Brightness", "Presets", "Effects", "Factory Rst"
     };
-
 
     static const int MOTION_MENU_ITEM_COUNT = 6;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
         "Swap X/Y", "Invert X", "Invert Y", "Invert Z", "Accel Cal", "Zero Level"
     };
 
-
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-static const int MAIN_MENU_ITEM_COUNT = 13;
+    static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
         "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
     };
 
-    static const int SETTINGS_MENU_ITEM_COUNT = 4;
-    const char* settings_menu_items[SETTINGS_MENU_ITEM_COUNT] = {
-        "Display", "Sound", "Theme", "Sleep"
+    static const int SETTINGS_MAIN_ITEM_COUNT = 6;
+    const char* settings_main_items[SETTINGS_MAIN_ITEM_COUNT] = {
+        "CONNECTIVITY", "TIME", "POWER", "DISPLAY", "SENSORS", "SYSTEM"
+    };
+
+    static const int CONNECTIVITY_ITEM_COUNT = 4;
+    const char* connectivity_items[CONNECTIVITY_ITEM_COUNT] = {
+        "Wi-Fi", "SCAN NETWORKS", "BLE", "FILE SERVER"
+    };
+
+    static const int TIME_ITEM_COUNT = 4;
+    const char* time_items[TIME_ITEM_COUNT] = {
+        "SYNC NOW", "AUTO SYNC", "TIMEZONE", "24 HOUR"
+    };
+
+    static const int POWER_ITEM_COUNT = 3;
+    const char* power_items[POWER_ITEM_COUNT] = {
+        "DISPLAY TIMEOUT", "SLEEP TIME", "LOW POWER"
+    };
+
+    static const int DISPLAY_ITEM_COUNT = 3;
+    const char* display_items[DISPLAY_ITEM_COUNT] = {
+        "CONTRAST", "INVERT", "UI OPTIONS"
+    };
+
+    static const int SENSORS_ITEM_COUNT = 3;
+    const char* sensors_items[SENSORS_ITEM_COUNT] = {
+        "COMPASS CAL", "IMU CAL", "SENSOR STATUS"
+    };
+
+    static const int SYSTEM_ITEM_COUNT = 2;
+    const char* system_items[SYSTEM_ITEM_COUNT] = {
+        "STORAGE INFO", "RESET SETTINGS"
     };
 
 public:
@@ -127,8 +171,12 @@ public:
     int getFmScrollOffset() const { return fm_scroll_offset; }
     int getFmEntryCount() const { return fm_entry_count; }
     const struct FileInfo* getFmEntries() const { return fm_entries; }
+
+    static String pending_selected_ssid;
+
 private:
     UIState current_state;
+    UIState return_state;
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
@@ -136,6 +184,14 @@ private:
     int led_menu_offset;
     int audio_menu_selection;
     int audio_menu_offset;
+
+    SettingsSubmenu settings_submenu;
+    int settings_selection;
+    int settings_scroll_offset;
+    char toast_msg[32];
+    uint32_t toast_end_time;
+
+    void (*kb_callback)(bool success, const String& result);
 
     CompassState compass_state;
     int compass_menu_selection;
@@ -148,31 +204,31 @@ private:
     void handleMainMenuInput();
     void handleSettingsMenuInput();
     void handleValueEditInput();
-    void handleGenericAppInput(); // Shared handler for dummy apps
+    void handleKeyboardInput();
+    void handleGenericAppInput();
     void handleCompassInput();
 
-    // File Manager State
+    void handleSettingsMainInput();
+    void handleConnectivityInput();
+    void handleWifiDetailsInput();
+    void handleWifiScanInput();
+    void handleFileServerDetailsInput();
+    void handleTimeInput();
+    void handlePowerInput();
+    void handleDisplayInput();
+    void handleSensorsInput();
+    void handleSystemInput();
+    void handleResetConfirmInput();
+
     String fm_current_path;
     int fm_selection;
     int fm_scroll_offset;
     int fm_entry_count;
-    struct FileInfo* fm_entries; // Dynamically allocated to save SRAM when not in use
+    struct FileInfo* fm_entries;
     void handleFileManagerInput();
     void handleStorageInfoInput();
     void loadDirectory(const String& path);
     void freeFileManager();
-
-
-
-
-
-
-
-
-
-
-
-
 
     void processNavUp();
     void processNavDown();
