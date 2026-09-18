@@ -12,6 +12,10 @@
 #include "led_manager.h"
 #include "sound_manager.h"
 #include "settings_data.h"
+#include "keyboard.h"
+#include "keyboard.h"
+#include "keyboard.h"
+#include "keyboard.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -56,6 +60,7 @@ void DisplayManager::update() {
             case UIState::APP_SETTINGS:
                 drawAppSettings();
                 break;
+                                                            case UIState::APP_KEYBOARD: drawKeyboardScreen(); break;
             case UIState::VALUE_EDIT:
                 drawValueEdit("ADJUST");
                 break;
@@ -858,4 +863,56 @@ void DisplayManager::drawAppCompassDeclination() {
     String dStr = String(sensors.getMagCalibration().declination, 1) + "\260";
     int w = oled.getStrWidth(dStr.c_str());
     oled.drawStr(64 - w/2, 44, dStr.c_str());
+}
+
+
+void DisplayManager::drawKeyboardScreen() {
+    #include "keyboard.h"
+    oled.setFont(u8g2_font_4x6_tr);
+
+    String title = keyboardManager.getTitle();
+    oled.drawStr(2, 6, title.c_str());
+    oled.drawLine(0, 8, 128, 8);
+
+    // Render input text box
+    oled.drawFrame(2, 10, 124, 11);
+    String txt = keyboardManager.getText();
+    if (keyboardManager.isMasked()) {
+        String masked = "";
+        for (size_t i = 0; i < txt.length(); i++) masked += "*";
+        txt = masked;
+    }
+    txt += "_"; // cursor
+    oled.drawStr(4, 18, txt.c_str());
+
+    // Keyboard Grid
+    int rows = keyboardManager.getRowCount();
+    int sel_r = keyboardManager.getSelectedRow();
+    int sel_c = keyboardManager.getSelectedCol();
+
+    int start_y = 23;
+    int row_h = 10;
+
+    for (int r = 0; r < rows; r++) {
+        int cols = keyboardManager.getColCount(r);
+        int col_w = 124 / cols;
+        int y = start_y + (r * row_h);
+
+        for (int c = 0; c < cols; c++) {
+            int x = 2 + (c * col_w);
+            const char* label = keyboardManager.getKeyLabel(r, c);
+
+            if (r == sel_r && c == sel_c) {
+                oled.drawBox(x, y, col_w - 1, row_h - 1);
+                oled.setDrawColor(0);
+                int lw = oled.getStrWidth(label);
+                oled.drawStr(x + (col_w - lw) / 2, y + 7, label);
+                oled.setDrawColor(1);
+            } else {
+                oled.drawFrame(x, y, col_w - 1, row_h - 1);
+                int lw = oled.getStrWidth(label);
+                oled.drawStr(x + (col_w - lw) / 2, y + 7, label);
+            }
+        }
+    }
 }

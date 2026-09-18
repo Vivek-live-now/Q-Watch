@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "file_manager.h"
 #include "settings_data.h"
+#include "keyboard.h"
 
 enum class SettingsSubmenu {
     MAIN,
@@ -50,6 +51,7 @@ enum class UIState {
     APP_ABOUT,
     APP_FILE_MANAGER,
     APP_STORAGE_INFO,
+    APP_KEYBOARD,
     VALUE_EDIT,
     SLEEPING
 };
@@ -73,12 +75,14 @@ public:
     uint32_t getToastEndTime() const { return toast_end_time; }
     void showToast(const char* msg, uint32_t duration_ms = 1500);
 
+    // Keyboard Launcher Helper
+    void openKeyboard(const String& initial_text, const String& title, KeyboardMode mode = KeyboardMode::ALPHA, bool mask = false, int max_len = 32, void (*on_complete)(bool success, const String& result) = nullptr);
+
     CompassState getCompassState() const { return compass_state; }
     void setCompassState(CompassState s) { compass_state = s; needs_redraw = true; }
     int getCompassMenuSelection() const { return compass_menu_selection; }
     int getCompassMenuOffset() const { return compass_menu_offset; }
 
-    // Config items
     static const int COMPASS_MENU_ITEM_COUNT = 6;
     const char* compass_menu_items[COMPASS_MENU_ITEM_COUNT] = {
         "3D Sweep Cal",
@@ -126,13 +130,11 @@ public:
         "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
     };
 
-    // Top-Level Settings Menu Items (6 Categories)
     static const int SETTINGS_MAIN_ITEM_COUNT = 6;
     const char* settings_main_items[SETTINGS_MAIN_ITEM_COUNT] = {
         "CONNECTIVITY", "TIME", "POWER", "DISPLAY", "SENSORS", "SYSTEM"
     };
 
-    // Submenu Item Counts & Labels
     static const int CONNECTIVITY_ITEM_COUNT = 3;
     const char* connectivity_items[CONNECTIVITY_ITEM_COUNT] = {
         "Wi-Fi", "BLE", "FILE SERVER"
@@ -172,6 +174,7 @@ public:
 
 private:
     UIState current_state;
+    UIState return_state;
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
@@ -187,6 +190,9 @@ private:
     char toast_msg[32];
     uint32_t toast_end_time;
 
+    // Keyboard Completion Callback
+    void (*kb_callback)(bool success, const String& result);
+
     CompassState compass_state;
     int compass_menu_selection;
     int compass_menu_offset;
@@ -198,10 +204,10 @@ private:
     void handleMainMenuInput();
     void handleSettingsMenuInput();
     void handleValueEditInput();
+    void handleKeyboardInput();
     void handleGenericAppInput();
     void handleCompassInput();
 
-    // Settings Submenu Specific Input Handlers
     void handleSettingsMainInput();
     void handleConnectivityInput();
     void handleWifiDetailsInput();
@@ -212,7 +218,6 @@ private:
     void handleSystemInput();
     void handleResetConfirmInput();
 
-    // File Manager State
     String fm_current_path;
     int fm_selection;
     int fm_scroll_offset;

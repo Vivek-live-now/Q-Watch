@@ -48,6 +48,9 @@ private:
     void drawWifiDetailsScreen();
     void drawResetConfirm();
 
+    // Keyboard Screen Rendering
+    void drawKeyboardScreen();
+
     void drawPortalScreen();
     void drawMenu(const char* title, const char** items, int item_count);
     void drawValueEdit(const char* title);

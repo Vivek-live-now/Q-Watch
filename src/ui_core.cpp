@@ -12,6 +12,7 @@ UICore ui;
 
 UICore::UICore() :
     current_state(UIState::APP_HOME),
+    return_state(UIState::APP_HOME),
     menu_selection(0),
     menu_scroll_offset(0),
     edit_value(5),
@@ -19,6 +20,7 @@ UICore::UICore() :
     settings_selection(0),
     settings_scroll_offset(0),
     toast_end_time(0),
+    kb_callback(nullptr),
     compass_state(CompassState::PAGE_MAIN),
     compass_menu_selection(0),
     compass_menu_offset(0),
@@ -43,6 +45,14 @@ void UICore::showToast(const char* msg, uint32_t duration_ms) {
     strncpy(toast_msg, msg, sizeof(toast_msg) - 1);
     toast_msg[sizeof(toast_msg) - 1] = '\0';
     toast_end_time = millis() + duration_ms;
+    needs_redraw = true;
+}
+
+void UICore::openKeyboard(const String& initial_text, const String& title, KeyboardMode mode, bool mask, int max_len, void (*on_complete)(bool success, const String& result)) {
+    return_state = current_state;
+    kb_callback = on_complete;
+    keyboardManager.open(initial_text, title, mode, mask, max_len);
+    current_state = UIState::APP_KEYBOARD;
     needs_redraw = true;
 }
 
@@ -71,6 +81,9 @@ void UICore::loop() {
         case UIState::APP_STORAGE_INFO:
             handleStorageInfoInput();
             break;
+        case UIState::APP_KEYBOARD:
+            handleKeyboardInput();
+            break;
         case UIState::VALUE_EDIT:
             handleValueEditInput();
             break;
@@ -83,6 +96,23 @@ void UICore::loop() {
         default:
             handleGenericAppInput();
             break;
+    }
+}
+
+void UICore::handleKeyboardInput() {
+    keyboardManager.handleInput();
+    needs_redraw = true;
+
+    if (!keyboardManager.isActive()) {
+        bool success = (keyboardManager.getResult() == KeyboardResult::CONFIRMED);
+        String text = keyboardManager.getText();
+
+        current_state = return_state;
+        needs_redraw = true;
+
+        if (kb_callback) {
+            kb_callback(success, text);
+        }
     }
 }
 
