@@ -1,3 +1,4 @@
+#include "wifi_portal.h"
 #include "clock.h"
 #include "esp_sntp.h"
 #include "settings_data.h"
@@ -7,12 +8,19 @@
 Clock qclock;
 
 // POSIX strings matching TIMEZONE_OPTIONS in settings_data.h
-// 0: UTC, 1: IST (+5:30), 2: EST (-5), 3: PST (-8)
 static const char* const POSIX_TZ_MAP[] = {
-    "UTC0",
-    "IST-5:30",
-    "EST5EDT,M3.2.0,M11.1.0",
-    "PST8PDT,M3.2.0,M11.1.0"
+    "IST-5:30",                  // Asia/Kolkata
+    "UTC0",                      // UTC
+    "GMT0BST,M3.5.0/1,M10.5.0",  // Europe/London
+    "CET-1CEST,M3.5.0,M10.5.0/3",// Europe/Berlin
+    "EST5EDT,M3.2.0,M11.1.0",    // America/New_York
+    "CST6CDT,M3.2.0,M11.1.0",    // America/Chicago
+    "MST7MDT,M3.2.0,M11.1.0",    // America/Denver
+    "PST8PDT,M3.2.0,M11.1.0",    // America/Los_Angeles
+    "GST-4",                     // Asia/Dubai
+    "SGT-8",                     // Asia/Singapore
+    "JST-9",                     // Asia/Tokyo
+    "AEST-10AEDT,M10.1.0,M4.1.0" // Australia/Sydney
 };
 
 void Clock::onSntpSync(struct timeval *tv) {
@@ -20,6 +28,12 @@ void Clock::onSntpSync(struct timeval *tv) {
     qclock.sync_status = NtpSyncStatus::SUCCESS;
     qclock.last_sync_time = millis();
     qclock.time_set = true;
+
+    // Check Wi-Fi Auto-Off mode 1: After Sync
+    if (settingsManager.get().wifi_auto_off_idx == 1) {
+        Serial.println("Auto-off Wi-Fi after successful NTP sync...");
+        wifiPortal.disableWifi();
+    }
 }
 
 void Clock::begin(const String& timezone) {
@@ -36,6 +50,13 @@ void Clock::begin(const String& timezone) {
 void Clock::setTimezone(const String& posix_tz) {
     current_tz = posix_tz;
     configTzTime(current_tz.c_str(), "pool.ntp.org", "time.nist.gov", "time.google.com");
+}
+
+void Clock::setTimezoneIdx(int idx) {
+    if (idx >= 0 && idx < TIMEZONE_OPTION_COUNT) {
+        current_tz = POSIX_TZ_MAP[idx];
+        configTzTime(current_tz.c_str(), "pool.ntp.org", "time.nist.gov", "time.google.com");
+    }
 }
 
 void Clock::syncNtp() {
@@ -55,6 +76,8 @@ void Clock::syncNtp() {
     configTzTime(current_tz.c_str(), "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
 
+static uint32_t last_auto_sync_check = 0;
+
 void Clock::loop() {
     if (getLocalTime(&timeinfo, 0)) {
         time_set = true;
@@ -64,6 +87,16 @@ void Clock::loop() {
         if (millis() - sync_start_time > 10000) {
             Serial.println("SNTP Sync timed out.");
             sync_status = NtpSyncStatus::FAILED;
+        }
+    }
+
+    // Periodic 24-hour Auto Sync if enabled and Wi-Fi connected
+    if (settingsManager.get().auto_sync && WiFi.status() == WL_CONNECTED) {
+        if (millis() - last_auto_sync_check > 60000) {
+            last_auto_sync_check = millis();
+            if (last_sync_time == 0 || (millis() - last_sync_time > 86400000UL)) {
+                syncNtp();
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+#include "ui_core.h"
 #include "wifi_portal.h"
 #include "config.h"
 #include "weather.h"
@@ -163,6 +164,14 @@ void WifiPortal::loop() {
             last_reconnect_attempt = millis();
         } else {
             server.handleClient();
+
+            // Wi-Fi Auto-off Mode 2: When Idle (e.g. no user activity for 2 minutes)
+            if (settingsManager.get().wifi_auto_off_idx == 2) {
+                if (millis() - ui.getLastActivityTime() > 120000) {
+                    Serial.println("Wi-Fi auto-off due to system idle...");
+                    disableWifi();
+                }
+            }
         }
     } else if (state == WifiState::DISCONNECTED || state == WifiState::FAILED) {
         if (WiFi.status() == WL_CONNECTED) {

@@ -12,6 +12,8 @@ public:
 public:
     void begin();
     void update();
+    void applyDisplaySettings();
+    void setPowerSave(bool enable);
 
 private:
     void drawAppHome();
@@ -48,6 +50,7 @@ private:
     void drawWifiDetailsScreen();
     void drawWifiScanScreen();
     void drawFileServerDetailsScreen();
+    void drawTimeSyncStatusScreen();
     void drawResetConfirm();
 
     // Keyboard Screen Rendering
