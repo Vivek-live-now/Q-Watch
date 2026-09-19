@@ -42,8 +42,17 @@ UICore::UICore() :
 
 void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
-        Serial.println("Woke up from deep sleep via SELECT button (GPIO21)!");
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+        uint64_t status = esp_sleep_get_ext1_wakeup_status();
+        if (status & (1ULL << BTN_CANCEL)) {
+            Serial.println("Woke up from deep sleep via CANCEL button (GPIO21)!");
+        } else if (status & (1ULL << MPU_INT)) {
+            Serial.println("Woke up from deep sleep via IMU Motion (GPIO8)!");
+        } else {
+            Serial.println("Woke up from deep sleep via EXT1!");
+        }
+    } else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
+        Serial.println("Woke up from deep sleep via EXT0!");
     }
 }
 
@@ -65,10 +74,12 @@ void UICore::openKeyboard(const String& initial_text, const String& title, Keybo
 void UICore::loop() {
     // Check user button activity to keep awake or wake display
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+    ComboEvent combo_evt = btnManager.getComboEvent();
 
-    bool any_button = (up_evt != BTN_EVT_NONE || sel_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE);
+    bool any_button = (up_evt != BTN_EVT_NONE || ok_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE || cancel_evt != BTN_EVT_NONE || combo_evt != COMBO_EVT_NONE);
 
     if (any_button) {
         if (display_off) {
@@ -108,6 +119,69 @@ void UICore::loop() {
     }
 
     if (current_state == UIState::SLEEPING) return;
+
+    // Navigation rules for CANCEL and Long OK buttons across screens
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        if (current_state == UIState::APP_HOME) {
+            // Short CANCEL at HOME = Toggle display ON/OFF
+            display_off = !display_off;
+            displayManager.setPowerSave(display_off);
+            needs_redraw = true;
+            return;
+        } else {
+            // Short CANCEL at other screens = Back
+            soundManager.playNavBack();
+            if (current_state == UIState::MAIN_MENU) {
+                current_state = UIState::APP_HOME;
+            } else if (current_state == UIState::APP_SETTINGS) {
+                if (settings_submenu == SettingsSubmenu::MAIN) {
+                    current_state = UIState::MAIN_MENU;
+                    menu_selection = 11;
+                    menu_scroll_offset = 9;
+                } else {
+                    settings_submenu = SettingsSubmenu::MAIN;
+                    settings_selection = 0;
+                    settings_scroll_offset = 0;
+                }
+            } else {
+                current_state = UIState::MAIN_MENU;
+            }
+            needs_redraw = true;
+            return;
+        }
+    } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
+        if (current_state == UIState::APP_HOME) {
+            // Long CANCEL at HOME = Deep Sleep
+            enterDeepSleep();
+            return;
+        } else {
+            // Long CANCEL on sub-screens = Return directly to HOME
+            soundManager.playNavBack();
+            current_state = UIState::APP_HOME;
+            needs_redraw = true;
+            return;
+        }
+    } else if (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME) {
+        // Long OK on non-home screens = Back
+        soundManager.playNavBack();
+        if (current_state == UIState::MAIN_MENU) {
+            current_state = UIState::APP_HOME;
+        } else if (current_state == UIState::APP_SETTINGS) {
+            if (settings_submenu == SettingsSubmenu::MAIN) {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 11;
+                menu_scroll_offset = 9;
+            } else {
+                settings_submenu = SettingsSubmenu::MAIN;
+                settings_selection = 0;
+                settings_scroll_offset = 0;
+            }
+        } else {
+            current_state = UIState::MAIN_MENU;
+        }
+        needs_redraw = true;
+        return;
+    }
 
     switch (current_state) {
         case UIState::APP_HOME:
@@ -189,8 +263,8 @@ void UICore::processNavDown() {
 }
 
 void UICore::handleHomeInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         current_state = UIState::MAIN_MENU;
         menu_selection = 0;
@@ -206,8 +280,8 @@ void UICore::handleMainMenuInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) processNavDown();
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         switch(menu_selection) {
             case 0: current_state = UIState::APP_HOME; break;
@@ -229,10 +303,6 @@ void UICore::handleMainMenuInput() {
                 break;
             case 12: current_state = UIState::APP_ABOUT; break;
         }
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        current_state = UIState::APP_HOME;
         needs_redraw = true;
     }
 }
@@ -273,8 +343,8 @@ void UICore::handleSettingsMainInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         switch (settings_selection) {
             case 0: settings_submenu = SettingsSubmenu::CONNECTIVITY; break;
@@ -286,12 +356,6 @@ void UICore::handleSettingsMainInput() {
         }
         settings_selection = 0;
         settings_scroll_offset = 0;
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        current_state = UIState::MAIN_MENU;
-        menu_selection = 11;
-        menu_scroll_offset = 9;
         needs_redraw = true;
     }
 }
@@ -315,8 +379,8 @@ void UICore::handleConnectivityInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (settings_selection == 0) {
             settings_submenu = SettingsSubmenu::WIFI_DETAILS;
@@ -333,12 +397,6 @@ void UICore::handleConnectivityInput() {
             settings_submenu = SettingsSubmenu::FILE_SERVER_DETAILS;
         }
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 0;
-        settings_scroll_offset = 0;
-        needs_redraw = true;
     }
 }
 
@@ -351,14 +409,6 @@ static void onWifiPasswordEntered(bool success, const String& password) {
 
 void UICore::handleWifiScanInput() {
     if (wifiPortal.isScanning()) {
-        ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-        if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            settings_submenu = SettingsSubmenu::CONNECTIVITY;
-            settings_selection = 1;
-            settings_scroll_offset = 0;
-            needs_redraw = true;
-        }
         return;
     }
 
@@ -382,8 +432,8 @@ void UICore::handleWifiScanInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         if (count > 0 && settings_selection < count) {
             soundManager.playNavSelect();
             const ScannedNetwork* nets = wifiPortal.getScannedNetworks();
@@ -398,18 +448,12 @@ void UICore::handleWifiScanInput() {
                 settings_submenu = SettingsSubmenu::WIFI_DETAILS;
             }
         }
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::CONNECTIVITY;
-        settings_selection = 1;
-        settings_scroll_offset = 0;
-        needs_redraw = true;
     }
 }
 
 void UICore::handleWifiDetailsInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         s.wifi_enabled = !s.wifi_enabled;
@@ -420,12 +464,6 @@ void UICore::handleWifiDetailsInput() {
         } else {
             wifiPortal.disableWifi();
         }
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::CONNECTIVITY;
-        settings_selection = 0;
-        settings_scroll_offset = 0;
         needs_redraw = true;
     }
 }
@@ -449,8 +487,8 @@ void UICore::handleTimeInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
@@ -474,18 +512,12 @@ void UICore::handleTimeInput() {
             settingsManager.save();
         }
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 1;
-        settings_scroll_offset = 0;
-        needs_redraw = true;
     }
 }
 
 void UICore::handleTimeSyncStatusInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavBack();
         settings_submenu = SettingsSubmenu::TIME;
         settings_selection = 1;
@@ -497,7 +529,8 @@ void UICore::handleTimeSyncStatusInput() {
 void UICore::handlePowerInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
         settings_selection--;
         if (settings_selection < 0) settings_selection = 0;
@@ -514,7 +547,7 @@ void UICore::handlePowerInput() {
         needs_redraw = true;
     }
 
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
@@ -530,12 +563,6 @@ void UICore::handlePowerInput() {
             s.low_power = !s.low_power;
             settingsManager.save();
         }
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 2;
-        settings_scroll_offset = 0;
         needs_redraw = true;
     }
 }
@@ -559,8 +586,8 @@ void UICore::handleDisplayInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
@@ -575,12 +602,6 @@ void UICore::handleDisplayInput() {
             s.ui_option_idx = (s.ui_option_idx + 1) % UI_OPTIONS_COUNT;
             settingsManager.save();
         }
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 3;
-        settings_scroll_offset = 1;
         needs_redraw = true;
     }
 }
@@ -604,8 +625,8 @@ void UICore::handleSensorsInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (settings_selection == 0) {
             showToast("[COMPASS CAL]", 1500);
@@ -614,12 +635,6 @@ void UICore::handleSensorsInput() {
         } else if (settings_selection == 2) {
             showToast("[STATUS: OK]", 1500);
         }
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 4;
-        settings_scroll_offset = 2;
         needs_redraw = true;
     }
 }
@@ -643,8 +658,8 @@ void UICore::handleSystemInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (settings_selection == 0) {
             current_state = UIState::APP_STORAGE_INFO;
@@ -652,18 +667,12 @@ void UICore::handleSystemInput() {
             settings_submenu = SettingsSubmenu::RESET_CONFIRM;
         }
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::MAIN;
-        settings_selection = 5;
-        settings_scroll_offset = 3;
-        needs_redraw = true;
     }
 }
 
 void UICore::handleResetConfirmInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavBack();
         showToast("[CANCELLED]", 1200);
         settings_submenu = SettingsSubmenu::SYSTEM;
@@ -674,11 +683,7 @@ void UICore::handleResetConfirmInput() {
 }
 
 void UICore::handleGenericAppInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_LONG_PRESS) {
-        current_state = UIState::APP_HOME;
-        needs_redraw = true;
-    }
+    // Handled globally via CANCEL / Long OK
 }
 
 void UICore::freeFileManager() {
@@ -714,7 +719,7 @@ void UICore::handleFileManagerInput() {
             if (fm_selection >= fm_scroll_offset + 3) fm_scroll_offset = fm_selection - 2;
             needs_redraw = true;
         }
-    } else if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_SHORT_PRESS) {
+    } else if (btnManager.getEvent(BTN_ID_OK) == BTN_EVT_SHORT_PRESS) {
         if (fm_current_path == "/" && fm_selection == fm_entry_count) {
             current_state = UIState::APP_STORAGE_INFO;
         } else if (fm_selection < fm_entry_count) {
@@ -727,35 +732,11 @@ void UICore::handleFileManagerInput() {
             }
         }
         needs_redraw = true;
-    } else if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_LONG_PRESS) {
-        if (fm_current_path == "/") {
-            freeFileManager();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 10;
-            menu_scroll_offset = 8;
-        } else {
-            int last_slash = fm_current_path.lastIndexOf('/', fm_current_path.length() - 2);
-            if (last_slash == -1 || last_slash == 0) {
-                fm_current_path = "/";
-            } else {
-                fm_current_path = fm_current_path.substring(0, last_slash);
-            }
-            loadDirectory(fm_current_path);
-        }
-        needs_redraw = true;
     }
 }
 
 void UICore::handleStorageInfoInput() {
-    if (btnManager.getEvent(BTN_ID_SEL) == BTN_EVT_LONG_PRESS) {
-        if (current_state == UIState::APP_STORAGE_INFO) {
-            current_state = UIState::APP_SETTINGS;
-            settings_submenu = SettingsSubmenu::SYSTEM;
-            settings_selection = 0;
-            settings_scroll_offset = 0;
-            needs_redraw = true;
-        }
-    }
+    // Handled globally via CANCEL / Long OK
 }
 
 void UICore::handleValueEditInput() {
@@ -769,8 +750,8 @@ void UICore::handleValueEditInput() {
         if (edit_value < 10) { edit_value++; needs_redraw = true; }
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         current_state = UIState::APP_SETTINGS;
         needs_redraw = true;
@@ -779,12 +760,22 @@ void UICore::handleValueEditInput() {
 
 void UICore::enterDeepSleep() {
     current_state = UIState::SLEEPING;
-    Serial.println("Going to sleep now...");
+    Serial.println("Going to deep sleep...");
     delay(100);
 
-    rtc_gpio_pullup_en((gpio_num_t)BTN_SEL);
-    rtc_gpio_pulldown_dis((gpio_num_t)BTN_SEL);
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_SEL, 0);
+    // 1. Enable MPU-6500 motion interrupt for raise-to-wake
+    sensors.enableMotionInterruptForSleep();
+
+    // 2. Configure RTC internal pull-ups for GPIO 21 (CANCEL) and GPIO 8 (MPU INT)
+    rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
+    rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
+
+    rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
+    rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+
+    // 3. Configure EXT1 wakeup on ANY LOW for GPIO 21 and GPIO 8
+    uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
+    esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
     esp_deep_sleep_start();
 }
@@ -792,15 +783,11 @@ void UICore::enterDeepSleep() {
 void UICore::handleCompassInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
     if (compass_state == CompassState::PAGE_MAIN) {
         if (dn_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_METRICS;
-            needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }
@@ -810,10 +797,6 @@ void UICore::handleCompassInput() {
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_CAL_MENU;
-            needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }
@@ -828,7 +811,7 @@ void UICore::handleCompassInput() {
             if (compass_menu_selection >= COMPASS_MENU_ITEM_COUNT) compass_menu_selection = COMPASS_MENU_ITEM_COUNT - 1;
             if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
             if (compass_menu_selection == 0) {
                 sensors.startMagCalibration();
@@ -849,17 +832,13 @@ void UICore::handleCompassInput() {
                 sensors.factoryResetCalibration();
             }
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            compass_state = CompassState::PAGE_METRICS;
-            needs_redraw = true;
         }
     }
     else if (compass_state == CompassState::CAL_SWEEP) {
         if (sensors.getCalState() == MagCalState::RESULT) {
             compass_state = CompassState::CAL_RESULT;
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             sensors.cancelMagCalibration();
             compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
@@ -878,7 +857,7 @@ void UICore::handleCompassInput() {
         }
     }
     else if (compass_state == CompassState::CAL_TELEMETRY) {
-        if (sel_evt == BTN_EVT_LONG_PRESS || sel_evt == BTN_EVT_SHORT_PRESS) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
         }
@@ -896,7 +875,7 @@ void UICore::handleCompassInput() {
             if (cal.declination < -180.0f) cal.declination = 180.0f;
             sensors.saveMagCalibration(cal);
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS || sel_evt == BTN_EVT_SHORT_PRESS) {
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
         }
@@ -906,19 +885,15 @@ void UICore::handleCompassInput() {
 void UICore::handleMotionInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
     if (motion_state == MotionState::PAGE_LEVEL) {
         if (dn_evt == BTN_EVT_SHORT_PRESS) {
             motion_state = MotionState::PAGE_DATA;
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
             sensors.zeroLevel();
-            needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }
@@ -929,10 +904,6 @@ void UICore::handleMotionInput() {
             needs_redraw = true;
         } else if (up_evt == BTN_EVT_SHORT_PRESS) {
             motion_state = MotionState::PAGE_LEVEL;
-            needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            current_state = UIState::APP_HOME;
             needs_redraw = true;
         }
     }
@@ -947,7 +918,7 @@ void UICore::handleMotionInput() {
             if (compass_menu_selection >= MOTION_MENU_ITEM_COUNT) compass_menu_selection = MOTION_MENU_ITEM_COUNT - 1;
             if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
             if (compass_menu_selection == 0) sensors.setImuSwapXY(!sensors.getImuSwapXY());
             else if (compass_menu_selection == 1) sensors.setImuInvX(!sensors.getImuInvX());
@@ -956,10 +927,6 @@ void UICore::handleMotionInput() {
             else if (compass_menu_selection == 4) sensors.calibrateAccel();
             else if (compass_menu_selection == 5) sensors.zeroLevel();
             needs_redraw = true;
-        } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            motion_state = MotionState::PAGE_DATA;
-            needs_redraw = true;
         }
     }
 }
@@ -967,7 +934,7 @@ void UICore::handleMotionInput() {
 void UICore::handleAudioInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
         audio_menu_selection--;
@@ -979,7 +946,7 @@ void UICore::handleAudioInput() {
         if (audio_menu_selection >= AUDIO_MENU_ITEM_COUNT) audio_menu_selection = AUDIO_MENU_ITEM_COUNT - 1;
         if (audio_menu_selection >= audio_menu_offset + 3) audio_menu_offset = audio_menu_selection - 2;
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (audio_menu_selection == 0) {
             soundManager.setMasterSwitch(!soundManager.isMasterSwitchOn());
@@ -989,27 +956,16 @@ void UICore::handleAudioInput() {
             soundManager.setStyle((SoundStyle)s);
         }
         needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        current_state = UIState::MAIN_MENU;
-        needs_redraw = true;
     }
 }
 
-
 void UICore::handleFileServerDetailsInput() {
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
-    if (sel_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         s.fileserver_enabled = !s.fileserver_enabled;
         settingsManager.save();
-        needs_redraw = true;
-    } else if (sel_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavBack();
-        settings_submenu = SettingsSubmenu::CONNECTIVITY;
-        settings_selection = 3;
-        settings_scroll_offset = 1;
         needs_redraw = true;
     }
 }

@@ -36,38 +36,43 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   `SENSORS` (Compass Cal, IMU Cal, Sensor Status)
     *   `SYSTEM` (Storage Info, Reset Settings)
 
-### Milestone 5: 3-Button Virtual Keyboard Framework
-*   **On-Screen Input:** Multi-layout virtual keyboard (`KeyboardManager`) designed specifically for 3-button watch navigation and 128x64 OLED displays.
-*   **Modes:** Alpha (QWERTY), Numeric, and Hex keysets.
-*   **Controls:** 3-button navigation (UP = prev key/row, DOWN = next key/row, Short SELECT = type/confirm, Long SELECT = backspace/cancel). Includes password masking (`*`), cursor visualization, and text truncation.
+### Milestone 5: 4-Button Navigation & Gesture Framework
+*   **On-Screen Input & Control:** Multi-button layout (K1 3-way directional + dedicated CANCEL button).
+*   **Gestures & Semantics:**
+    *   **HOME Screen:** Short CANCEL = Display ON/OFF toggle; Long CANCEL = Enter Deep Sleep.
+    *   **Sub-Screens:** Short CANCEL = Back; Long OK = Back; Long CANCEL = Return to HOME.
+    *   **Combinations & Double-Tap:** Generic framework support for CANCEL+UP, CANCEL+OK, CANCEL+DN, and Double-Tap CANCEL for future shortcut mapping.
+*   **Dual Deep Sleep Wake:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (CANCEL button) and **GPIO 8** (MPU-6500 raise-to-wake motion interrupt). The initial wake event is automatically consumed so it does not trigger accidental in-app actions.
 
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
 
-### 1. OLED Display (LOCKED)
-| Peripheral | Function | GPIO |
-| :--- | :--- | :--- |
-| OLED | MOSI/DIN | 5 |
-| OLED | CLK/SCK | 7 |
-| OLED | CS | 4 |
-| OLED | DC | 2 |
-| OLED | RST | 8 |
+### 1. OLED Display
+| Peripheral | Function | GPIO | Notes |
+| :--- | :--- | :--- | :--- |
+| OLED | MOSI/DIN | 5 | Hardware SPI |
+| OLED | CLK/SCK | 7 | Hardware SPI |
+| OLED | CS | 4 | |
+| OLED | DC | 2 | |
+| OLED | RST | 41 | Reassigned to GPIO 41 (Standard digital output) |
 
 ### 2. I2C Sensors (Shared Bus)
-| Peripheral | Function | GPIO |
-| :--- | :--- | :--- |
-| BME280 / MPU-6500 / QMC5883P (HP5883) / MAX30102 | SDA | 15 |
-| BME280 / MPU-6500 / QMC5883P (HP5883) / MAX30102 | SCL | 16 |
+| Peripheral | Function | GPIO | Notes |
+| :--- | :--- | :--- | :--- |
+| BME280 / MPU-6500 / QMC5883P / MAX30102 | SDA | 15 | |
+| BME280 / MPU-6500 / QMC5883P / MAX30102 | SCL | 16 | |
+| MPU-6500 Interrupt | INT | 8 | RTC Wake Capable (Active-Low WOM Interrupt) |
 
 *Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
 
 ### 3. Inputs & Audio/Visual
 | Peripheral | Function | GPIO | Notes |
 | :--- | :--- | :--- | :--- |
-| Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
-| Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
-| Button Down | INPUT_PULLUP | 42 | Reclaims JTAG MTMS |
+| Button Up | INPUT_PULLUP | 39 | K1 Multi-directional UP |
+| Button OK / Select | INPUT_PULLUP | 40 | K1 Multi-directional OK / SELECT |
+| Button Down | INPUT_PULLUP | 42 | K1 Multi-directional DOWN |
+| Button Cancel / Back | INPUT_PULLUP / RTC WAKE | 21 | Tactile CANCEL button & Deep Sleep RTC Wake source |
 | Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
@@ -75,9 +80,8 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | RGB LED | WS2812 DATA | 48 | Onboard RGB LED |
 
 ### 4. Available / Reserved Pins
-The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging.
-*   **GPIO 40:** Digital-only reserve pin.
-*   **GPIO 41:** Reclaims JTAG MTDI reserve pin.
+The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging:
+*   **GPIO 38:** Clean reserve pin.
 *   **GPIO 43:** Reserved (Hardware UART0 TX / Serial Debugging if USB CDC fails).
 *   **GPIO 44:** Reserved (Hardware UART0 RX / Serial Debugging if USB CDC fails).
 *   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*

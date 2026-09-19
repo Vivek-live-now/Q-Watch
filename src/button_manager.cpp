@@ -3,10 +3,11 @@
 
 ButtonManager btnManager;
 
-ButtonManager::ButtonManager() {
+ButtonManager::ButtonManager() : pending_combo(COMBO_EVT_NONE), woken_from_sleep(false), cancel_first_tap_time(0), cancel_waiting_for_double_tap(false) {
     buttons[BTN_ID_UP].pin = BTN_UP;
-    buttons[BTN_ID_SEL].pin = BTN_SEL;
+    buttons[BTN_ID_OK].pin = BTN_OK;
     buttons[BTN_ID_DN].pin = BTN_DN;
+    buttons[BTN_ID_CANCEL].pin = BTN_CANCEL;
 
     for (int i=0; i<BTN_COUNT; i++) {
         buttons[i].current_state = HIGH;
@@ -16,31 +17,32 @@ ButtonManager::ButtonManager() {
         buttons[i].long_press_handled = false;
         buttons[i].last_repeat_time = 0;
         buttons[i].pending_event = BTN_EVT_NONE;
+        buttons[i].combo_handled = false;
     }
 }
 
 void ButtonManager::begin() {
     pinMode(BTN_UP, INPUT_PULLUP);
-    pinMode(BTN_SEL, INPUT_PULLUP);
+    pinMode(BTN_OK, INPUT_PULLUP);
     pinMode(BTN_DN, INPUT_PULLUP);
+    pinMode(BTN_CANCEL, INPUT_PULLUP);
 
-    // Check if we woke from deep sleep via the SELECT button (GPIO21)
+    // Check if we woke from deep sleep
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
-        // We woke up because SELECT is currently being held down to GND.
-        // We must artificially set its state to "already handled" so it doesn't
-        // emit a fake SHORT_PRESS or LONG_PRESS upon the user letting go of the WAKE action.
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+        woken_from_sleep = true;
 
-        // Pretend it has been held down for a long time and the long press was already handled.
-        // Then, when they release it, it will just reset cleanly without emitting an event.
-        buttons[BTN_ID_SEL].current_state = LOW;
-        buttons[BTN_ID_SEL].last_state = LOW;
-        buttons[BTN_ID_SEL].pressed_time = millis() - LONG_PRESS_MS - 1;
-        buttons[BTN_ID_SEL].long_press_handled = true;
+        // If woke via CANCEL (GPIO21) or EXT1 wakeup mask containing GPIO21/GPIO8,
+        // prevent CANCEL from generating a fake button event on release.
+        buttons[BTN_ID_CANCEL].current_state = LOW;
+        buttons[BTN_ID_CANCEL].last_state = LOW;
+        buttons[BTN_ID_CANCEL].pressed_time = millis() - LONG_PRESS_MS - 1;
+        buttons[BTN_ID_CANCEL].long_press_handled = true;
     }
 }
 
 void ButtonManager::loop() {
+    // 1. Debounce and read raw button states
     for (int i=0; i<BTN_COUNT; i++) {
         bool reading = digitalRead(buttons[i].pin);
 
@@ -55,13 +57,26 @@ void ButtonManager::loop() {
                 if (buttons[i].current_state == LOW) { // PRESSED
                     buttons[i].pressed_time = millis();
                     buttons[i].long_press_handled = false;
+                    buttons[i].combo_handled = false;
                     buttons[i].last_repeat_time = millis() + LONG_PRESS_MS;
                 } else { // RELEASED
-                    if (!buttons[i].long_press_handled) {
+                    if (!buttons[i].long_press_handled && !buttons[i].combo_handled) {
                         uint32_t duration = millis() - buttons[i].pressed_time;
                         if (duration > DEBOUNCE_DELAY_MS && duration < LONG_PRESS_MS) {
-                            if (buttons[i].pending_event == BTN_EVT_NONE) {
-                                buttons[i].pending_event = BTN_EVT_SHORT_PRESS;
+                            if (i == BTN_ID_CANCEL) {
+                                // Double-tap window detection logic for CANCEL
+                                uint32_t now = millis();
+                                if (cancel_waiting_for_double_tap && (now - cancel_first_tap_time <= DOUBLE_TAP_WINDOW_MS)) {
+                                    buttons[BTN_ID_CANCEL].pending_event = BTN_EVT_DOUBLE_TAP;
+                                    cancel_waiting_for_double_tap = false;
+                                } else {
+                                    cancel_first_tap_time = now;
+                                    cancel_waiting_for_double_tap = true;
+                                }
+                            } else {
+                                if (buttons[i].pending_event == BTN_EVT_NONE) {
+                                    buttons[i].pending_event = BTN_EVT_SHORT_PRESS;
+                                }
                             }
                         }
                     }
@@ -69,7 +84,7 @@ void ButtonManager::loop() {
             } else if (buttons[i].current_state == LOW) { // HOLDING
                 uint32_t duration = millis() - buttons[i].pressed_time;
 
-                if (!buttons[i].long_press_handled && duration >= LONG_PRESS_MS) {
+                if (!buttons[i].long_press_handled && !buttons[i].combo_handled && duration >= LONG_PRESS_MS) {
                     if (buttons[i].pending_event == BTN_EVT_NONE) {
                         buttons[i].pending_event = BTN_EVT_LONG_PRESS;
                     }
@@ -86,9 +101,41 @@ void ButtonManager::loop() {
         }
         buttons[i].last_state = reading;
     }
+
+    // 2. Check for CANCEL combinations (CANCEL held down while UP, OK, or DN is pressed)
+    if (buttons[BTN_ID_CANCEL].current_state == LOW && !buttons[BTN_ID_CANCEL].combo_handled) {
+        if (buttons[BTN_ID_UP].current_state == LOW && !buttons[BTN_ID_UP].combo_handled) {
+            pending_combo = COMBO_EVT_CANCEL_UP;
+            buttons[BTN_ID_CANCEL].combo_handled = true;
+            buttons[BTN_ID_UP].combo_handled = true;
+        } else if (buttons[BTN_ID_OK].current_state == LOW && !buttons[BTN_ID_OK].combo_handled) {
+            pending_combo = COMBO_EVT_CANCEL_OK;
+            buttons[BTN_ID_CANCEL].combo_handled = true;
+            buttons[BTN_ID_OK].combo_handled = true;
+        } else if (buttons[BTN_ID_DN].current_state == LOW && !buttons[BTN_ID_DN].combo_handled) {
+            pending_combo = COMBO_EVT_CANCEL_DN;
+            buttons[BTN_ID_CANCEL].combo_handled = true;
+            buttons[BTN_ID_DN].combo_handled = true;
+        }
+    }
+
+    // 3. Resolve single tap for CANCEL if double-tap timeout expires
+    if (cancel_waiting_for_double_tap && (millis() - cancel_first_tap_time > DOUBLE_TAP_WINDOW_MS)) {
+        if (buttons[BTN_ID_CANCEL].pending_event == BTN_EVT_NONE) {
+            buttons[BTN_ID_CANCEL].pending_event = BTN_EVT_SHORT_PRESS;
+        }
+        cancel_waiting_for_double_tap = false;
+    }
 }
+
 ButtonEvent ButtonManager::getEvent(ButtonID id) {
     ButtonEvent evt = buttons[id].pending_event;
     buttons[id].pending_event = BTN_EVT_NONE;
+    return evt;
+}
+
+ComboEvent ButtonManager::getComboEvent() {
+    ComboEvent evt = pending_combo;
+    pending_combo = COMBO_EVT_NONE;
     return evt;
 }

@@ -3,11 +3,8 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <Arduino.h>
-#include <Wire.h>
 #include <Preferences.h>
 #include <Adafruit_BME280.h>
-
 
 struct EnvironmentData {
     float temperature;
@@ -27,8 +24,6 @@ struct CalibratedSensorData {
     float gx, gy, gz; // in deg/s
     float mx, my, mz; // in uT (or arbitrary normalized units)
 };
-
-
 
 enum class MagCalState {
     IDLE,
@@ -86,7 +81,7 @@ public:
     void saveMagCalibration(const MagCalibration& cal);
     void factoryResetCalibration();
 
-void setImuSwapXY(bool swap);
+    void setImuSwapXY(bool swap);
     void setImuInvX(bool inv);
     void setImuInvY(bool inv);
     void setImuInvZ(bool inv);
@@ -96,7 +91,6 @@ void setImuSwapXY(bool swap);
     bool getImuInvZ() const { return offsets.inv_z; }
     void calibrateAccel();
     void zeroLevel();
-
 
     void startMagCalibration();
     void cancelMagCalibration();
@@ -108,14 +102,16 @@ void setImuSwapXY(bool swap);
     MagCalResult getCalResult() const { return cal_result; }
     int getCalProgress() const;
 
+    // Interrupt & Deep Sleep Methods for MPU-6500
+    void setupMpuInterrupt();
+    void enableMotionInterruptForSleep();
+    void clearMpuInterrupt();
 
     // For Telemetry
     RawSensorData getRawData() const { return raw_data; }
-
     CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
-
 
     EnvironmentData getEnvData() const { return env_data; }
     void zeroAltitude();
@@ -150,7 +146,6 @@ private:
 
     Preferences prefs;
     void loadCalibration();
-
 
     // Madgwick filter state
     float q0, q1, q2, q3;
