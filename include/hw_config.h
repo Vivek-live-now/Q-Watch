@@ -12,10 +12,10 @@
 #define OLED_CLK   7
 #define OLED_CS    4
 #define OLED_DC    2
-#define OLED_RST   8
+#define OLED_RST   41  // Reassigned from GPIO 8 to GPIO 41 (Standard digital output)
 
 // ----------------------------------------------------------------------------
-// Shared I2C Bus Configuration [BME280, MPU-6500, HMC5883L, MAX30102]
+// Shared I2C Bus Configuration [BME280, MPU-6500, QMC5883P, MAX30102]
 // ----------------------------------------------------------------------------
 #define I2C_SDA    15
 #define I2C_SCL    16
@@ -23,9 +23,18 @@
 // ----------------------------------------------------------------------------
 // Navigation Buttons [Requires internal pull-ups]
 // ----------------------------------------------------------------------------
-#define BTN_UP     39
-#define BTN_SEL    21  // Dual purpose: Normal SELECT input and Deep Sleep RTC Wake
-#define BTN_DN     42
+#define BTN_UP     39  // K1 Directional UP
+#define BTN_OK     40  // K1 Directional SELECT / OK (Moved from GPIO 21)
+#define BTN_DN     42  // K1 Directional DOWN
+#define BTN_CANCEL 21  // Tactile CANCEL / BACK button (RTC_GPIO16 - Deep Sleep Wake)
+
+// Alias for backwards compatibility
+#define BTN_SEL    BTN_OK
+
+// ----------------------------------------------------------------------------
+// MPU-6500 Interrupt Pin [RTC Wake Capable]
+// ----------------------------------------------------------------------------
+#define MPU_INT    8   // MPU-6500 Motion Interrupt (RTC_GPIO8 - Deep Sleep Wake)
 
 // ----------------------------------------------------------------------------
 // Infrared (IR) Configuration
@@ -46,8 +55,7 @@
 // R2 = 100k (Connected to GND)
 // A 100nF (104) ceramic capacitor is placed in parallel with R2 (ADC node to GND)
 // to filter out high-frequency noise before the ESP32 ADC reads it.
-// Note: GPIO 40 was originally evaluated but is digital-only on ESP32-S3.
-// We use GPIO 1 (ADC1_CH0) instead, which is a clean, non-strapping ADC pin.
+// GPIO 1 (ADC1_CH0) is a clean, non-strapping ADC pin.
 #define BATTERY_ADC 1
 
 // ----------------------------------------------------------------------------
@@ -58,8 +66,7 @@
 // ----------------------------------------------------------------------------
 // Reserve / Unused Pins
 // ----------------------------------------------------------------------------
-// GPIO 40, 41       (Clean Reserves)
-// GPIO 43, 44       (UART0 / Serial Debugging)
+// GPIO 38, 43, 44   (Clean Reserves)
 // GPIO 0, 3, 45, 46 (Strapping / Boot pins - DO NOT USE)
 
 #endif // HW_CONFIG_H

@@ -533,3 +533,30 @@ void SensorManager::loop() {
 OrientationData SensorManager::getOrientation() const {
     return orientation;
 }
+
+void SensorManager::setupMpuInterrupt() {
+    if (!mpu_ok) return;
+    // Configure INT pin: Active Low (bit 7 = 1), Open Drain (bit 6 = 1), Latch until cleared (bit 5 = 1), Clear on any read (bit 4 = 1)
+    writeRegister(MPU6500_ADDR, 0x37, 0xF0);
+}
+
+void SensorManager::enableMotionInterruptForSleep() {
+    if (!mpu_ok) return;
+    // Set INT pin active low open-drain latched
+    writeRegister(MPU6500_ADDR, 0x37, 0xF0);
+
+    // Set motion threshold (WOM_THR 0x1F)
+    writeRegister(MPU6500_ADDR, 0x1F, 0x20); // ~62.5mg threshold
+
+    // Enable Accel hardware intelligence control (ACCEL_INTEL_CTRL 0x69)
+    writeRegister(MPU6500_ADDR, 0x69, 0xC0); // Enable WOM logic and compare with previous sample
+
+    // Enable WOM interrupt in INT_ENABLE (0x38)
+    writeRegister(MPU6500_ADDR, 0x38, 0x40); // Bit 6 = WOM_EN
+}
+
+void SensorManager::clearMpuInterrupt() {
+    if (!mpu_ok) return;
+    // Read INT_STATUS register (0x3A) to clear interrupt
+    readRegister(MPU6500_ADDR, 0x3A);
+}
