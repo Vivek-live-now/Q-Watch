@@ -18,6 +18,7 @@ public:
 
     void syncNtp();
     void setTimezone(const String& posix_tz);
+    void setTimezoneIdx(int idx);
 
     bool isTimeSet();
     NtpSyncStatus getSyncStatus() const { return sync_status; }

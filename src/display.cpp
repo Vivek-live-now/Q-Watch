@@ -28,6 +28,7 @@ const uint8_t battery_icon[] U8X8_PROGMEM = {
 void DisplayManager::begin() {
     SPI.begin(OLED_CLK, -1, OLED_MOSI, OLED_CS);
     oled.begin();
+    applyDisplaySettings();
     oled.clearBuffer();
     oled.sendBuffer();
 }
@@ -111,8 +112,11 @@ void DisplayManager::drawAppSettings() {
         drawWifiScanScreen();
     } else if (sub == SettingsSubmenu::FILE_SERVER_DETAILS) {
         drawFileServerDetailsScreen();
+    } else if (sub == SettingsSubmenu::TIME_SYNC_STATUS) {
+        drawTimeSyncStatusScreen();
     } else if (sub == SettingsSubmenu::TIME) {
-        String vals[4] = {
+        String vals[5] = {
+            "",
             "",
             s.auto_sync ? "ON" : "OFF",
             TIMEZONE_OPTIONS[s.timezone_idx],
@@ -120,15 +124,16 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("TIME", ui.time_items, vals, UICore::TIME_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::POWER) {
-        String vals[3] = {
-            TIMEOUT_OPTIONS[s.display_timeout_idx],
-            TIMEOUT_OPTIONS[s.sleep_time_idx],
+        String vals[4] = {
+            DISPLAY_TIMEOUT_OPTIONS[s.display_timeout_idx],
+            SLEEP_TIMEOUT_OPTIONS[s.sleep_time_idx],
+            WIFI_AUTO_OFF_OPTIONS[s.wifi_auto_off_idx],
             s.low_power ? "ON" : "OFF"
         };
         drawSettingsMenuWithValues("POWER", ui.power_items, vals, UICore::POWER_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SUB_DISPLAY) {
         String vals[3] = {
-            String(s.contrast) + "%",
+            CONTRAST_OPTIONS[s.contrast_idx],
             s.invert_display ? "ON" : "OFF",
             UI_OPTIONS_LIST[s.ui_option_idx]
         };
@@ -991,4 +996,64 @@ void DisplayManager::drawFileServerDetailsScreen() {
     oled.drawStr(2, 34, stStr.c_str());
     oled.drawStr(2, 46, urlStr.c_str());
     oled.drawStr(2, 58, filesStr.c_str());
+}
+
+void DisplayManager::drawTimeSyncStatusScreen() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "SYNC STATUS");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_6x10_tr);
+
+    NtpSyncStatus status = qclock.getSyncStatus();
+    String stStr = "Status: ";
+    switch (status) {
+        case NtpSyncStatus::IDLE: stStr += "IDLE"; break;
+        case NtpSyncStatus::SYNCING: stStr += "SYNCING..."; break;
+        case NtpSyncStatus::SUCCESS: stStr += "SUCCESS"; break;
+        case NtpSyncStatus::FAILED: stStr += "FAILED"; break;
+    }
+
+    uint32_t last_sync = qclock.getLastSyncTime();
+    String lastStr = "Last  : ";
+    if (last_sync == 0) {
+        lastStr += "Never";
+    } else {
+        uint32_t ago_sec = (millis() - last_sync) / 1000;
+        if (ago_sec < 60) lastStr += String(ago_sec) + "s ago";
+        else if (ago_sec < 3600) lastStr += String(ago_sec / 60) + "m ago";
+        else lastStr += String(ago_sec / 3600) + "h ago";
+    }
+
+    String timeStr = "Time  : " + qclock.getTimeStr();
+    String wifiStr = "Wi-Fi : " + String(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "OFFLINE");
+
+    oled.drawStr(2, 22, stStr.c_str());
+    oled.drawStr(2, 34, lastStr.c_str());
+    oled.drawStr(2, 46, timeStr.c_str());
+    oled.drawStr(2, 58, wifiStr.c_str());
+}
+
+void DisplayManager::applyDisplaySettings() {
+    SettingsData& s = settingsManager.get();
+
+    // Contrast Presets: 0: 25% (64), 1: 50% (128), 2: 75% (192), 3: 100% (255)
+    uint8_t contrast_val = 255;
+    if (s.contrast_idx == 0) contrast_val = 64;
+    else if (s.contrast_idx == 1) contrast_val = 128;
+    else if (s.contrast_idx == 2) contrast_val = 192;
+    else contrast_val = 255;
+
+    oled.setContrast(contrast_val);
+
+    // Display Inversion
+    if (s.invert_display) {
+        oled.sendF("c", 0xA7); // SH1106 Inverse Display
+    } else {
+        oled.sendF("c", 0xA6); // SH1106 Normal Display
+    }
+}
+
+void DisplayManager::setPowerSave(bool enable) {
+    oled.setPowerSave(enable ? 1 : 0);
 }

@@ -1,3 +1,4 @@
+#include "display.h"
 #include "ui_core.h"
 #include "sensors.h"
 #include "button_manager.h"
@@ -32,6 +33,9 @@ UICore::UICore() :
     fm_scroll_offset(0),
     fm_entry_count(0),
     fm_entries(nullptr),
+    last_activity_time(millis()),
+    display_off(false),
+    just_woke_display(false),
     needs_redraw(true) {
     toast_msg[0] = '\0';
 }
@@ -59,6 +63,44 @@ void UICore::openKeyboard(const String& initial_text, const String& title, Keybo
 }
 
 void UICore::loop() {
+    // Check user button activity to keep awake or wake display
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    bool any_button = (up_evt != BTN_EVT_NONE || sel_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE);
+
+    if (any_button) {
+        if (display_off) {
+            display_off = false;
+            displayManager.setPowerSave(false);
+            last_activity_time = millis();
+            needs_redraw = true;
+            return; // Consume first button press to wake display
+        }
+        last_activity_time = millis();
+    }
+
+    // Power timeouts check
+    SettingsData& s = settingsManager.get();
+
+    // 1. Display Timeout
+    if (!display_off && s.display_timeout_idx < 4) {
+        uint32_t disp_timeouts_ms[] = {10000, 30000, 60000, 300000};
+        if (millis() - last_activity_time >= disp_timeouts_ms[s.display_timeout_idx]) {
+            display_off = true;
+            displayManager.setPowerSave(true);
+        }
+    }
+
+    // 2. Sleep Timeout
+    if (s.sleep_time_idx > 0 && s.sleep_time_idx < 5) {
+        uint32_t sleep_timeouts_ms[] = {0, 60000, 300000, 900000, 1800000};
+        if (millis() - last_activity_time >= sleep_timeouts_ms[s.sleep_time_idx]) {
+            enterDeepSleep();
+        }
+    }
+
     if (toast_end_time > 0 && millis() > toast_end_time) {
         toast_msg[0] = '\0';
         toast_end_time = 0;
@@ -203,6 +245,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::WIFI_SCAN: handleWifiScanInput(); break;
         case SettingsSubmenu::FILE_SERVER_DETAILS: handleFileServerDetailsInput(); break;
         case SettingsSubmenu::TIME: handleTimeInput(); break;
+        case SettingsSubmenu::TIME_SYNC_STATUS: handleTimeSyncStatusInput(); break;
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
         case SettingsSubmenu::SENSORS: handleSensorsInput(); break;
@@ -418,12 +461,15 @@ void UICore::handleTimeInput() {
                 showToast("[NO WI-FI]", 1500);
             }
         } else if (settings_selection == 1) {
+            settings_submenu = SettingsSubmenu::TIME_SYNC_STATUS;
+        } else if (settings_selection == 2) {
             s.auto_sync = !s.auto_sync;
             settingsManager.save();
-        } else if (settings_selection == 2) {
+        } else if (settings_selection == 3) {
             s.timezone_idx = (s.timezone_idx + 1) % TIMEZONE_OPTION_COUNT;
             settingsManager.save();
-        } else if (settings_selection == 3) {
+            qclock.setTimezoneIdx(s.timezone_idx);
+        } else if (settings_selection == 4) {
             s.format_24hr = !s.format_24hr;
             settingsManager.save();
         }
@@ -437,8 +483,21 @@ void UICore::handleTimeInput() {
     }
 }
 
+void UICore::handleTimeSyncStatusInput() {
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    if (sel_evt == BTN_EVT_SHORT_PRESS || sel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        settings_submenu = SettingsSubmenu::TIME;
+        settings_selection = 1;
+        settings_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
 void UICore::handlePowerInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
         settings_selection--;
         if (settings_selection < 0) settings_selection = 0;
@@ -447,7 +506,6 @@ void UICore::handlePowerInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= POWER_ITEM_COUNT) settings_selection = POWER_ITEM_COUNT - 1;
@@ -456,17 +514,19 @@ void UICore::handlePowerInput() {
         needs_redraw = true;
     }
 
-    ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
     if (sel_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
-            s.display_timeout_idx = (s.display_timeout_idx + 1) % TIMEOUT_OPTION_COUNT;
+            s.display_timeout_idx = (s.display_timeout_idx + 1) % DISPLAY_TIMEOUT_COUNT;
             settingsManager.save();
         } else if (settings_selection == 1) {
-            s.sleep_time_idx = (s.sleep_time_idx + 1) % TIMEOUT_OPTION_COUNT;
+            s.sleep_time_idx = (s.sleep_time_idx + 1) % SLEEP_TIMEOUT_COUNT;
             settingsManager.save();
         } else if (settings_selection == 2) {
+            s.wifi_auto_off_idx = (s.wifi_auto_off_idx + 1) % WIFI_AUTO_OFF_COUNT;
+            settingsManager.save();
+        } else if (settings_selection == 3) {
             s.low_power = !s.low_power;
             settingsManager.save();
         }
@@ -504,12 +564,13 @@ void UICore::handleDisplayInput() {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
-            s.contrast += 25;
-            if (s.contrast > 100) s.contrast = 25;
+            s.contrast_idx = (s.contrast_idx + 1) % CONTRAST_OPTION_COUNT;
             settingsManager.save();
+            displayManager.applyDisplaySettings();
         } else if (settings_selection == 1) {
             s.invert_display = !s.invert_display;
             settingsManager.save();
+            displayManager.applyDisplaySettings();
         } else if (settings_selection == 2) {
             s.ui_option_idx = (s.ui_option_idx + 1) % UI_OPTIONS_COUNT;
             settingsManager.save();
@@ -949,6 +1010,16 @@ void UICore::handleFileServerDetailsInput() {
         settings_submenu = SettingsSubmenu::CONNECTIVITY;
         settings_selection = 3;
         settings_scroll_offset = 1;
+        needs_redraw = true;
+    }
+}
+
+void UICore::registerActivity() {
+    last_activity_time = millis();
+    if (display_off) {
+        display_off = false;
+        just_woke_display = true;
+        displayManager.setPowerSave(false);
         needs_redraw = true;
     }
 }

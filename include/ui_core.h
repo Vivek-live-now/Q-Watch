@@ -17,6 +17,7 @@ enum class SettingsSubmenu {
     SUB_DISPLAY,
     SENSORS,
     SYSTEM,
+    TIME_SYNC_STATUS,
     RESET_CONFIRM
 };
 
@@ -140,14 +141,14 @@ public:
         "Wi-Fi", "SCAN NETWORKS", "BLE", "FILE SERVER"
     };
 
-    static const int TIME_ITEM_COUNT = 4;
+    static const int TIME_ITEM_COUNT = 5;
     const char* time_items[TIME_ITEM_COUNT] = {
-        "SYNC NOW", "AUTO SYNC", "TIMEZONE", "24 HOUR"
+        "SYNC NOW", "SYNC STATUS", "AUTO SYNC", "TIMEZONE", "24 HOUR"
     };
 
-    static const int POWER_ITEM_COUNT = 3;
+    static const int POWER_ITEM_COUNT = 4;
     const char* power_items[POWER_ITEM_COUNT] = {
-        "DISPLAY TIMEOUT", "SLEEP TIME", "LOW POWER"
+        "DISPLAY TIMEOUT", "SLEEP TIME", "WIFI AUTO-OFF", "LOW POWER"
     };
 
     static const int DISPLAY_ITEM_COUNT = 3;
@@ -174,8 +175,13 @@ public:
 
     static String pending_selected_ssid;
 
+public:
+    uint32_t getLastActivityTime() const { return last_activity_time; }
 private:
     UIState current_state;
+    uint32_t last_activity_time;
+    bool display_off;
+    bool just_woke_display;
     UIState return_state;
     int menu_selection;
     int menu_scroll_offset;
@@ -219,6 +225,7 @@ private:
     void handleSensorsInput();
     void handleSystemInput();
     void handleResetConfirmInput();
+    void handleTimeSyncStatusInput();
 
     String fm_current_path;
     int fm_selection;
@@ -233,6 +240,8 @@ private:
     void processNavUp();
     void processNavDown();
     void enterDeepSleep();
+    bool isDisplayOff() const { return display_off; }
+    void registerActivity();
 };
 
 extern UICore ui;

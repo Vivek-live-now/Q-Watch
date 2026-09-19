@@ -57,8 +57,8 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 ### 2. I2C Sensors (Shared Bus)
 | Peripheral | Function | GPIO |
 | :--- | :--- | :--- |
-| BME280 / MPU-6500 / HMC5883L / MAX30100 | SDA | 15 |
-| BME280 / MPU-6500 / HMC5883L / MAX30100 | SCL | 16 |
+| BME280 / MPU-6500 / QMC5883P (HP5883) / MAX30102 | SDA | 15 |
+| BME280 / MPU-6500 / QMC5883P (HP5883) / MAX30102 | SCL | 16 |
 
 *Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
 
@@ -67,7 +67,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | :--- | :--- | :--- | :--- |
 | Button Up | INPUT_PULLUP | 39 | Reclaims JTAG MTCK |
 | Button Select / Wake | INPUT_PULLUP / RTC WAKE | 21 | Dual purpose: Normal SELECT input and Deep Sleep RTC Wake |
-| Button Down | INPUT_PULLUP | 41 | Reclaims JTAG MTDI |
+| Button Down | INPUT_PULLUP | 42 | Clean input pin |
 | Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
@@ -77,7 +77,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 ### 4. Available / Reserved Pins
 The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging.
 *   **GPIO 40:** Digital-only reserve pin.
-*   **GPIO 42:** Clean reserve pin.
+*   **GPIO 41:** Clean reserve pin.
 *   **GPIO 43:** Reserved (Hardware UART0 TX / Serial Debugging if USB CDC fails).
 *   **GPIO 44:** Reserved (Hardware UART0 RX / Serial Debugging if USB CDC fails).
 *   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*

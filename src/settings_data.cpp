@@ -44,8 +44,10 @@ void SettingsManager::load() {
         else if (key == "format_24hr") settings.format_24hr = (val == "1");
         else if (key == "display_timeout_idx") settings.display_timeout_idx = val.toInt();
         else if (key == "sleep_time_idx") settings.sleep_time_idx = val.toInt();
+        else if (key == "wifi_auto_off_idx") settings.wifi_auto_off_idx = val.toInt();
+        else if (key == "contrast_idx") settings.contrast_idx = val.toInt();
         else if (key == "low_power") settings.low_power = (val == "1");
-        else if (key == "contrast") settings.contrast = val.toInt();
+        else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
     }
@@ -61,8 +63,10 @@ void SettingsManager::save() {
     out += "format_24hr=" + String(settings.format_24hr ? "1" : "0") + "\n";
     out += "display_timeout_idx=" + String(settings.display_timeout_idx) + "\n";
     out += "sleep_time_idx=" + String(settings.sleep_time_idx) + "\n";
+    out += "wifi_auto_off_idx=" + String(settings.wifi_auto_off_idx) + "\n";
+    out += "contrast_idx=" + String(settings.contrast_idx) + "\n";
     out += "low_power=" + String(settings.low_power ? "1" : "0") + "\n";
-    out += "contrast=" + String(settings.contrast) + "\n";
+    out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";
 
