@@ -66,6 +66,10 @@ public:
     void loop();
 
     UIState getState() const { return current_state; }
+    int getWeatherPage() const { return weather_page; }
+    void setWeatherPage(int p) { weather_page = p; }
+    int getBmePage() const { return bme_page; }
+    void setBmePage(int p) { bme_page = p; }
     int getMenuSelection() const { return menu_selection; }
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
@@ -128,7 +132,7 @@ public:
     static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+        "MOTION", "IR REMOTE", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MAIN_ITEM_COUNT = 6;
@@ -183,6 +187,8 @@ private:
     bool display_off;
     bool just_woke_display;
     UIState return_state;
+    int bme_page;
+    int weather_page;
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
@@ -206,6 +212,8 @@ private:
 
     bool needs_redraw;
 
+    void handleBmeInput();
+    void handleWeatherInput();
     void handleHomeInput();
     void handleMainMenuInput();
     void handleSettingsMenuInput();

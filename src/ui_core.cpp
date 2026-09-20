@@ -1,3 +1,4 @@
+#include "weather.h"
 #include "display.h"
 #include "ui_core.h"
 #include "sensors.h"
@@ -40,9 +41,39 @@ UICore::UICore() :
     toast_msg[0] = '\0';
 }
 
+
 void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+        Serial.println("Woke up from deep sleep via TIMER for BME280 logging...");
+        sensors.begin();
+        sensors.logBmeSample();
+
+        // Re-arm timer and go back to sleep immediately without turning on display or WiFi
+        SettingsData& s = settingsManager.get();
+        uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
+        uint32_t interval_sec = intervals_sec[s.bme_interval_idx];
+
+        esp_sleep_enable_timer_wakeup((uint64_t)interval_sec * 1000000ULL);
+
+        // Keep GPIO21 and GPIO8 wake sources active
+        rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
+        rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
+        rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
+        rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+        uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
+        esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+
+        // Configure RTC timer wakeup for periodic sensor logging
+    SettingsData& sleep_s = settingsManager.get();
+    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
+    uint32_t sleep_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
+
+    esp_deep_sleep_start();
+
+    } else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+
         uint64_t status = esp_sleep_get_ext1_wakeup_status();
         if (status & (1ULL << BTN_CANCEL)) {
             Serial.println("Woke up from deep sleep via CANCEL button (GPIO21)!");
@@ -777,7 +808,14 @@ void UICore::enterDeepSleep() {
     uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
+    // Configure RTC timer wakeup for periodic sensor logging
+    SettingsData& sleep_s = settingsManager.get();
+    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
+    uint32_t sleep_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
+
     esp_deep_sleep_start();
+
 }
 
 void UICore::handleCompassInput() {
@@ -976,6 +1014,79 @@ void UICore::registerActivity() {
         display_off = false;
         just_woke_display = true;
         displayManager.setPowerSave(false);
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleBmeInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    // BME280 App has 5 Pages (0: Pressure, 1: Humidity, 2: Temp, 3: Altitude/Height, 4: Calibration/Info)
+    if (bme_page == 3) { // Page 4: Altitude / Relative Height
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            sensors.toggleHeightMeasurement();
+            needs_redraw = true;
+            return;
+        }
+    } else if (bme_page == 4) { // Page 5: Sensor Info & Calibration Options
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            sensors.resetReferencePressure();
+            showToast("[REF RESET]", 1500);
+            needs_redraw = true;
+            return;
+        }
+    }
+
+    // Page navigation via UP / DOWN
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        bme_page = (bme_page + 4) % 5;
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        bme_page = (bme_page + 1) % 5;
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleWeatherInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    // Page 6: Weather / Data Settings (Refresh & Logging Interval)
+    if (weather_page == 5) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            SettingsData& s = settingsManager.get();
+            s.bme_interval_idx = (s.bme_interval_idx + 1) % BME_INTERVAL_COUNT;
+            settingsManager.save();
+            showToast("[INTERVAL UPDATED]", 1200);
+            needs_redraw = true;
+            return;
+        }
+    } else if (weather_page == 1) { // Page 2: OWM data
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            weather.forceUpdate();
+            showToast("[FETCHING OWM...]", 1200);
+            needs_redraw = true;
+            return;
+        }
+    }
+
+    // Page Navigation via UP / DOWN
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        weather_page = (weather_page + 5) % 6;
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        weather_page = (weather_page + 1) % 6;
         needs_redraw = true;
     }
 }

@@ -143,3 +143,13 @@ size_t FileManager::freeSpace() {
 size_t FileManager::totalSpace() {
     return LittleFS.totalBytes();
 }
+
+size_t FileManager::fileSize(const String& path) {
+    String p = normalizePath(path);
+    if (!LittleFS.exists(p)) return 0;
+    File f = LittleFS.open(p, "r");
+    if (!f) return 0;
+    size_t s = f.size();
+    f.close();
+    return s;
+}

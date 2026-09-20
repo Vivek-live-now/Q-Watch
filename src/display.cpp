@@ -47,7 +47,7 @@ void DisplayManager::update() {
             case UIState::APP_HEALTH: drawAppHealth(); break;
             case UIState::APP_MOTION: drawAppMotion(); break;
             case UIState::APP_IR: drawAppIR(); break;
-            case UIState::APP_ALTIMETER: drawAppAltimeter(); break;
+            case UIState::APP_ALTIMETER: drawAppBme(); break;
             case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_AUDIO: drawAppAudio(); break;
@@ -602,27 +602,7 @@ void DisplayManager::drawAppLED() {
     oled.drawBox(123, scroll_y, 3, 10);
 }
 
-void DisplayManager::drawAppAltimeter() {
-    oled.clearBuffer();
-    drawTopStatusBar();
 
-    EnvironmentData env = sensors.getEnvData();
-
-    oled.setFont(u8g2_font_logisoso16_tr);
-    char buf[32];
-    sprintf(buf, "%.1f m", env.altitude);
-    int w = oled.getStrWidth(buf);
-    oled.drawStr(64 - w/2, 34, buf);
-
-    oled.setFont(u8g2_font_4x6_tr);
-    sprintf(buf, "PRESS: %.1f hPa", env.pressure);
-    oled.drawStr(2, 48, buf);
-
-    sprintf(buf, "TEMP: %.1f C", env.temperature);
-    oled.drawStr(2, 56, buf);
-
-    oled.drawStr(70, 56, "[ANY] ZERO");
-}
 
 void DisplayManager::drawAppAudio() {
     drawTopStatusBar();
@@ -1058,4 +1038,200 @@ void DisplayManager::applyDisplaySettings() {
 
 void DisplayManager::setPowerSave(bool enable) {
     oled.setPowerSave(enable ? 1 : 0);
+}
+
+static void drawBmeGraph(U8G2& oled, const float* data, int count, float min_val, float max_val, const char* unit_str) {
+    int gx = 4;
+    int gy = 58;
+    int gw = 120;
+    int gh = 24;
+
+    oled.drawFrame(gx, gy - gh, gw, gh);
+
+    if (count < 2) {
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(gx + 30, gy - 10, "RECORDING HISTORY...");
+        return;
+    }
+
+    if (max_val - min_val < 0.1f) {
+        max_val += 1.0f;
+        min_val -= 1.0f;
+    }
+
+    int prev_x = gx + 1;
+    int prev_y = gy - 1 - (int)(((data[0] - min_val) / (max_val - min_val)) * (gh - 2));
+
+    for (int i = 1; i < count; i++) {
+        int cx = gx + 1 + (i * (gw - 2)) / (count - 1);
+        int cy = gy - 1 - (int)(((data[i] - min_val) / (max_val - min_val)) * (gh - 2));
+        if (cy < gy - gh + 1) cy = gy - gh + 1;
+        if (cy > gy - 1) cy = gy - 1;
+
+        oled.drawLine(prev_x, prev_y, cx, cy);
+        prev_x = cx;
+        prev_y = cy;
+    }
+
+    oled.setFont(u8g2_font_4x6_tr);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "MAX:%.1f", max_val);
+    oled.drawStr(gx + 2, gy - gh + 6, buf);
+    snprintf(buf, sizeof(buf), "MIN:%.1f", min_val);
+    oled.drawStr(gx + 75, gy - gh + 6, buf);
+}
+
+void DisplayManager::drawAppBme() {
+    drawTopStatusBar();
+    int page = ui.getBmePage();
+    switch (page) {
+        case 0: drawBmePage1Pressure(); break;
+        case 1: drawBmePage2Humidity(); break;
+        case 2: drawBmePage3Temperature(); break;
+        case 3: drawBmePage4Altitude(); break;
+        case 4: drawBmePage5Info(); break;
+    }
+
+    // Page indicator footer (1/5 ... 5/5)
+    oled.setFont(u8g2_font_4x6_tr);
+    char pg[8];
+    snprintf(pg, sizeof(pg), "%d/5", page + 1);
+    oled.drawStr(112, 63, pg);
+}
+
+void DisplayManager::drawBmePage1Pressure() {
+    EnvironmentData env = sensors.getEnvData();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(2, 17, "PRESSURE");
+
+    oled.setFont(u8g2_font_ncenB12_tr);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.1f hPa", env.pressure);
+    oled.drawStr(2, 31, buf);
+
+    // Fetch history
+    BMEHistoryEntry history[64];
+    bool has_h = sensors.getBmeHistory(history, 64);
+    float press_data[64];
+    int count = 0;
+    float min_val = 2000.0f, max_val = 0.0f;
+
+    if (has_h) {
+        int total = sensors.getBmeHistoryCount();
+        count = (total < 64) ? total : 64;
+        for (int i = 0; i < count; i++) {
+            press_data[i] = history[i].press_x10 / 10.0f;
+            if (press_data[i] < min_val) min_val = press_data[i];
+            if (press_data[i] > max_val) max_val = press_data[i];
+        }
+    }
+
+    drawBmeGraph(oled, press_data, count, min_val, max_val, "hPa");
+}
+
+void DisplayManager::drawBmePage2Humidity() {
+    EnvironmentData env = sensors.getEnvData();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(2, 17, "HUMIDITY");
+
+    oled.setFont(u8g2_font_ncenB12_tr);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.1f %%°RH", env.humidity);
+    oled.drawStr(2, 31, buf);
+
+    BMEHistoryEntry history[64];
+    bool has_h = sensors.getBmeHistory(history, 64);
+    float hum_data[64];
+    int count = 0;
+    float min_val = 100.0f, max_val = 0.0f;
+
+    if (has_h) {
+        int total = sensors.getBmeHistoryCount();
+        count = (total < 64) ? total : 64;
+        for (int i = 0; i < count; i++) {
+            hum_data[i] = history[i].hum_x10 / 10.0f;
+            if (hum_data[i] < min_val) min_val = hum_data[i];
+            if (hum_data[i] > max_val) max_val = hum_data[i];
+        }
+    }
+
+    drawBmeGraph(oled, hum_data, count, min_val, max_val, "%%");
+}
+
+void DisplayManager::drawBmePage3Temperature() {
+    EnvironmentData env = sensors.getEnvData();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(2, 17, "TEMPERATURE");
+
+    oled.setFont(u8g2_font_ncenB12_tr);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.1f °C", env.temperature);
+    oled.drawStr(2, 31, buf);
+
+    BMEHistoryEntry history[64];
+    bool has_h = sensors.getBmeHistory(history, 64);
+    float temp_data[64];
+    int count = 0;
+    float min_val = 100.0f, max_val = -50.0f;
+
+    if (has_h) {
+        int total = sensors.getBmeHistoryCount();
+        count = (total < 64) ? total : 64;
+        for (int i = 0; i < count; i++) {
+            temp_data[i] = history[i].temp_x10 / 10.0f;
+            if (temp_data[i] < min_val) min_val = temp_data[i];
+            if (temp_data[i] > max_val) max_val = temp_data[i];
+        }
+    }
+
+    drawBmeGraph(oled, temp_data, count, min_val, max_val, "°C");
+}
+
+void DisplayManager::drawBmePage4Altitude() {
+    EnvironmentData env = sensors.getEnvData();
+    BmeHeightState st = sensors.getHeightState();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(2, 17, "RELATIVE HEIGHT");
+
+    oled.setFont(u8g2_font_logisoso16_tr);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.1f m", env.altitude);
+    int w = oled.getStrWidth(buf);
+    oled.drawStr(64 - w/2, 36, buf);
+
+    oled.setFont(u8g2_font_5x7_tr);
+    if (st == BmeHeightState::OFF) {
+        oled.drawStr(10, 52, "[OK]: SET ZERO / REF");
+    } else if (st == BmeHeightState::MEASURING) {
+        oled.drawStr(10, 52, "[MEASURING] OK:PAUSE");
+    } else if (st == BmeHeightState::PAUSED) {
+        oled.drawStr(10, 52, "[PAUSED]    OK:RESUME");
+    }
+}
+
+void DisplayManager::drawBmePage5Info() {
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(2, 14, "BME280 SENSOR DIAGNOSTIC");
+
+    bool ok = sensors.isBmeOk();
+    oled.drawStr(2, 22, ("STATUS: " + String(ok ? "DETECTED" : "NOT FOUND")).c_str());
+    oled.drawStr(2, 30, "ADDR  : 0x76 | ID: 0x60");
+
+    EnvironmentData env = sensors.getEnvData();
+    char buf[64];
+    snprintf(buf, sizeof(buf), "T:%.1fC P:%.1fhPa H:%.0f%%", env.temperature, env.pressure, env.humidity);
+    oled.drawStr(2, 38, buf);
+
+    SettingsData& s = settingsManager.get();
+    snprintf(buf, sizeof(buf), "REF:%.1fhPa INT:%s", sensors.getReferencePressure(), BME_INTERVAL_OPTIONS[s.bme_interval_idx]);
+    oled.drawStr(2, 46, buf);
+
+    uint32_t last_t = sensors.getLastBmeReadingTime();
+    uint32_t age_sec = (millis() - last_t) / 1000;
+    snprintf(buf, sizeof(buf), "AGE:%us | [OK] RESET REF", age_sec);
+    oled.drawStr(2, 54, buf);
 }

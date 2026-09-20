@@ -6,6 +6,20 @@
 #include <Preferences.h>
 #include <Adafruit_BME280.h>
 
+
+struct BMEHistoryEntry {
+    uint32_t timestamp; // Unix timestamp or uptime in sec
+    int16_t temp_x10;   // Temp * 10
+    uint16_t press_x10; // Pressure * 10
+    uint16_t hum_x10;   // Humidity * 10
+};
+
+enum class BmeHeightState {
+    OFF,
+    MEASURING,
+    PAUSED
+};
+
 struct EnvironmentData {
     float temperature;
     float humidity;
@@ -117,6 +131,22 @@ public:
     void zeroAltitude();
     bool isBmeOk() const { return bme_ok; }
 
+    // BME280 Extensions
+    bool verifyBmeChip();
+    void updateBmeHistory();
+    void logBmeSample();
+    int getBmeHistoryCount() const { return history_count; }
+    bool getBmeHistory(BMEHistoryEntry* buffer, int max_entries) const;
+
+    BmeHeightState getHeightState() const { return height_state; }
+    void toggleHeightMeasurement();
+    void resetHeightMeasurement();
+
+    uint32_t getLastBmeReadingTime() const { return last_bme_update; }
+    float getReferencePressure() const { return reference_pressure; }
+    void resetReferencePressure();
+
+
 private:
     bool mpu_ok;
     bool mag_ok;
@@ -126,7 +156,12 @@ private:
     EnvironmentData env_data;
     float reference_pressure;
     uint32_t last_bme_update;
+    uint32_t last_bme_log;
+    BmeHeightState height_state;
+    int history_count;
+    static const int MAX_BME_HISTORY = 288;
     void readBme();
+
 
     uint32_t last_fusion_update;
     uint32_t last_mag_update;

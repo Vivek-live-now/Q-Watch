@@ -42,6 +42,7 @@ public:
     // Storage info
     size_t freeSpace();
     size_t totalSpace();
+    size_t fileSize(const String& path);
 
 private:
     String normalizePath(const String& path);
