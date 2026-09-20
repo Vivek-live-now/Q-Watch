@@ -319,8 +319,7 @@ void DisplayManager::drawAppCompass() {
     int r = 50;
 
     for (int i = 0; i < 360; i += 15) {
-        float angle = (i - heading - 90) * PI / 180.0;
-        // Performance Optimization: Use cosf/sinf for hardware FPU calculations
+        float angle = (i - heading - 90) * PI / 180.0f;
         int x1 = cx + (r * cosf(angle));
         int y1 = cy + (r * sinf(angle));
 
