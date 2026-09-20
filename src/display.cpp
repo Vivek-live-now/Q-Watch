@@ -320,26 +320,27 @@ void DisplayManager::drawAppCompass() {
 
     for (int i = 0; i < 360; i += 15) {
         float angle = (i - heading - 90) * PI / 180.0;
-        int x1 = cx + (r * cos(angle));
-        int y1 = cy + (r * sin(angle));
+        // Performance Optimization: Use cosf/sinf for hardware FPU calculations
+        int x1 = cx + (r * cosf(angle));
+        int y1 = cy + (r * sinf(angle));
 
         if (y1 <= cy + 5) {
             int len = (i % 90 == 0) ? 6 : (i % 30 == 0 ? 4 : 2);
-            int x2 = cx + ((r - len) * cos(angle));
-            int y2 = cy + ((r - len) * sin(angle));
+            int x2 = cx + ((r - len) * cosf(angle));
+            int y2 = cy + ((r - len) * sinf(angle));
             oled.drawLine(x1, y1, x2, y2);
 
             if (i % 90 == 0) {
                 const char* lbl = (i == 0) ? "N" : (i == 90) ? "E" : (i == 180) ? "S" : "W";
-                int tx = cx + ((r - 12) * cos(angle));
-                int ty = cy + ((r - 12) * sin(angle));
+                int tx = cx + ((r - 12) * cosf(angle));
+                int ty = cy + ((r - 12) * sinf(angle));
                 oled.setFont(u8g2_font_5x7_tr);
                 int sw = oled.getStrWidth(lbl);
                 oled.drawStr(tx - sw/2, ty + 3, lbl);
             } else if (i % 30 == 0) {
                 String lbl = String(i);
-                int tx = cx + ((r - 12) * cos(angle));
-                int ty = cy + ((r - 12) * sin(angle));
+                int tx = cx + ((r - 12) * cosf(angle));
+                int ty = cy + ((r - 12) * sinf(angle));
                 oled.setFont(u8g2_font_4x6_tr);
                 int sw = oled.getStrWidth(lbl.c_str());
                 oled.drawStr(tx - sw/2, ty + 3, lbl.c_str());
@@ -368,7 +369,8 @@ void DisplayManager::drawAppCompass() {
 
 void DisplayManager::drawAppCompassMetrics() {
     CalibratedSensorData data = sensors.getCalData();
-    float magTotal = sqrt(data.mx*data.mx + data.my*data.my + data.mz*data.mz);
+    // Performance Optimization: Use sqrtf for single-precision hardware FPU execution
+    float magTotal = sqrtf(data.mx*data.mx + data.my*data.my + data.mz*data.mz);
 
     mag_history[mag_history_idx] = magTotal;
     mag_history_idx = (mag_history_idx + 1) % 64;
@@ -483,7 +485,8 @@ void DisplayManager::drawAppMotionLevel() {
     int by = cy + (r_pitch / scale) * (r - 4);
 
     float dx = bx - cx; float dy = by - cy;
-    float dist = sqrt(dx*dx + dy*dy);
+    // Performance Optimization: Use sqrtf for single-precision hardware FPU execution
+    float dist = sqrtf(dx*dx + dy*dy);
     if (dist > (r - 4)) {
         bx = cx + (dx / dist) * (r - 4);
         by = cy + (dy / dist) * (r - 4);
