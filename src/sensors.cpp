@@ -1,3 +1,5 @@
+#include "file_manager.h"
+#include "settings_data.h"
 #include "sensors.h"
 #include "hw_config.h"
 #include <math.h>
@@ -20,7 +22,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -171,6 +173,23 @@ void SensorManager::begin() {
     Wire.setClock(400000); // 400kHz Fast mode
     Wire.setTimeOut(10);   // Strict 10ms timeout to prevent watch freezing on I2C fault
     Serial.println("Initializing Sensors...");
+    // BME280 Init & Verification
+    Wire.beginTransmission(0x76);
+    if (Wire.endTransmission() == 0) {
+        if (verifyBmeChip()) {
+            if (bme.begin(0x76, &Wire)) {
+                bme_ok = true;
+                Serial.println("BME280 Ready at 0x76 (Chip ID: 0x60).");
+                readBme();
+            } else {
+                Serial.println("BME280 begin failed.");
+            }
+        } else {
+            Serial.println("BME280 Chip ID mismatch.");
+        }
+    } else {
+        Serial.println("BME280 not detected at 0x76.");
+    }
 
     // MPU-6500 Init
     Wire.beginTransmission(MPU6500_ADDR);
@@ -219,21 +238,109 @@ void SensorManager::calibrateGyro() {
 }
 
 
+
+bool SensorManager::verifyBmeChip() {
+    uint8_t chip_id = readRegister(0x76, 0xD0);
+    return (chip_id == 0x60);
+}
+
 void SensorManager::readBme() {
     if (!bme_ok) return;
 
     env_data.temperature = bme.readTemperature();
     env_data.humidity = bme.readHumidity();
     env_data.pressure = bme.readPressure() / 100.0F;
-    env_data.altitude = bme.readAltitude(reference_pressure);
+
+    if (height_state == BmeHeightState::MEASURING || height_state == BmeHeightState::PAUSED) {
+        env_data.altitude = bme.readAltitude(reference_pressure);
+    } else {
+        env_data.altitude = 0.0f;
+    }
 }
 
 void SensorManager::zeroAltitude() {
     if (!bme_ok) return;
-    // Set current pressure as the 0 reference
     reference_pressure = bme.readPressure() / 100.0F;
     env_data.altitude = 0.0f;
+    height_state = BmeHeightState::MEASURING;
 }
+
+void SensorManager::toggleHeightMeasurement() {
+    if (height_state == BmeHeightState::OFF) {
+        zeroAltitude();
+    } else if (height_state == BmeHeightState::MEASURING) {
+        height_state = BmeHeightState::PAUSED;
+    } else if (height_state == BmeHeightState::PAUSED) {
+        height_state = BmeHeightState::MEASURING;
+    }
+}
+
+void SensorManager::resetHeightMeasurement() {
+    height_state = BmeHeightState::OFF;
+    env_data.altitude = 0.0f;
+}
+
+void SensorManager::resetReferencePressure() {
+    reference_pressure = 1013.25f;
+    resetHeightMeasurement();
+}
+
+void SensorManager::logBmeSample() {
+    if (!bme_ok) return;
+
+    BMEHistoryEntry entry;
+    entry.timestamp = millis() / 1000;
+    entry.temp_x10 = (int16_t)(env_data.temperature * 10.0f);
+    entry.press_x10 = (uint16_t)(env_data.pressure * 10.0f);
+    entry.hum_x10 = (uint16_t)(env_data.humidity * 10.0f);
+
+    fileManager.append("/bme_history.bin", (const uint8_t*)&entry, sizeof(BMEHistoryEntry));
+
+    // Limit binary history file to MAX_BME_HISTORY (288 entries * 10 bytes = 2880 bytes)
+    size_t sz = fileManager.fileSize("/bme_history.bin");
+    if (sz > (size_t)(MAX_BME_HISTORY * sizeof(BMEHistoryEntry))) {
+        // Read buffer, trim oldest, write back
+        int total = sz / sizeof(BMEHistoryEntry);
+        BMEHistoryEntry* buf = new BMEHistoryEntry[total];
+        fileManager.read("/bme_history.bin", (uint8_t*)buf, sz);
+
+        int keep = MAX_BME_HISTORY;
+        fileManager.write("/bme_history.bin", (const uint8_t*)&buf[total - keep], keep * sizeof(BMEHistoryEntry));
+        delete[] buf;
+    }
+
+    last_bme_log = millis();
+}
+
+bool SensorManager::getBmeHistory(BMEHistoryEntry* buffer, int max_entries) const {
+    if (!fileManager.exists("/bme_history.bin")) return false;
+    size_t sz = fileManager.fileSize("/bme_history.bin");
+    int total = sz / sizeof(BMEHistoryEntry);
+    if (total <= 0) return false;
+
+    int to_read = (total < max_entries) ? total : max_entries;
+    size_t offset_bytes = (total - to_read) * sizeof(BMEHistoryEntry);
+
+    // Read full or tail
+    BMEHistoryEntry* full_buf = new BMEHistoryEntry[total];
+    fileManager.read("/bme_history.bin", (uint8_t*)full_buf, sz);
+    memcpy(buffer, &full_buf[total - to_read], to_read * sizeof(BMEHistoryEntry));
+    delete[] full_buf;
+    return true;
+}
+
+void SensorManager::updateBmeHistory() {
+    if (!bme_ok) return;
+
+    SettingsData& s = settingsManager.get();
+    uint32_t intervals_ms[] = {300000, 600000, 900000, 1800000, 3600000}; // 5m, 10m, 15m, 30m, 1h
+    uint32_t interval = intervals_ms[s.bme_interval_idx];
+
+    if (last_bme_log == 0 || (millis() - last_bme_log >= interval)) {
+        logBmeSample();
+    }
+}
+
 
 void SensorManager::readMpu() {
     if (!mpu_ok) return;
@@ -524,6 +631,7 @@ void SensorManager::loop() {
 
         if (now - last_bme_update >= 1000) {
             readBme();
+            updateBmeHistory();
             last_bme_update = now;
         }
 

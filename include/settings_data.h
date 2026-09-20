@@ -24,6 +24,9 @@ struct SettingsData {
     int contrast_idx = 3;         // 0: 25%, 1: 50%, 2: 75%, 3: 100%
     bool invert_display = false;
     int ui_option_idx = 0;
+
+    // BME280 / WEATHER SENSORS
+    int bme_interval_idx = 0;     // 0: 5m, 1: 10m, 2: 15m, 3: 30m, 4: 1h
 };
 
 // Option labels lists
@@ -35,6 +38,9 @@ static const int SLEEP_TIMEOUT_COUNT = 5;
 
 static const char* const WIFI_AUTO_OFF_OPTIONS[] = {"OFF", "After Sync", "When Idle"};
 static const int WIFI_AUTO_OFF_COUNT = 3;
+
+static const char* const BME_INTERVAL_OPTIONS[] = {"5 min", "10 min", "15 min", "30 min", "1 hour"};
+static const int BME_INTERVAL_COUNT = 5;
 
 static const char* const CONTRAST_OPTIONS[] = {"25%", "50%", "75%", "100%"};
 static const int CONTRAST_OPTION_COUNT = 4;

@@ -50,6 +50,7 @@ void SettingsManager::load() {
         else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
+        else if (key == "bme_interval_idx") settings.bme_interval_idx = val.toInt();
     }
 }
 

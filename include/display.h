@@ -19,6 +19,12 @@ private:
     void drawAppHome();
     void drawAppClock();
     void drawAppWeather();
+    void drawWeatherPage1Local();
+    void drawWeatherPage2Owm();
+    void drawWeatherPage3TempGraph();
+    void drawWeatherPage4PressGraph();
+    void drawWeatherPage5HumGraph();
+    void drawWeatherPage6Settings();
     void drawAppCompass();
     void drawAppCompassMetrics();
 
@@ -36,7 +42,12 @@ private:
     void drawAppMotionData();
     void drawAppMotionSettings();
     void drawAppIR();
-    void drawAppAltimeter();
+    void drawAppBme();
+    void drawBmePage1Pressure();
+    void drawBmePage2Humidity();
+    void drawBmePage3Temperature();
+    void drawBmePage4Altitude();
+    void drawBmePage5Info();
     void drawAppBattery();
     void drawAppLED();
     void drawAppAudio();
