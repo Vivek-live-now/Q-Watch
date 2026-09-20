@@ -135,8 +135,9 @@ void SensorManager::calibrateAccel() {
 
 void SensorManager::zeroLevel() {
     // Current uncompensated euler angles (raw from madgwick)
-    float raw_roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    float raw_pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+    // Performance Optimization: Use single-precision float math functions (atan2f/asinf) for hardware ESP32-S3 FPU acceleration
+    float raw_roll  = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
+    float raw_pitch = asinf(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
 
     offsets.roll_offset = raw_roll;
     offsets.pitch_offset = raw_pitch;
@@ -352,10 +353,11 @@ void SensorManager::updateMadgwick(float dt) {
 
     if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
-        recipNorm = 1.0f / sqrt(ax * ax + ay * ay + az * az);
+        // Performance Optimization: Use sqrtf to execute directly on Xtensa LX7 FPU avoiding double precision emulation
+        recipNorm = 1.0f / sqrtf(ax * ax + ay * ay + az * az);
         ax *= recipNorm; ay *= recipNorm; az *= recipNorm;
 
-        recipNorm = 1.0f / sqrt(mx * mx + my * my + mz * mz);
+        recipNorm = 1.0f / sqrtf(mx * mx + my * my + mz * mz);
         mx *= recipNorm; my *= recipNorm; mz *= recipNorm;
 
         _2q0mx = 2.0f * q0 * mx; _2q0my = 2.0f * q0 * my; _2q0mz = 2.0f * q0 * mz; _2q1mx = 2.0f * q1 * mx;
@@ -366,7 +368,7 @@ void SensorManager::updateMadgwick(float dt) {
 
         hx = mx * q0q0 - _2q0my * q3 + _2q0mz * q2 + mx * q1q1 + _2q1 * my * q2 + _2q1 * mz * q3 - mx * q2q2 - mx * q3q3;
         hy = _2q0mx * q3 + my * q0q0 - _2q0mz * q1 + _2q1mx * q2 - my * q1q1 + my * q2q2 + _2q2 * mz * q3 - my * q3q3;
-        _2bx = sqrt(hx * hx + hy * hy);
+        _2bx = sqrtf(hx * hx + hy * hy);
         _2bz = -_2q0mx * q2 + _2q0my * q1 + mz * q0q0 + _2q1mx * q3 - mz * q1q1 + _2q2 * my * q3 - mz * q2q2 + mz * q3q3;
         _4bx = 2.0f * _2bx; _4bz = 2.0f * _2bz;
 
@@ -375,7 +377,7 @@ void SensorManager::updateMadgwick(float dt) {
         s2 = -_2q0 * (2.0f * q1q3 - _2q0q2 - ax) + _2q3 * (2.0f * q0q1 + _2q2q3 - ay) - 4.0f * q2 * (1.0f - 2.0f * q1q1 - 2.0f * q2q2 - az) + (-_4bx * q2 - _2bz * q0) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q1 + _2bz * q3) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q0 - _4bz * q2) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
         s3 = _2q1 * (2.0f * q1q3 - _2q0q2 - ax) + _2q2 * (2.0f * q0q1 + _2q2q3 - ay) + (-_4bx * q3 + _2bz * q1) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q0 + _2bz * q2) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q1 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
 
-        recipNorm = 1.0f / sqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
+        recipNorm = 1.0f / sqrtf(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
         s0 *= recipNorm; s1 *= recipNorm; s2 *= recipNorm; s3 *= recipNorm;
 
         qDot1 -= MADGWICK_BETA * s0;
@@ -389,7 +391,7 @@ void SensorManager::updateMadgwick(float dt) {
     q2 += qDot3 * dt;
     q3 += qDot4 * dt;
 
-    recipNorm = 1.0f / sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+    recipNorm = 1.0f / sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
     q0 *= recipNorm;
     q1 *= recipNorm;
     q2 *= recipNorm;
@@ -397,13 +399,14 @@ void SensorManager::updateMadgwick(float dt) {
 }
 
 void SensorManager::computeEulerAngles() {
-    float raw_roll  = atan2(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    float raw_pitch = asin(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+    // Performance Optimization: Use single-precision atan2f/asinf for direct hardware FPU execution
+    float raw_roll  = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
+    float raw_pitch = asinf(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
 
     orientation.roll = raw_roll - offsets.roll_offset;
     orientation.pitch = raw_pitch - offsets.pitch_offset;
 
-    float yaw_math = atan2(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
+    float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
     orientation.yaw = 360.0f - yaw_math - 90.0f;
 

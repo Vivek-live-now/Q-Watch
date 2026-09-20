@@ -128,7 +128,7 @@ void LedManager::loop() {
         case LedMode::BREATHING:
             anim_phase += dt * PI; // 0.5Hz breath
             leds[0] = current_color;
-            leds[0].nscale8(128 + 127 * sin(anim_phase));
+            leds[0].nscale8(128 + 127 * sinf(anim_phase));
             break;
 
         case LedMode::RAINBOW:
