@@ -195,26 +195,27 @@ bool MAX30102Manager::takeSampleAndSave(uint32_t duration_ms) {
 
     enableSensor();
     uint32_t start_time = millis();
-    bool valid = false;
 
     while (millis() - start_time < duration_ms) {
         loop();
         delay(10);
-        if (current_metrics.finger_detected && current_metrics.bpm >= 40 && current_metrics.spo2 >= 70) {
-            valid = true;
-        }
     }
 
-    if (valid) {
-        logSample((uint8_t)current_metrics.bpm, (uint8_t)current_metrics.spo2, current_metrics.temperature);
+    // Always log sample if die temperature is valid, storing 0 for invalid HR or SpO2
+    bool recorded = false;
+    if (current_metrics.temperature > -50.0f && current_metrics.temperature < 100.0f) {
+        uint8_t bpm_to_log = (current_metrics.finger_detected && current_metrics.bpm >= 40) ? (uint8_t)current_metrics.bpm : 0;
+        uint8_t spo2_to_log = (current_metrics.finger_detected && current_metrics.spo2 >= 70) ? (uint8_t)current_metrics.spo2 : 0;
+        logSample(bpm_to_log, spo2_to_log, current_metrics.temperature);
+        recorded = true;
     }
 
     disableSensor();
-    return valid;
+    return recorded;
 }
 
 void MAX30102Manager::logSample(uint8_t bpm, uint8_t spo2, float temp) {
-    if (bpm == 0) return; // Do not record invalid readings
+    // Save snapshot even if HR/SpO2 is 0 as long as temperature reading is valid
 
     HealthHistoryEntry entry;
     entry.timestamp = qclock.getEpoch(); // Store real Unix epoch timestamp

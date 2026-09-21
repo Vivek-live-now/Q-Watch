@@ -49,22 +49,48 @@ void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
         Serial.println("Woke up from deep sleep via TIMER for periodic sensor logging...");
-        sensors.begin();
-        sensors.logBmeSample();
+
+        Preferences sched_prefs;
+        sched_prefs.begin("sched", false);
+        uint32_t now = qclock.getEpoch();
+        if (now == 0) now = millis() / 1000;
+
+        uint32_t last_bme_epoch = sched_prefs.getUInt("last_bme", 0);
+        uint32_t last_health_epoch = sched_prefs.getUInt("last_health", 0);
 
         SettingsData& s = settingsManager.get();
-        if (s.health_bg_enabled) {
-            max30102Manager.begin();
-            max30102Manager.takeSampleAndSave(7000);
-        }
-
-        // Re-arm timer and go back to sleep immediately without turning on display or WiFi
         uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
         uint32_t bme_interval_sec = intervals_sec[s.bme_interval_idx];
         uint32_t health_interval_sec = intervals_sec[s.health_interval_idx];
-        uint32_t interval_sec = s.health_bg_enabled ? min(bme_interval_sec, health_interval_sec) : bme_interval_sec;
 
-        esp_sleep_enable_timer_wakeup((uint64_t)interval_sec * 1000000ULL);
+        bool bme_due = (last_bme_epoch == 0) || (now >= last_bme_epoch + bme_interval_sec);
+        bool health_due = s.health_bg_enabled && ((last_health_epoch == 0) || (now >= last_health_epoch + health_interval_sec));
+
+        if (bme_due) {
+            sensors.begin();
+            sensors.logBmeSample();
+            sched_prefs.putUInt("last_bme", now);
+            last_bme_epoch = now;
+        }
+
+        if (health_due) {
+            max30102Manager.begin();
+            max30102Manager.takeSampleAndSave(7000);
+            sched_prefs.putUInt("last_health", now);
+            last_health_epoch = now;
+        }
+
+        // Calculate independent next due delay
+        uint32_t next_bme_in = (last_bme_epoch + bme_interval_sec > now) ? (last_bme_epoch + bme_interval_sec - now) : bme_interval_sec;
+        if (next_bme_in == 0) next_bme_in = bme_interval_sec;
+
+        uint32_t next_health_in = s.health_bg_enabled ? ((last_health_epoch + health_interval_sec > now) ? (last_health_epoch + health_interval_sec - now) : health_interval_sec) : 0xFFFFFFFF;
+        if (next_health_in == 0) next_health_in = health_interval_sec;
+
+        uint32_t sleep_sec = min(next_bme_in, next_health_in);
+        sched_prefs.end();
+
+        esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
 
         // Keep GPIO21 and GPIO8 wake sources active
         rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
@@ -74,15 +100,7 @@ void UICore::begin() {
         uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
         esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
-        // Configure RTC timer wakeup for periodic sensor logging
-    SettingsData& sleep_s = settingsManager.get();
-    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t s_bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
-    uint32_t s_health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
-    uint32_t sleep_interval_sec = sleep_s.health_bg_enabled ? min(s_bme_sec, s_health_sec) : s_bme_sec;
-    esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
-
-    esp_deep_sleep_start();
+        esp_deep_sleep_start();
 
     } else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
 

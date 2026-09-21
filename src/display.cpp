@@ -506,6 +506,13 @@ void DisplayManager::drawHealthPage2History() {
     if (total_raw > 288) total_raw = 288;
 
     uint32_t now_epoch = qclock.getEpoch();
+    time_t now_t = (time_t)now_epoch;
+    struct tm now_tm;
+    bool has_now_tm = false;
+    if (now_epoch > 0) {
+        localtime_r(&now_t, &now_tm);
+        has_now_tm = true;
+    }
 
     float data[64];
     int valid_count = 0;
@@ -513,9 +520,14 @@ void DisplayManager::drawHealthPage2History() {
 
     if (has_h && total_raw > 0) {
         for (int i = 0; i < total_raw && valid_count < 64; i++) {
-            // Filter records to today's local date (within last 86400 seconds if epoch available)
-            if (now_epoch > 0 && raw_history[i].timestamp > 0) {
-                if (now_epoch - raw_history[i].timestamp > 86400) continue;
+            // Filter records strictly to today's local calendar day
+            if (has_now_tm && raw_history[i].timestamp > 0) {
+                time_t rec_t = (time_t)raw_history[i].timestamp;
+                struct tm rec_tm;
+                localtime_r(&rec_t, &rec_tm);
+                if (rec_tm.tm_year != now_tm.tm_year || rec_tm.tm_yday != now_tm.tm_yday) {
+                    continue; // Skip records from previous calendar days
+                }
             }
 
             float val = 0.0f;
