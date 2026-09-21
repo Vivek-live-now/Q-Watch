@@ -46,14 +46,23 @@ UICore::UICore() :
 void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
-        Serial.println("Woke up from deep sleep via TIMER for BME280 logging...");
+        Serial.println("Woke from deep sleep for scheduled sensor logging...");
         sensors.begin();
-        sensors.logBmeSample();
 
-        // Re-arm timer and go back to sleep immediately without turning on display or WiFi
         SettingsData& s = settingsManager.get();
-        uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-        uint32_t interval_sec = intervals_sec[s.bme_interval_idx];
+        uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600};
+        uint32_t bme_interval_sec = intervals_sec[s.bme_interval_idx];
+        uint32_t health_interval_sec = intervals_sec[s.health_interval_idx];
+        uint32_t interval_sec = s.health_background_enabled
+                              ? ((health_interval_sec < bme_interval_sec) ? health_interval_sec : bme_interval_sec)
+                              : bme_interval_sec;
+
+        if (interval_sec == bme_interval_sec) {
+            sensors.logBmeSample();
+        }
+        if (s.health_background_enabled && interval_sec == health_interval_sec) {
+            healthManager.logBackgroundSample();
+        }
 
         esp_sleep_enable_timer_wakeup((uint64_t)interval_sec * 1000000ULL);
 
@@ -65,16 +74,7 @@ void UICore::begin() {
         uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
         esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
-        // Configure the timer for the most frequent enabled background sensor.
-    SettingsData& sleep_s = settingsManager.get();
-    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600};
-    uint32_t bme_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
-    uint32_t health_interval_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
-    uint32_t sleep_interval_sec = sleep_s.health_background_enabled
-                                 ? ((health_interval_sec < bme_interval_sec) ? health_interval_sec : bme_interval_sec)
-                                 : bme_interval_sec;
-    esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
-
+        // Keep the timer configured above.
     esp_deep_sleep_start();
 
     } else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
