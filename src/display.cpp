@@ -792,6 +792,7 @@ void DisplayManager::drawAppMotionSettings() {
         if (i == 3) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
         else if (i == 4) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
         else if (i == 5) label += sensors.getImuInvY() ? " [ON]" : " [OFF]";
+        else if (i == 6) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
 
         oled.drawStr(4, y_pos, label.c_str());
         oled.setDrawColor(1);

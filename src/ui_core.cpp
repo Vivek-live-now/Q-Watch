@@ -1090,6 +1090,7 @@ void UICore::handleMotionInput() {
             else if (compass_menu_selection == 3) sensors.setImuSwapXY(!sensors.getImuSwapXY());
             else if (compass_menu_selection == 4) sensors.setImuInvX(!sensors.getImuInvX());
             else if (compass_menu_selection == 5) sensors.setImuInvY(!sensors.getImuInvY());
+            else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
             needs_redraw = true;
         }
     }

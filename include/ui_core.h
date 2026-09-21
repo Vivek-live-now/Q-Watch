@@ -124,9 +124,9 @@ public:
         "Master Sw", "Mode", "Brightness", "Presets", "Effects", "Factory Rst"
     };
 
-    static const int MOTION_MENU_ITEM_COUNT = 6;
+    static const int MOTION_MENU_ITEM_COUNT = 7;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
-        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "Swap X/Y", "Invert X", "Invert Y"
+        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "Swap X/Y", "Invert X", "Invert Y", "Invert Z"
     };
 
     bool needsRedraw() const { return needs_redraw; }
