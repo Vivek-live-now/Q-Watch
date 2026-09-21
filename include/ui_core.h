@@ -16,6 +16,7 @@ enum class SettingsSubmenu {
     POWER,
     SUB_DISPLAY,
     SENSORS,
+    HEALTH_SETTINGS,
     SYSTEM,
     TIME_SYNC_STATUS,
     RESET_CONFIRM
@@ -70,6 +71,9 @@ public:
     void setWeatherPage(int p) { weather_page = p; }
     int getBmePage() const { return bme_page; }
     void setBmePage(int p) { bme_page = p; }
+    int getHealthPage() const { return health_page; }
+    void setHealthPage(int p) { health_page = p; }
+    int getHealthHistoryGraphIdx() const { return health_history_graph_idx; }
     int getMenuSelection() const { return menu_selection; }
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
@@ -160,9 +164,14 @@ public:
         "CONTRAST", "INVERT", "UI OPTIONS"
     };
 
-    static const int SENSORS_ITEM_COUNT = 3;
+    static const int SENSORS_ITEM_COUNT = 4;
     const char* sensors_items[SENSORS_ITEM_COUNT] = {
-        "COMPASS CAL", "IMU CAL", "SENSOR STATUS"
+        "COMPASS CAL", "IMU CAL", "HEALTH / MAX30102", "SENSOR STATUS"
+    };
+
+    static const int HEALTH_SETTINGS_ITEM_COUNT = 2;
+    const char* health_settings_items[HEALTH_SETTINGS_ITEM_COUNT] = {
+        "BG RECORDING", "REC INTERVAL"
     };
 
     static const int SYSTEM_ITEM_COUNT = 2;
@@ -189,6 +198,8 @@ private:
     UIState return_state;
     int bme_page;
     int weather_page;
+    int health_page; // 0: Live Page 1, 1: History Page 2
+    int health_history_graph_idx; // 0: HR, 1: SpO2, 2: Temp
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
@@ -213,6 +224,7 @@ private:
     bool needs_redraw;
 
     void handleBmeInput();
+    void handleHealthInput();
     void handleWeatherInput();
     void handleHomeInput();
     void handleMainMenuInput();
@@ -231,6 +243,7 @@ private:
     void handlePowerInput();
     void handleDisplayInput();
     void handleSensorsInput();
+    void handleHealthSettingsInput();
     void handleSystemInput();
     void handleResetConfirmInput();
     void handleTimeSyncStatusInput();

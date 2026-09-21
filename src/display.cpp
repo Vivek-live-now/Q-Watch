@@ -139,8 +139,14 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("DISPLAY", ui.display_items, vals, UICore::DISPLAY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SENSORS) {
-        String vals[3] = {"", "", ""};
+        String vals[4] = {"", "", "", ""};
         drawSettingsMenuWithValues("SENSORS", ui.sensors_items, vals, UICore::SENSORS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
+    } else if (sub == SettingsSubmenu::HEALTH_SETTINGS) {
+        String vals[2] = {
+            s.health_bg_enabled ? "ON" : "OFF",
+            HEALTH_INTERVAL_OPTIONS[s.health_interval_idx]
+        };
+        drawSettingsMenuWithValues("MAX30102 SETTINGS", ui.health_settings_items, vals, UICore::HEALTH_SETTINGS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SYSTEM) {
         String vals[2] = {"", ""};
         drawSettingsMenuWithValues("SYSTEM", ui.system_items, vals, UICore::SYSTEM_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
@@ -417,10 +423,148 @@ void DisplayManager::drawAppCompassMetrics() {
     }
 }
 
+#include "max30102_manager.h"
+
 void DisplayManager::drawAppHealth() {
+    drawTopStatusBar();
+    int page = ui.getHealthPage();
+    if (page == 0) {
+        drawHealthPage1Live();
+    } else {
+        drawHealthPage2History();
+    }
+}
+
+void DisplayManager::drawHealthPage1Live() {
+    HealthMetrics m = max30102Manager.getMetrics();
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 17, "HEALTH MONITOR");
+
+    if (!m.finger_detected) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(10, 32, "[ NO FINGER DETECTED ]");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(10, 44, "Place finger firmly on MAX30102");
+        String tempStr = "DIE TEMP: " + String(m.temperature, 1) + " C";
+        oled.drawStr(10, 54, tempStr.c_str());
+        return;
+    }
+
+    // BPM and SpO2 display
     oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(10, 28, "BPM: ---");
-    oled.drawStr(10, 42, "O2 : --- %");
+    String bpmStr = "BPM: " + String(m.bpm > 0 ? String(m.bpm) : "---");
+    String spo2Str = "SpO2: " + String(m.spo2 > 0 ? String(m.spo2) + "%" : "---");
+    String tempStr = "T: " + String(m.temperature, 1) + "C";
+
+    oled.drawStr(2, 28, bpmStr.c_str());
+    oled.drawStr(65, 28, spo2Str.c_str());
+
+    // PPG Pulse Waveform Graph (Real-time live buffer)
+    int graph_x = 2;
+    int graph_y = 60;
+    int graph_w = 88;
+    int graph_h = 24;
+
+    oled.drawFrame(graph_x, graph_y - graph_h, graph_w, graph_h + 1);
+
+    const uint8_t* waveform = max30102Manager.getPPGWaveform();
+    int prev_x = graph_x + 1;
+    int prev_y = graph_y - 1 - ((waveform[0] * (graph_h - 2)) / 255);
+
+    for (int i = 1; i < 64 && i < (graph_w - 2); i++) {
+        int cx = graph_x + 1 + i;
+        int cy = graph_y - 1 - ((waveform[i] * (graph_h - 2)) / 255);
+        if (cy < graph_y - graph_h + 1) cy = graph_y - graph_h + 1;
+        if (cy > graph_y - 1) cy = graph_y - 1;
+
+        oled.drawLine(prev_x, prev_y, cx, cy);
+        prev_x = cx;
+        prev_y = cy;
+    }
+
+    // Right column info
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(94, 42, tempStr.c_str());
+    oled.drawStr(94, 52, "LIVE");
+    oled.drawStr(94, 60, "1/2");
+}
+
+void DisplayManager::drawHealthPage2History() {
+    int graph_idx = ui.getHealthHistoryGraphIdx(); // 0: HR, 1: SpO2, 2: Temp
+
+    oled.setFont(u8g2_font_5x7_tr);
+    if (graph_idx == 0) oled.drawStr(2, 17, "24H HISTORY: HEART RATE");
+    else if (graph_idx == 1) oled.drawStr(2, 17, "24H HISTORY: SPO2");
+    else oled.drawStr(2, 17, "24H HISTORY: MAX TEMP");
+
+    HealthHistoryEntry history[64];
+    bool has_h = max30102Manager.getHistory(history, 64);
+    int count = max30102Manager.getHistoryCount();
+    if (count > 64) count = 64;
+
+    if (!has_h || count == 0) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(10, 36, "(NO HISTORY RECORDED)");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(10, 50, "Enable BG Recording in Settings");
+        return;
+    }
+
+    float data[64];
+    float min_val = 999.0f, max_val = -999.0f, sum_val = 0.0f;
+
+    for (int i = 0; i < count; i++) {
+        if (graph_idx == 0) data[i] = history[i].bpm;
+        else if (graph_idx == 1) data[i] = history[i].spo2;
+        else data[i] = history[i].temp_x10 / 10.0f;
+
+        if (data[i] < min_val) min_val = data[i];
+        if (data[i] > max_val) max_val = data[i];
+        sum_val += data[i];
+    }
+    float avg_val = sum_val / count;
+    float latest_val = data[count - 1];
+
+    // Summary line
+    oled.setFont(u8g2_font_4x6_tr);
+    char sum_buf[64];
+    if (graph_idx == 0 || graph_idx == 1) {
+        snprintf(sum_buf, sizeof(sum_buf), "L:%.0f MIN:%.0f MAX:%.0f AVG:%.0f", latest_val, min_val, max_val, avg_val);
+    } else {
+        snprintf(sum_buf, sizeof(sum_buf), "L:%.1f MIN:%.1f MAX:%.1f AVG:%.1f", latest_val, min_val, max_val, avg_val);
+    }
+    oled.drawStr(2, 25, sum_buf);
+
+    // Render trend graph
+    int gx = 4;
+    int gy = 60;
+    int gw = 110;
+    int gh = 30;
+
+    oled.drawFrame(gx, gy - gh, gw, gh);
+
+    if (max_val - min_val < 0.1f) {
+        max_val += 1.0f;
+        min_val -= 1.0f;
+    }
+
+    int prev_x = gx + 1;
+    int prev_y = gy - 1 - (int)(((data[0] - min_val) / (max_val - min_val)) * (gh - 2));
+
+    for (int i = 1; i < count; i++) {
+        int cx = gx + 1 + (i * (gw - 2)) / (count - 1);
+        int cy = gy - 1 - (int)(((data[i] - min_val) / (max_val - min_val)) * (gh - 2));
+        if (cy < gy - gh + 1) cy = gy - gh + 1;
+        if (cy > gy - 1) cy = gy - 1;
+
+        oled.drawLine(prev_x, prev_y, cx, cy);
+        prev_x = cx;
+        prev_y = cy;
+    }
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(116, 60, "2/2");
 }
 
 void DisplayManager::drawAppMotionSettings() {

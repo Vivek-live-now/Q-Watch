@@ -1,3 +1,4 @@
+#include "max30102_manager.h"
 #include "weather.h"
 #include "display.h"
 #include "ui_core.h"
@@ -17,6 +18,8 @@ String UICore::pending_selected_ssid = "";
 UICore::UICore() :
     current_state(UIState::APP_HOME),
     return_state(UIState::APP_HOME),
+    health_page(0),
+    health_history_graph_idx(0),
     menu_selection(0),
     menu_scroll_offset(0),
     edit_value(5),
@@ -45,14 +48,21 @@ UICore::UICore() :
 void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
-        Serial.println("Woke up from deep sleep via TIMER for BME280 logging...");
+        Serial.println("Woke up from deep sleep via TIMER for periodic sensor logging...");
         sensors.begin();
         sensors.logBmeSample();
 
-        // Re-arm timer and go back to sleep immediately without turning on display or WiFi
         SettingsData& s = settingsManager.get();
+        if (s.health_bg_enabled) {
+            max30102Manager.begin();
+            max30102Manager.takeSampleAndSave(7000);
+        }
+
+        // Re-arm timer and go back to sleep immediately without turning on display or WiFi
         uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-        uint32_t interval_sec = intervals_sec[s.bme_interval_idx];
+        uint32_t bme_interval_sec = intervals_sec[s.bme_interval_idx];
+        uint32_t health_interval_sec = intervals_sec[s.health_interval_idx];
+        uint32_t interval_sec = s.health_bg_enabled ? min(bme_interval_sec, health_interval_sec) : bme_interval_sec;
 
         esp_sleep_enable_timer_wakeup((uint64_t)interval_sec * 1000000ULL);
 
@@ -67,7 +77,9 @@ void UICore::begin() {
         // Configure RTC timer wakeup for periodic sensor logging
     SettingsData& sleep_s = settingsManager.get();
     uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t sleep_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t s_bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t s_health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
+    uint32_t sleep_interval_sec = sleep_s.health_bg_enabled ? min(s_bme_sec, s_health_sec) : s_bme_sec;
     esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
 
     esp_deep_sleep_start();
@@ -175,6 +187,9 @@ void UICore::loop() {
                     settings_scroll_offset = 0;
                 }
             } else {
+                if (current_state == UIState::APP_HEALTH) {
+                    max30102Manager.disableSensor();
+                }
                 current_state = UIState::MAIN_MENU;
             }
             needs_redraw = true;
@@ -238,6 +253,9 @@ void UICore::loop() {
             break;
         case UIState::APP_COMPASS:
             handleCompassInput();
+            break;
+        case UIState::APP_HEALTH:
+            handleHealthInput();
             break;
         case UIState::APP_MOTION:
             handleMotionInput();
@@ -319,7 +337,7 @@ void UICore::handleMainMenuInput() {
             case 1: current_state = UIState::APP_CLOCK; break;
             case 2: current_state = UIState::APP_WEATHER; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
-            case 4: current_state = UIState::APP_HEALTH; break;
+            case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
             case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_ALTIMETER; break;
@@ -350,6 +368,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
         case SettingsSubmenu::SENSORS: handleSensorsInput(); break;
+        case SettingsSubmenu::HEALTH_SETTINGS: handleHealthSettingsInput(); break;
         case SettingsSubmenu::SYSTEM: handleSystemInput(); break;
         case SettingsSubmenu::RESET_CONFIRM: handleResetConfirmInput(); break;
     }
@@ -664,9 +683,73 @@ void UICore::handleSensorsInput() {
         } else if (settings_selection == 1) {
             showToast("[IMU CAL]", 1500);
         } else if (settings_selection == 2) {
+            settings_submenu = SettingsSubmenu::HEALTH_SETTINGS;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
+        } else if (settings_selection == 3) {
             showToast("[STATUS: OK]", 1500);
         }
         needs_redraw = true;
+    }
+}
+
+void UICore::handleHealthSettingsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        settings_selection--;
+        if (settings_selection < 0) settings_selection = 0;
+        if (settings_selection < settings_scroll_offset) settings_scroll_offset = settings_selection;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        settings_selection++;
+        if (settings_selection >= HEALTH_SETTINGS_ITEM_COUNT) settings_selection = HEALTH_SETTINGS_ITEM_COUNT - 1;
+        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        SettingsData& s = settingsManager.get();
+        if (settings_selection == 0) {
+            s.health_bg_enabled = !s.health_bg_enabled;
+            settingsManager.save();
+        } else if (settings_selection == 1) {
+            s.health_interval_idx = (s.health_interval_idx + 1) % HEALTH_INTERVAL_COUNT;
+            settingsManager.save();
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleHealthInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (health_page == 0) { // Page 1: Live
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            health_page = 1;
+            max30102Manager.disableSensor();
+            needs_redraw = true;
+        }
+    } else { // Page 2: History
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            health_page = 0;
+            max30102Manager.enableSensor();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            health_history_graph_idx = (health_history_graph_idx + 1) % 3; // Cycle HR -> SpO2 -> Temp
+            needs_redraw = true;
+        }
     }
 }
 
@@ -811,7 +894,9 @@ void UICore::enterDeepSleep() {
     // Configure RTC timer wakeup for periodic sensor logging
     SettingsData& sleep_s = settingsManager.get();
     uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t sleep_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t s_bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t s_health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
+    uint32_t sleep_interval_sec = sleep_s.health_bg_enabled ? min(s_bme_sec, s_health_sec) : s_bme_sec;
     esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
 
     esp_deep_sleep_start();
