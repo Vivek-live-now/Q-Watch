@@ -121,3 +121,17 @@ Because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it 
 4.  On first boot, configure Wi-Fi directly on the watch via `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS` or connect to the **Q-Watch-Setup** Wi-Fi captive portal network at `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
 6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.
+
+### Milestone 7: IMU6500 Sub-App Architecture & BLE Air Mouse Mode
+*   **Sub-App Selector Shell:** IMU6500 operates as a parent menu containing two distinct sub-applications:
+    *   **`ALTIMETER`:** Preserves the full artificial horizon / attitude indicator, altitude zero/reference, 3D compass integration, telemetry page, and IMU calibration/axis controls (including `Invert Z`).
+    *   **`AIR MOUSE`:** Converts the watch into a wireless BLE HID air mouse remote for PCs, tablets, and mobile devices.
+*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(true)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
+*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (Gyro Y → X movement, Gyro X → Y movement) with dead-zone noise suppression (~6 °/s threshold), exponential low-pass smoothing, sensitivity multipliers (`LOW`: 0.5x, `MED`: 1.0x, `HIGH`: 2.0x), and integer accumulation clamped to HID range (-127 to +127).
+*   **Dual Mode & Controls:**
+    *   **`POINTER` Mode:** Short UP = Left Click; Short DOWN = Right Click.
+    *   **`SCROLL` Mode:** Short UP = Scroll Up; Short DOWN = Scroll Down.
+    *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
+    *   **Pause & Recenter:** Short OK toggles pointer/scroll activity ON/OFF; Long OK establishes an Air Mouse recenter offset without modifying global IMU calibration.
+    *   **Sensitivity Control:** Long UP / Long DOWN adjusts sensitivity levels (`LOW`, `MED`, `HIGH`).
+    *   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
