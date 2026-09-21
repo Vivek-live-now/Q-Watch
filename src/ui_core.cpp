@@ -679,6 +679,42 @@ void UICore::handleSensorsInput() {
     }
 }
 
+void UICore::handleHealthSettingsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        settings_selection--;
+        if (settings_selection < 0) settings_selection = 0;
+        if (settings_selection < settings_scroll_offset) settings_scroll_offset = settings_selection;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        settings_selection++;
+        if (settings_selection >= HEALTH_SETTINGS_ITEM_COUNT) settings_selection = HEALTH_SETTINGS_ITEM_COUNT - 1;
+        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        SettingsData& s = settingsManager.get();
+
+        if (settings_selection == 0) {
+            s.health_background_enabled = !s.health_background_enabled;
+            settingsManager.save();
+        } else if (settings_selection == 1) {
+            s.health_interval_idx = (s.health_interval_idx + 1) % HEALTH_INTERVAL_COUNT;
+            settingsManager.save();
+        }
+        needs_redraw = true;
+    }
+}
+
 void UICore::handleSystemInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
