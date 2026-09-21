@@ -23,6 +23,7 @@ public:
     bool isTimeSet();
     NtpSyncStatus getSyncStatus() const { return sync_status; }
     uint32_t getLastSyncTime() const { return last_sync_time; }
+    uint32_t getEpoch() const { time_t now; time(&now); return (uint32_t)now; }
 
     String getTimeStr(); // HH:MM or HH:MM AM/PM based on settings
     String getSecondsStr(); // SS

@@ -1,3 +1,4 @@
+#include "max30102_manager.h"
 #include <Arduino.h>
 #include "display.h"
 #include "wifi_portal.h"
@@ -29,6 +30,7 @@ void setup() {
   ui.begin();
   battery.begin();
   sensors.begin();
+  max30102Manager.begin();
   ledManager.begin();
   soundManager.begin();
   soundManager.playBoot();
@@ -45,6 +47,7 @@ void loop() {
   btnManager.loop();
   ui.loop();
   sensors.loop();
+  max30102Manager.loop();
   ledManager.loop();
   soundManager.loop();
 
@@ -53,7 +56,7 @@ void loop() {
   bool time_changed = (current_time != last_drawn_time);
   bool portal_update_due = (wifiPortal.getState() == WifiState::PORTAL && millis() - last_portal_draw >= 1000);
 
-  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION)
+  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH)
                             && millis() - last_ui_draw >= 100);
 
   if (time_changed || portal_update_due || ui.needsRedraw() || active_app_update) {

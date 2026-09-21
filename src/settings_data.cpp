@@ -51,6 +51,8 @@ void SettingsManager::load() {
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
         else if (key == "bme_interval_idx") settings.bme_interval_idx = val.toInt();
+        else if (key == "health_bg_enabled") settings.health_bg_enabled = (val == "1");
+        else if (key == "health_interval_idx") settings.health_interval_idx = val.toInt();
     }
 }
 
@@ -70,10 +72,9 @@ void SettingsManager::save() {
     out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";
+    out += "bme_interval_idx=" + String(settings.bme_interval_idx) + "\n";
+    out += "health_bg_enabled=" + String(settings.health_bg_enabled ? "1" : "0") + "\n";
+    out += "health_interval_idx=" + String(settings.health_interval_idx) + "\n";
 
-    // Create /config directory if needed by creating file directly
-    if (!fileManager.exists("/config")) {
-        // fileManager automatically normalizes path, write creates file
-    }
     fileManager.write("/config/settings", out);
 }
