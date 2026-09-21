@@ -3,6 +3,7 @@
 #include "display.h"
 #include "ui_core.h"
 #include "sensors.h"
+#include "air_mouse.h"
 #include "button_manager.h"
 #include "hw_config.h"
 #include "led_manager.h"
@@ -17,6 +18,8 @@ String UICore::pending_selected_ssid = "";
 
 UICore::UICore() :
     current_state(UIState::APP_HOME),
+    imu_subapp(Imu6500SubApp::SUBAPP_MENU),
+    imu_subapp_selection(0),
     return_state(UIState::APP_HOME),
     health_page(0),
     health_history_graph_idx(0),
@@ -134,6 +137,14 @@ void UICore::openKeyboard(const String& initial_text, const String& title, Keybo
 }
 
 void UICore::loop() {
+    // Run background processing for Air Mouse
+    if (current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+        airMouse.loop();
+        if (airMouse.isEnabled()) {
+            needs_redraw = true;
+        }
+    }
+
     // Check user button activity to keep awake or wake display
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
@@ -190,6 +201,12 @@ void UICore::loop() {
             displayManager.setPowerSave(display_off);
             needs_redraw = true;
             return;
+        } else if (current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+            // Short CANCEL in Air Mouse = Toggle POINTER / SCROLL mode
+            soundManager.playNavSelect();
+            airMouse.toggleMode();
+            needs_redraw = true;
+            return;
         } else {
             // Short CANCEL at other screens = Back
             soundManager.playNavBack();
@@ -205,6 +222,12 @@ void UICore::loop() {
                     settings_selection = 0;
                     settings_scroll_offset = 0;
                 }
+            } else if (current_state == UIState::APP_MOTION) {
+                if (imu_subapp != Imu6500SubApp::SUBAPP_MENU) {
+                    imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+                } else {
+                    current_state = UIState::MAIN_MENU;
+                }
             } else {
                 if (current_state == UIState::APP_HEALTH) {
                     max30102Manager.disableSensor();
@@ -219,10 +242,20 @@ void UICore::loop() {
             // Long CANCEL at HOME = Deep Sleep
             enterDeepSleep();
             return;
+        } else if (current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+            // Long CANCEL in Air Mouse = Stop BLE & return to IMU6500 Parent Menu
+            soundManager.playNavBack();
+            airMouse.stop();
+            imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+            needs_redraw = true;
+            return;
         } else {
             // Long CANCEL on sub-screens = Return directly to HOME
             if (current_state == UIState::APP_HEALTH) {
                 max30102Manager.disableSensor();
+            }
+            if (current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+                airMouse.stop();
             }
             soundManager.playNavBack();
             current_state = UIState::APP_HOME;
@@ -230,7 +263,16 @@ void UICore::loop() {
             return;
         }
     } else if (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME) {
-        // Long OK on non-home screens = Back
+        if (current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+            // Long OK in Air Mouse = Recenter
+            soundManager.playNavSelect();
+            airMouse.recenter();
+            showToast("[RECENTERED]", 1000);
+            needs_redraw = true;
+            return;
+        }
+
+        // Long OK on other non-home screens = Back
         soundManager.playNavBack();
         if (current_state == UIState::APP_HEALTH) {
             max30102Manager.disableSensor();
@@ -246,6 +288,12 @@ void UICore::loop() {
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
+            }
+        } else if (current_state == UIState::APP_MOTION) {
+            if (imu_subapp != Imu6500SubApp::SUBAPP_MENU) {
+                imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+            } else {
+                current_state = UIState::MAIN_MENU;
             }
         } else {
             current_state = UIState::MAIN_MENU;
@@ -363,7 +411,7 @@ void UICore::handleMainMenuInput() {
             case 2: current_state = UIState::APP_WEATHER; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
-            case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
+            case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_ALTIMETER; break;
             case 8: current_state = UIState::APP_BATTERY; break;
@@ -378,6 +426,162 @@ void UICore::handleMainMenuInput() {
             case 12: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
+    }
+}
+
+void UICore::handleAirMouseInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    // Long UP -> Sensitivity Up
+    if (up_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavSelect();
+        airMouse.cycleSensitivityUp();
+        showToast("[SENS INCREASED]", 1000);
+        needs_redraw = true;
+        return;
+    }
+
+    // Long DOWN -> Sensitivity Down
+    if (dn_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavSelect();
+        airMouse.cycleSensitivityDown();
+        showToast("[SENS DECREASED]", 1000);
+        needs_redraw = true;
+        return;
+    }
+
+    // Short OK -> Start / Reconnect BLE (if OFF or DISCONNECTED) or Toggle Pointer movement ON/OFF (if CONNECTED/CONNECTING)
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (!airMouse.isEnabled() || airMouse.getBleStatus() == AirMouseBleStatus::DISCONNECTED) {
+            if (airMouse.isEnabled()) {
+                airMouse.stop();
+            }
+            airMouse.start();
+        } else {
+            airMouse.toggleMovement();
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    // Short UP / Short DOWN depending on Mode
+    if (airMouse.getMode() == AirMouseMode::POINTER) {
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            airMouse.clickLeft();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            airMouse.clickRight();
+            needs_redraw = true;
+        }
+    } else { // SCROLL Mode
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            soundManager.playNavMove();
+            airMouse.scrollUp();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            soundManager.playNavMove();
+            airMouse.scrollDown();
+            needs_redraw = true;
+        }
+    }
+}
+
+void UICore::handleMotionInput() {
+    if (imu_subapp == Imu6500SubApp::SUBAPP_MENU) {
+        ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+        ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+        ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            imu_subapp_selection--;
+            if (imu_subapp_selection < 0) imu_subapp_selection = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            imu_subapp_selection++;
+            if (imu_subapp_selection >= IMU_SUBAPP_COUNT) imu_subapp_selection = IMU_SUBAPP_COUNT - 1;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (imu_subapp_selection == 0) {
+                imu_subapp = Imu6500SubApp::SUBAPP_ALTIMETER;
+                motion_state = MotionState::PAGE_LEVEL;
+            } else {
+                imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
+            }
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    if (imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+        handleAirMouseInput();
+        return;
+    }
+
+    // Existing Altimeter Application logic preserved below
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (motion_state == MotionState::PAGE_LEVEL) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_DATA;
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (sensors.isBmeOk()) {
+                sensors.zeroAltitude();
+            } else {
+                showToast("[BME UNLINKED]", 1500);
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (motion_state == MotionState::PAGE_DATA) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_SETTINGS;
+            compass_menu_selection = 0;
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
+            motion_state = MotionState::PAGE_LEVEL;
+            needs_redraw = true;
+        }
+    }
+    else if (motion_state == MotionState::PAGE_SETTINGS) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection--;
+            if (compass_menu_selection < 0) compass_menu_selection = 0;
+            if (compass_menu_selection < compass_menu_offset) compass_menu_offset = compass_menu_selection;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            compass_menu_selection++;
+            if (compass_menu_selection >= MOTION_MENU_ITEM_COUNT) compass_menu_selection = MOTION_MENU_ITEM_COUNT - 1;
+            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (compass_menu_selection == 0) {
+                if (sensors.isBmeOk()) {
+                    sensors.zeroAltitude();
+                } else {
+                    showToast("[BME UNLINKED]", 1500);
+                }
+            }
+            else if (compass_menu_selection == 1) sensors.zeroLevel();
+            else if (compass_menu_selection == 2) sensors.calibrateAccel();
+            else if (compass_menu_selection == 3) sensors.setImuSwapXY(!sensors.getImuSwapXY());
+            else if (compass_menu_selection == 4) sensors.setImuInvX(!sensors.getImuInvX());
+            else if (compass_menu_selection == 5) sensors.setImuInvY(!sensors.getImuInvY());
+            else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
+            needs_redraw = true;
+        }
     }
 }
 
@@ -1041,56 +1245,6 @@ void UICore::handleCompassInput() {
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             compass_state = CompassState::PAGE_CAL_MENU;
-            needs_redraw = true;
-        }
-    }
-}
-
-void UICore::handleMotionInput() {
-    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
-    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
-
-    if (motion_state == MotionState::PAGE_LEVEL) {
-        if (dn_evt == BTN_EVT_SHORT_PRESS) {
-            motion_state = MotionState::PAGE_DATA;
-            needs_redraw = true;
-        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-            soundManager.playNavSelect();
-            sensors.zeroAltitude();
-            needs_redraw = true;
-        }
-    }
-    else if (motion_state == MotionState::PAGE_DATA) {
-        if (dn_evt == BTN_EVT_SHORT_PRESS) {
-            motion_state = MotionState::PAGE_SETTINGS;
-            compass_menu_selection = 0;
-            needs_redraw = true;
-        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
-            motion_state = MotionState::PAGE_LEVEL;
-            needs_redraw = true;
-        }
-    }
-    else if (motion_state == MotionState::PAGE_SETTINGS) {
-        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
-            compass_menu_selection--;
-            if (compass_menu_selection < 0) compass_menu_selection = 0;
-            if (compass_menu_selection < compass_menu_offset) compass_menu_offset = compass_menu_selection;
-            needs_redraw = true;
-        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
-            compass_menu_selection++;
-            if (compass_menu_selection >= MOTION_MENU_ITEM_COUNT) compass_menu_selection = MOTION_MENU_ITEM_COUNT - 1;
-            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
-            needs_redraw = true;
-        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-            soundManager.playNavSelect();
-            if (compass_menu_selection == 0) sensors.zeroAltitude();
-            else if (compass_menu_selection == 1) sensors.zeroLevel();
-            else if (compass_menu_selection == 2) sensors.calibrateAccel();
-            else if (compass_menu_selection == 3) sensors.setImuSwapXY(!sensors.getImuSwapXY());
-            else if (compass_menu_selection == 4) sensors.setImuInvX(!sensors.getImuInvX());
-            else if (compass_menu_selection == 5) sensors.setImuInvY(!sensors.getImuInvY());
-            else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
             needs_redraw = true;
         }
     }

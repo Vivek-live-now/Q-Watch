@@ -6,6 +6,12 @@
 #include "settings_data.h"
 #include "keyboard.h"
 
+enum class Imu6500SubApp {
+    SUBAPP_MENU,
+    SUBAPP_ALTIMETER,
+    SUBAPP_AIRMOUSE
+};
+
 enum class SettingsSubmenu {
     MAIN,
     CONNECTIVITY,
@@ -78,6 +84,9 @@ public:
     int getMenuScrollOffset() const { return menu_scroll_offset; }
     int getEditValue() const { return edit_value; }
 
+    Imu6500SubApp getImuSubApp() const { return imu_subapp; }
+    int getImuSubAppSelection() const { return imu_subapp_selection; }
+
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
     int getSettingsScrollOffset() const { return settings_scroll_offset; }
@@ -127,6 +136,11 @@ public:
     static const int MOTION_MENU_ITEM_COUNT = 7;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
         "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "Swap X/Y", "Invert X", "Invert Y", "Invert Z"
+    };
+
+    static const int IMU_SUBAPP_COUNT = 2;
+    const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
+        "ALTIMETER", "AIR MOUSE"
     };
 
     bool needsRedraw() const { return needs_redraw; }
@@ -192,6 +206,9 @@ public:
     uint32_t getLastActivityTime() const { return last_activity_time; }
 private:
     UIState current_state;
+    Imu6500SubApp imu_subapp;
+    int imu_subapp_selection;
+
     uint32_t last_activity_time;
     bool display_off;
     bool just_woke_display;
@@ -233,6 +250,7 @@ private:
     void handleKeyboardInput();
     void handleGenericAppInput();
     void handleCompassInput();
+    void handleAirMouseInput();
 
     void handleSettingsMainInput();
     void handleConnectivityInput();

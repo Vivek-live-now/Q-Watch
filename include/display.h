@@ -40,9 +40,11 @@ private:
     void drawHealthPage1Live();
     void drawHealthPage2History();
     void drawAppMotion();
+    void drawAppMotionMenu();
     void drawAppMotionLevel();
     void drawAppMotionData();
     void drawAppMotionSettings();
+    void drawAppAirMouse();
     void drawAppIR();
     void drawAppBme();
     void drawBmePage1Pressure();
