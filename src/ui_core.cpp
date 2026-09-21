@@ -65,10 +65,14 @@ void UICore::begin() {
         uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
         esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
-        // Configure RTC timer wakeup for periodic sensor logging
+        // Configure the timer for the most frequent enabled background sensor.
     SettingsData& sleep_s = settingsManager.get();
-    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t sleep_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600};
+    uint32_t bme_interval_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t health_interval_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
+    uint32_t sleep_interval_sec = sleep_s.health_background_enabled
+                                 ? ((health_interval_sec < bme_interval_sec) ? health_interval_sec : bme_interval_sec)
+                                 : bme_interval_sec;
     esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
 
     esp_deep_sleep_start();
