@@ -33,7 +33,7 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   `TIME` (Sync Now, Auto Sync, Timezone, 24 Hour)
     *   `POWER` (Display Timeout, Sleep Time, Low Power)
     *   `DISPLAY` (Contrast, Invert, UI Options)
-    *   `SENSORS` (Compass Cal, IMU Cal, Sensor Status)
+    *   `SENSORS` (Compass Cal, IMU Cal, Health, Sensor Status)
     *   `SYSTEM` (Storage Info, Reset Settings)
 
 ### Milestone 5: 4-Button Navigation & Gesture Framework
@@ -43,6 +43,13 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   **Sub-Screens:** Short CANCEL = Back; Long OK = Back; Long CANCEL = Return to HOME.
     *   **Combinations & Double-Tap:** Generic framework support for CANCEL+UP, CANCEL+OK, CANCEL+DN, and Double-Tap CANCEL for future shortcut mapping.
 *   **Dual Deep Sleep Wake:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (CANCEL button) and **GPIO 8** (MPU-6500 raise-to-wake motion interrupt). The initial wake event is automatically consumed so it does not trigger accidental in-app actions.
+
+### Milestone 6: MAX30102 Health & Pulse Oximeter App
+*   **Live Health Monitoring (Page 1):** Real-time PPG pulse waveform graph rendered chronologically from a 64-sample circular buffer, live Heart Rate (BPM), SpO2 percentage with a horizontal progress bar gauge, MAX30102 die/sensor temperature reading (°C), and dynamic finger contact detection.
+*   **Whole-Day History & Trends (Page 2):** Historical trend graphs for Heart Rate, SpO2, and Sensor Temperature filtered strictly to today's local calendar day using `localtime_r` calendar comparisons (`tm_year`, `tm_yday`). Provides latest, minimum, maximum, and average summary statistics.
+*   **Independent Background Scheduling:** Autonomous deep-sleep periodic wakeup logging for MAX30102 and BME280 sensors. Each sensor maintains an independent schedule (`last_bme` and `last_health` stored in persistent `Preferences`). Deep sleep calculates the earliest required wakeup time across all active background sensors.
+*   **Strict Power Lifecycle:** MAX30102 LEDs and optical engine automatically power down when navigating away from Page 1, switching to Page 2, or performing background snapshots to maximize battery longevity.
+*   **Health Settings:** Configurable under `SETTINGS -> SENSORS -> HEALTH` (Background Recording ON/OFF and Interval: 5m, 10m, 15m, 30m, 1h).
 
 ## Hardware Architecture & Pinout
 
@@ -61,7 +68,7 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | Peripheral | Function | GPIO | Notes |
 | :--- | :--- | :--- | :--- |
 | BME280 / MPU-6500 / QMC5883P / MAX30102 | SDA | 15 | |
-| BME280 / MPU-6500 / QMC5883P / MAX30102 | SCL | 16 | |
+| BME280 / MPU-6500 / QMC5883P / MAX30102 | SCL | 16 | Address 0x57 for MAX30102 |
 | MPU-6500 Interrupt | INT | 8 | RTC Wake Capable (Active-Low WOM Interrupt) |
 
 *Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
