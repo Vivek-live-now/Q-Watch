@@ -45,7 +45,8 @@ public:
     bool isDetected() const { return sensor_ok; }
 
     bool logBackgroundSample();
-    bool getTodayHistory(HealthHistoryEntry* buffer, int max_entries) const;
+    int getTodayHistory(HealthHistoryEntry* buffer, int max_entries) const;
+    int getLiveWaveform(uint32_t* buffer, int max_points) const;
     int getTodayHistoryCount() const;
 
 private:
