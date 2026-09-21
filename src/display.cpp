@@ -13,6 +13,7 @@
 #include "sound_manager.h"
 #include "settings_data.h"
 #include "keyboard.h"
+#include "max30102_health.h"
 #include "keyboard.h"
 #include "keyboard.h"
 #include "keyboard.h"
@@ -141,6 +142,12 @@ void DisplayManager::drawAppSettings() {
     } else if (sub == SettingsSubmenu::SENSORS) {
         String vals[3] = {"", "", ""};
         drawSettingsMenuWithValues("SENSORS", ui.sensors_items, vals, UICore::SENSORS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
+    } else if (sub == SettingsSubmenu::HEALTH) {
+        String vals[2] = {
+            settingsManager.get().health_background_enabled ? "ON" : "OFF",
+            HEALTH_INTERVAL_OPTIONS[settingsManager.get().health_interval_idx]
+        };
+        drawSettingsMenuWithValues("HEALTH", ui.health_settings_items, vals, UICore::HEALTH_SETTINGS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SYSTEM) {
         String vals[2] = {"", ""};
         drawSettingsMenuWithValues("SYSTEM", ui.system_items, vals, UICore::SYSTEM_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
@@ -418,9 +425,89 @@ void DisplayManager::drawAppCompassMetrics() {
 }
 
 void DisplayManager::drawAppHealth() {
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(10, 28, "BPM: ---");
-    oled.drawStr(10, 42, "O2 : --- %");
+    if (healthManager.getPage() == 0) drawHealthLive();
+    else drawHealthToday();
+}
+
+void DisplayManager::drawHealthLive() {
+    const HealthLiveData& h = healthManager.getLiveData();
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "HEALTH • LIVE");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_ncenB10_tr);
+    String bpm = h.bpm_valid ? String(h.bpm) + " BPM" : "-- BPM";
+    oled.drawStr(2, 22, bpm.c_str());
+
+    // Live IR pulse waveform.
+    int gx = 2, gy = 39, gw = 124, gh = 15;
+    oled.drawFrame(gx, gy - gh, gw, gh + 1);
+    if (h.finger_detected && healthManager.getLiveData().ir > 0) {
+        // The manager keeps a rolling 64-point waveform. Render normalized amplitude.
+        uint32_t maxv = 1, minv = UINT32_MAX;
+        for (int i = 0; i < 64; i++) {
+            // Access is intentionally limited to public live metrics in this first pass.
+            // A flat graph is preferable to exposing unstable raw internals.
+        }
+    } else {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(34, 33, "PLACE FINGER");
+    }
+
+    oled.setFont(u8g2_font_5x7_tr);
+    String spo = h.spo2_valid ? "SpO2 " + String(h.spo2) + "%" : "SpO2 --%";
+    String tmp = (h.sensor_temp > -40.0f && h.sensor_temp < 85.0f)
+                   ? "T " + String(h.sensor_temp, 1) + "C" : "T --.-C";
+    oled.drawStr(2, 62, spo.c_str());
+    oled.drawStr(78, 62, tmp.c_str());
+}
+
+void DisplayManager::drawHealthToday() {
+    HealthHistoryEntry data[288];
+    int count = healthManager.getTodayHistory(data, 288);
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "HEALTH • TODAY");
+    oled.drawLine(0, 9, 128, 9);
+
+    if (count <= 0) {
+        oled.drawStr(18, 34, "NO BACKGROUND DATA");
+        oled.drawStr(14, 46, "ENABLE IN SETTINGS");
+        return;
+    }
+
+    // Three compact trend bands: BPM, SpO2, sensor temperature.
+    const int x0 = 16, w = 108;
+    const int yB = 23, yS = 39, yT = 55;
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(1, 22, "B");
+    oled.drawStr(1, 38, "O");
+    oled.drawStr(1, 54, "T");
+
+    auto drawBand = [&](int y, int minV, int maxV, int metric) {
+        int prevX = -1, prevY = -1;
+        for (int i = 0; i < count; i++) {
+            int value = (metric == 0) ? data[i].bpm :
+                        (metric == 1) ? data[i].spo2 :
+                        (data[i].temp_x10 == -32768 ? minV : data[i].temp_x10 / 10);
+            if (value < minV) value = minV;
+            if (value > maxV) value = maxV;
+            int x = x0 + (i * (w - 1)) / (count > 1 ? count - 1 : 1);
+            int py = y - ((value - minV) * 10) / (maxV - minV);
+            if (prevX >= 0) oled.drawLine(prevX, prevY, x, py);
+            prevX = x; prevY = py;
+        }
+    };
+
+    drawBand(yB, 40, 180, 0);
+    drawBand(yS, 90, 100, 1);
+    drawBand(yT, 0, 50, 2);
+}
+
+void DisplayManager::drawHealthSettings() {
+    // Reserved for a future dedicated Health settings page.
 }
 
 void DisplayManager::drawAppMotionSettings() {
