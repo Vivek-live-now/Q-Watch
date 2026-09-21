@@ -6,6 +6,7 @@
 #include "hw_config.h"
 #include "led_manager.h"
 #include "sound_manager.h"
+#include "max30102_health.h"
 #include "settings_data.h"
 #include "wifi_portal.h"
 #include "clock.h"
@@ -187,12 +188,14 @@ void UICore::loop() {
             return;
         } else {
             // Long CANCEL on sub-screens = Return directly to HOME
+            if (current_state == UIState::APP_HEALTH) healthManager.stopLive();
             soundManager.playNavBack();
             current_state = UIState::APP_HOME;
             needs_redraw = true;
             return;
         }
     } else if (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME) {
+        if (current_state == UIState::APP_HEALTH) healthManager.stopLive();
         // Long OK on non-home screens = Back
         soundManager.playNavBack();
         if (current_state == UIState::MAIN_MENU) {
@@ -241,6 +244,9 @@ void UICore::loop() {
             break;
         case UIState::APP_MOTION:
             handleMotionInput();
+            break;
+        case UIState::APP_HEALTH:
+            handleHealthInput();
             break;
         default:
             handleGenericAppInput();
@@ -319,7 +325,7 @@ void UICore::handleMainMenuInput() {
             case 1: current_state = UIState::APP_CLOCK; break;
             case 2: current_state = UIState::APP_WEATHER; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
-            case 4: current_state = UIState::APP_HEALTH; break;
+            case 4: current_state = UIState::APP_HEALTH; healthManager.startLive(); break;
             case 5: current_state = UIState::APP_MOTION; motion_state = MotionState::PAGE_LEVEL; break;
             case 6: current_state = UIState::APP_IR; break;
             case 7: current_state = UIState::APP_ALTIMETER; break;
@@ -350,6 +356,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::POWER: handlePowerInput(); break;
         case SettingsSubmenu::SUB_DISPLAY: handleDisplayInput(); break;
         case SettingsSubmenu::SENSORS: handleSensorsInput(); break;
+        case SettingsSubmenu::HEALTH: handleHealthSettingsInput(); break;
         case SettingsSubmenu::SYSTEM: handleSystemInput(); break;
         case SettingsSubmenu::RESET_CONFIRM: handleResetConfirmInput(); break;
     }
@@ -664,7 +671,9 @@ void UICore::handleSensorsInput() {
         } else if (settings_selection == 1) {
             showToast("[IMU CAL]", 1500);
         } else if (settings_selection == 2) {
-            showToast("[STATUS: OK]", 1500);
+            settings_submenu = SettingsSubmenu::HEALTH;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
         }
         needs_redraw = true;
     }
@@ -709,6 +718,20 @@ void UICore::handleResetConfirmInput() {
         settings_submenu = SettingsSubmenu::SYSTEM;
         settings_selection = 1;
         settings_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleHealthInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        healthManager.previousPage();
+        needs_redraw = true;
+    }
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        healthManager.nextPage();
         needs_redraw = true;
     }
 }
