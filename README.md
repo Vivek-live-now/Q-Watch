@@ -61,12 +61,27 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   Compact binary ring-buffer logger (`/bme_history.bin`) storing up to 288 records (10 bytes/entry) for 24-hour history at 5-minute intervals.
     *   **Persistent Calibration:** Saves temperature offset (`temp_offset`) and reference ground pressure (`reference_pressure`) in NVS Preferences, surviving deep sleep and complete restarts.
     *   **Deep Sleep Periodic Logging:** When waking from deep sleep via the RTC timer, the watch silently reads the BME280, logs calibrated values to `/bme_history.bin`, re-arms the timer, and returns to deep sleep immediately without activating the OLED display or Wi-Fi.
+
 ### Milestone 6(A): MAX30102 Health & Pulse Oximeter App
 *   **Live Health Monitoring (Page 1):** Real-time PPG pulse waveform graph rendered chronologically from a 64-sample circular buffer, live Heart Rate (BPM), SpO2 percentage with a horizontal progress bar gauge, MAX30102 die/sensor temperature reading (°C), and dynamic finger contact detection.
 *   **Whole-Day History & Trends (Page 2):** Historical trend graphs for Heart Rate, SpO2, and Sensor Temperature filtered strictly to today's local calendar day using `localtime_r` calendar comparisons (`tm_year`, `tm_yday`). Provides latest, minimum, maximum, and average summary statistics.
 *   **Independent Background Scheduling:** Autonomous deep-sleep periodic wakeup logging for MAX30102 and BME280 sensors. Each sensor maintains an independent schedule (`last_bme` and `last_health` stored in persistent `Preferences`). Deep sleep calculates the earliest required wakeup time across all active background sensors.
 *   **Strict Power Lifecycle:** MAX30102 LEDs and optical engine automatically power down when navigating away from Page 1, switching to Page 2, or performing background snapshots to maximize battery longevity.
 *   **Health Settings:** Configurable under `SETTINGS -> SENSORS -> HEALTH` (Background Recording ON/OFF and Interval: 5m, 10m, 15m, 30m, 1h).
+
+### Milestone 7: IMU6500 Sub-App Architecture & BLE Air Mouse Mode
+*   **Sub-App Selector Shell:** IMU6500 operates as a parent menu containing two distinct sub-applications:
+    *   **`ALTIMETER`:** Preserves the full artificial horizon / attitude indicator, altitude zero/reference, 3D compass integration, telemetry page, and IMU calibration/axis controls (including `Invert Z`).
+    *   **`AIR MOUSE`:** Converts the watch into a wireless BLE HID air mouse remote for PCs, tablets, and mobile devices.
+*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(true)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
+*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (Gyro Y → X movement, Gyro X → Y movement) with dead-zone noise suppression (~6 °/s threshold), exponential low-pass smoothing, sensitivity multipliers (`LOW`: 0.5x, `MED`: 1.0x, `HIGH`: 2.0x), and integer accumulation clamped to HID range (-127 to +127).
+*   **Dual Mode & Controls:**
+    *   **`POINTER` Mode:** Short UP = Left Click; Short DOWN = Right Click.
+    *   **`SCROLL` Mode:** Short UP = Scroll Up; Short DOWN = Scroll Down.
+    *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
+    *   **Pause & Recenter:** Short OK toggles pointer/scroll activity ON/OFF; Long OK establishes an Air Mouse recenter offset without modifying global IMU calibration.
+    *   **Sensitivity Control:** Long UP / Long DOWN adjusts sensitivity levels (`LOW`, `MED`, `HIGH`).
+    *   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
 
 ## Hardware Architecture & Pinout
 
@@ -121,17 +136,3 @@ Because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it 
 4.  On first boot, configure Wi-Fi directly on the watch via `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS` or connect to the **Q-Watch-Setup** Wi-Fi captive portal network at `http://192.168.4.1`.
 5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
 6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.
-
-### Milestone 7: IMU6500 Sub-App Architecture & BLE Air Mouse Mode
-*   **Sub-App Selector Shell:** IMU6500 operates as a parent menu containing two distinct sub-applications:
-    *   **`ALTIMETER`:** Preserves the full artificial horizon / attitude indicator, altitude zero/reference, 3D compass integration, telemetry page, and IMU calibration/axis controls (including `Invert Z`).
-    *   **`AIR MOUSE`:** Converts the watch into a wireless BLE HID air mouse remote for PCs, tablets, and mobile devices.
-*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(true)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
-*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (Gyro Y → X movement, Gyro X → Y movement) with dead-zone noise suppression (~6 °/s threshold), exponential low-pass smoothing, sensitivity multipliers (`LOW`: 0.5x, `MED`: 1.0x, `HIGH`: 2.0x), and integer accumulation clamped to HID range (-127 to +127).
-*   **Dual Mode & Controls:**
-    *   **`POINTER` Mode:** Short UP = Left Click; Short DOWN = Right Click.
-    *   **`SCROLL` Mode:** Short UP = Scroll Up; Short DOWN = Scroll Down.
-    *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
-    *   **Pause & Recenter:** Short OK toggles pointer/scroll activity ON/OFF; Long OK establishes an Air Mouse recenter offset without modifying global IMU calibration.
-    *   **Sensitivity Control:** Long UP / Long DOWN adjusts sensitivity levels (`LOW`, `MED`, `HIGH`).
-    *   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
