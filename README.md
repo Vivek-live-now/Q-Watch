@@ -44,7 +44,24 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   **Combinations & Double-Tap:** Generic framework support for CANCEL+UP, CANCEL+OK, CANCEL+DN, and Double-Tap CANCEL for future shortcut mapping.
 *   **Dual Deep Sleep Wake:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (CANCEL button) and **GPIO 8** (MPU-6500 raise-to-wake motion interrupt). The initial wake event is automatically consumed so it does not trigger accidental in-app actions.
 
-### Milestone 6: MAX30102 Health & Pulse Oximeter App
+
+### Milestone 6: BME280 Environmental Sensor App & Weather App Architecture
+*   **BME280 App (5 Pages):**
+    *   **Page 1 (Pressure):** Real-time barometric pressure in hPa with min/max auto-scaled historical trend graph.
+    *   **Page 2 (Humidity):** Real-time relative humidity (%RH) with min/max auto-scaled historical trend graph.
+    *   **Page 3 (Temperature):** Real-time temperature (°C) incorporating active calibration offset with historical trend graph.
+    *   **Page 4 (Relative Height / Altimeter):** Pressure-based relative altitude measurement state machine (OFF -> [OK] SET ZERO -> MEASURING -> [OK] PAUSE -> [OK] RESUME).
+    *   **Page 5 (Diagnostic & Calibration):** Displays sensor status (Address 0x76, Chip ID 0x60), live readings, active temperature offset (°C), reference pressure (hPa), reading age, and interactive controls to adjust temperature offset or reset calibration.
+*   **Weather App (6 Pages):**
+    *   **Page 1 (Local Readings):** Live local BME280 temperature, humidity, and barometric pressure.
+    *   **Page 2 (OpenWeatherMap + Cute Animated Graphics):** HTTPS OpenWeatherMap report with animated weather icons (Clear, Clouds, Rain, Thunderstorm, Mist/Fog, plus offline animated cute placeholder).
+    *   **Pages 3–5 (24h Trend Graphs):** Whole-day temperature, pressure, and humidity graphs drawn from historical buffer.
+    *   **Page 6 (Logging & Refresh Settings):** Configurable sensor logging / refresh interval (5 min, 10 min, 15 min, 30 min, 1 hour).
+*   **24-Hour Historical Data Logging in LittleFS:**
+    *   Compact binary ring-buffer logger (`/bme_history.bin`) storing up to 288 records (10 bytes/entry) for 24-hour history at 5-minute intervals.
+    *   **Persistent Calibration:** Saves temperature offset (`temp_offset`) and reference ground pressure (`reference_pressure`) in NVS Preferences, surviving deep sleep and complete restarts.
+    *   **Deep Sleep Periodic Logging:** When waking from deep sleep via the RTC timer, the watch silently reads the BME280, logs calibrated values to `/bme_history.bin`, re-arms the timer, and returns to deep sleep immediately without activating the OLED display or Wi-Fi.
+### Milestone 6(A): MAX30102 Health & Pulse Oximeter App
 *   **Live Health Monitoring (Page 1):** Real-time PPG pulse waveform graph rendered chronologically from a 64-sample circular buffer, live Heart Rate (BPM), SpO2 percentage with a horizontal progress bar gauge, MAX30102 die/sensor temperature reading (°C), and dynamic finger contact detection.
 *   **Whole-Day History & Trends (Page 2):** Historical trend graphs for Heart Rate, SpO2, and Sensor Temperature filtered strictly to today's local calendar day using `localtime_r` calendar comparisons (`tm_year`, `tm_yday`). Provides latest, minimum, maximum, and average summary statistics.
 *   **Independent Background Scheduling:** Autonomous deep-sleep periodic wakeup logging for MAX30102 and BME280 sensors. Each sensor maintains an independent schedule (`last_bme` and `last_health` stored in persistent `Preferences`). Deep sleep calculates the earliest required wakeup time across all active background sensors.
