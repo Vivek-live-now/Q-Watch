@@ -638,10 +638,13 @@ void DisplayManager::drawAppAirMouse() {
     oled.setFont(u8g2_font_6x10_tr);
 
     String ble_str = "BLE : ";
-    if (!airMouse.isEnabled()) {
+    AirMouseBleStatus st = airMouse.getBleStatus();
+    if (st == AirMouseBleStatus::OFF) {
         ble_str += "OFF";
-    } else if (airMouse.isConnected()) {
+    } else if (st == AirMouseBleStatus::CONNECTED) {
         ble_str += "CONNECTED";
+    } else if (st == AirMouseBleStatus::DISCONNECTED) {
+        ble_str += "DISCONNECTED";
     } else {
         ble_str += "CONNECTING";
     }
@@ -664,8 +667,8 @@ void DisplayManager::drawAppAirMouse() {
     oled.drawStr(4, 54, move_str.c_str());
 
     oled.setFont(u8g2_font_4x6_tr);
-    if (!airMouse.isEnabled()) {
-        oled.drawStr(4, 63, "OK: START BLE");
+    if (!airMouse.isEnabled() || st == AirMouseBleStatus::DISCONNECTED) {
+        oled.drawStr(4, 63, "OK: RECONNECT BLE");
     } else {
         oled.drawStr(4, 63, "OK:MOVE CANCEL:MODE");
     }

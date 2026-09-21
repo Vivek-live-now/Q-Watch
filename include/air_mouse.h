@@ -2,16 +2,11 @@
 #define AIR_MOUSE_H
 
 #include <Arduino.h>
-
-#ifdef LOW
-#undef LOW
-#endif
-
-#ifdef HIGH
-#undef HIGH
-#endif
-
-#include <BleMouse.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+#include <BLEHIDDevice.h>
 
 enum class AirMouseMode {
     POINTER,
@@ -22,6 +17,24 @@ enum class AirMouseSensitivity {
     SENS_LOW,
     SENS_MED,
     SENS_HIGH
+};
+
+enum class AirMouseBleStatus {
+    OFF,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTED
+};
+
+class AirMouseServerCallbacks : public BLEServerCallbacks {
+public:
+    AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag);
+    void onConnect(BLEServer* pServer) override;
+    void onDisconnect(BLEServer* pServer) override;
+
+private:
+    bool* connected;
+    bool* was_connected;
 };
 
 class AirMouseManager {
@@ -35,8 +48,9 @@ public:
     void stop();
 
     bool isEnabled() const { return enabled; }
-    bool isConnected() const;
+    bool isConnected() const { return is_connected; }
     bool isMovementActive() const { return movement_active; }
+    AirMouseBleStatus getBleStatus() const;
 
     void toggleMovement();
     void toggleMode();
@@ -53,11 +67,18 @@ public:
     AirMouseSensitivity getSensitivity() const { return sensitivity; }
 
 private:
-    BleMouse* ble_mouse;
     bool enabled;
+    bool is_connected;
+    bool was_connected;
     bool movement_active;
     AirMouseMode mode;
     AirMouseSensitivity sensitivity;
+
+    // BLE HID Objects
+    BLEServer* pServer;
+    BLEHIDDevice* hid;
+    BLECharacteristic* inputMouse;
+    uint8_t buttons_state;
 
     // Recenter offsets (in gyro deg/s)
     float offset_gx;
@@ -74,6 +95,7 @@ private:
     uint32_t last_update_ms;
 
     float getSensitivityMultiplier() const;
+    void sendReport(uint8_t buttons, signed char x, signed char y, signed char wheel, signed char hWheel);
 };
 
 extern AirMouseManager airMouse;

@@ -452,10 +452,13 @@ void UICore::handleAirMouseInput() {
         return;
     }
 
-    // Short OK -> Start BLE (if OFF) or Toggle Pointer movement ON/OFF (if started)
+    // Short OK -> Start / Reconnect BLE (if OFF or DISCONNECTED) or Toggle Pointer movement ON/OFF (if CONNECTED/CONNECTING)
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
-        if (!airMouse.isEnabled()) {
+        if (!airMouse.isEnabled() || airMouse.getBleStatus() == AirMouseBleStatus::DISCONNECTED) {
+            if (airMouse.isEnabled()) {
+                airMouse.stop();
+            }
             airMouse.start();
         } else {
             airMouse.toggleMovement();
