@@ -469,10 +469,22 @@ void DisplayManager::drawHealthLive() {
 
     oled.setFont(u8g2_font_5x7_tr);
     String spo = h.spo2_valid ? "SpO2 " + String(h.spo2) + "%" : "SpO2 --%";
+    oled.drawStr(2, 47, spo.c_str());
+
+    // Horizontal SpO2 indicator. The displayed value is only marked valid
+    // when the optical signal passes the current quality gate.
+    oled.drawFrame(39, 42, 86, 7);
+    if (h.spo2_valid) {
+        int clamped = h.spo2;
+        if (clamped < 70) clamped = 70;
+        if (clamped > 100) clamped = 100;
+        int fill = ((clamped - 70) * 82) / 30;
+        if (fill > 0) oled.drawBox(41, 44, fill, 3);
+    }
+
     String tmp = (h.sensor_temp > -40.0f && h.sensor_temp < 85.0f)
-                   ? "T " + String(h.sensor_temp, 1) + "C" : "T --.-C";
-    oled.drawStr(2, 62, spo.c_str());
-    oled.drawStr(78, 62, tmp.c_str());
+                   ? "SENSOR " + String(h.sensor_temp, 1) + "C" : "SENSOR --.-C";
+    oled.drawStr(2, 62, tmp.c_str());
 }
 
 void DisplayManager::drawHealthToday() {
