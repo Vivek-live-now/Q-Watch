@@ -75,9 +75,10 @@ void UICore::begin() {
 
         if (health_due) {
             max30102Manager.begin();
-            max30102Manager.takeSampleAndSave(7000);
-            sched_prefs.putUInt("last_health", now);
-            last_health_epoch = now;
+            if (max30102Manager.takeSampleAndSave(7000)) {
+                sched_prefs.putUInt("last_health", now);
+                last_health_epoch = now;
+            }
         }
 
         // Calculate independent next due delay
@@ -220,6 +221,9 @@ void UICore::loop() {
             return;
         } else {
             // Long CANCEL on sub-screens = Return directly to HOME
+            if (current_state == UIState::APP_HEALTH) {
+                max30102Manager.disableSensor();
+            }
             soundManager.playNavBack();
             current_state = UIState::APP_HOME;
             needs_redraw = true;
@@ -228,6 +232,9 @@ void UICore::loop() {
     } else if (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME) {
         // Long OK on non-home screens = Back
         soundManager.playNavBack();
+        if (current_state == UIState::APP_HEALTH) {
+            max30102Manager.disableSensor();
+        }
         if (current_state == UIState::MAIN_MENU) {
             current_state = UIState::APP_HOME;
         } else if (current_state == UIState::APP_SETTINGS) {

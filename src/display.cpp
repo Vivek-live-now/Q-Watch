@@ -457,8 +457,16 @@ void DisplayManager::drawHealthPage1Live() {
     String spo2Str = "SpO2: " + String(m.spo2 > 0 ? String(m.spo2) + "%" : "--");
     String tempStr = "DIE: " + String(m.temperature, 1) + "C";
 
-    oled.drawStr(2, 28, bpmStr.c_str());
-    oled.drawStr(65, 28, spo2Str.c_str());
+    oled.drawStr(2, 26, bpmStr.c_str());
+    oled.drawStr(65, 26, spo2Str.c_str());
+
+    // Horizontal SpO2 Progress Indicator Bar
+    oled.drawFrame(65, 28, 61, 5);
+    if (m.spo2 > 0) {
+        int fill_w = (m.spo2 * 57) / 100;
+        if (fill_w > 57) fill_w = 57;
+        if (fill_w > 0) oled.drawBox(67, 30, fill_w, 2);
+    }
 
     // PPG Pulse Waveform Graph (Real-time live chronological buffer)
     int graph_x = 2;
