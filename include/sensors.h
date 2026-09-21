@@ -145,6 +145,9 @@ public:
     uint32_t getLastBmeReadingTime() const { return last_bme_update; }
     float getReferencePressure() const { return reference_pressure; }
     void resetReferencePressure();
+    float getTempOffset() const { return temp_offset; }
+    void setTempOffset(float offset);
+    void resetBmeCalibration();
 
 
 private:
@@ -155,6 +158,7 @@ private:
     Adafruit_BME280 bme;
     EnvironmentData env_data;
     float reference_pressure;
+    float temp_offset;
     uint32_t last_bme_update;
     uint32_t last_bme_log;
     BmeHeightState height_state;

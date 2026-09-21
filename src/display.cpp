@@ -1215,23 +1215,24 @@ void DisplayManager::drawBmePage4Altitude() {
 
 void DisplayManager::drawBmePage5Info() {
     oled.setFont(u8g2_font_4x6_tr);
-    oled.drawStr(2, 14, "BME280 SENSOR DIAGNOSTIC");
+    oled.drawStr(2, 14, "BME280 CALIBRATION & DIAGNOSTIC");
 
     bool ok = sensors.isBmeOk();
-    oled.drawStr(2, 22, ("STATUS: " + String(ok ? "DETECTED" : "NOT FOUND")).c_str());
-    oled.drawStr(2, 30, "ADDR  : 0x76 | ID: 0x60");
+    oled.drawStr(2, 22, ("STATUS: " + String(ok ? "DETECTED" : "NOT FOUND") + " | 0x76 ID:0x60").c_str());
 
     EnvironmentData env = sensors.getEnvData();
     char buf[64];
     snprintf(buf, sizeof(buf), "T:%.1fC P:%.1fhPa H:%.0f%%", env.temperature, env.pressure, env.humidity);
+    oled.drawStr(2, 30, buf);
+
+    snprintf(buf, sizeof(buf), "T_OFF : %+.1fC  (UP/DN: ADJUST)", sensors.getTempOffset());
     oled.drawStr(2, 38, buf);
 
-    SettingsData& s = settingsManager.get();
-    snprintf(buf, sizeof(buf), "REF:%.1fhPa INT:%s", sensors.getReferencePressure(), BME_INTERVAL_OPTIONS[s.bme_interval_idx]);
+    snprintf(buf, sizeof(buf), "P_REF : %.1fhPa", sensors.getReferencePressure());
     oled.drawStr(2, 46, buf);
 
     uint32_t last_t = sensors.getLastBmeReadingTime();
     uint32_t age_sec = (millis() - last_t) / 1000;
-    snprintf(buf, sizeof(buf), "AGE:%us | [OK] RESET REF", age_sec);
+    snprintf(buf, sizeof(buf), "AGE   : %us | [OK] RESET CAL", age_sec);
     oled.drawStr(2, 54, buf);
 }
