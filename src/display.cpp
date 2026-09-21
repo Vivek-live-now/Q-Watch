@@ -12,6 +12,7 @@
 #include "led_manager.h"
 #include "sound_manager.h"
 #include "settings_data.h"
+#include "air_mouse.h"
 #include "keyboard.h"
 #include "keyboard.h"
 #include "keyboard.h"
@@ -607,14 +608,84 @@ void DisplayManager::drawHealthPage2History() {
 
 
 
+void DisplayManager::drawAppMotionMenu() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "IMU6500");
+    oled.drawLine(0, 9, 128, 9);
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getImuSubAppSelection();
+    int y_pos = 26;
+
+    for (int i = 0; i < UICore::IMU_SUBAPP_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 11);
+            oled.setDrawColor(0);
+            oled.drawStr(6, y_pos, ui.imu_subapp_items[i]);
+            oled.setDrawColor(1);
+        } else {
+            oled.drawStr(6, y_pos, ui.imu_subapp_items[i]);
+        }
+        y_pos += 16;
+    }
+}
+
+void DisplayManager::drawAppAirMouse() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "AIR MOUSE");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_6x10_tr);
+
+    String ble_str = "BLE : ";
+    if (!airMouse.isEnabled()) {
+        ble_str += "OFF";
+    } else if (airMouse.isConnected()) {
+        ble_str += "CONNECTED";
+    } else {
+        ble_str += "CONNECTING";
+    }
+
+    String mode_str = "MODE: ";
+    mode_str += (airMouse.getMode() == AirMouseMode::POINTER) ? "POINTER" : "SCROLL";
+
+    String sens_str = "SENS: ";
+    AirMouseSensitivity sens = airMouse.getSensitivity();
+    if (sens == AirMouseSensitivity::SENS_LOW) sens_str += "LOW";
+    else if (sens == AirMouseSensitivity::SENS_MED) sens_str += "MED";
+    else sens_str += "HIGH";
+
+    String move_str = "MOVE: ";
+    move_str += airMouse.isMovementActive() ? "ON" : "OFF";
+
+    oled.drawStr(4, 21, ble_str.c_str());
+    oled.drawStr(4, 32, mode_str.c_str());
+    oled.drawStr(4, 43, sens_str.c_str());
+    oled.drawStr(4, 54, move_str.c_str());
+
+    oled.setFont(u8g2_font_4x6_tr);
+    if (!airMouse.isEnabled()) {
+        oled.drawStr(4, 63, "OK: START BLE");
+    } else {
+        oled.drawStr(4, 63, "OK:MOVE CANCEL:MODE");
+    }
+}
+
 void DisplayManager::drawAppMotion() {
-    MotionState s = ui.getMotionState();
-    if (s == MotionState::PAGE_LEVEL) {
-        drawAppMotionLevel();
-    } else if (s == MotionState::PAGE_DATA) {
-        drawAppMotionData();
-    } else if (s == MotionState::PAGE_SETTINGS) {
-        drawAppMotionSettings();
+    Imu6500SubApp sub = ui.getImuSubApp();
+    if (sub == Imu6500SubApp::SUBAPP_MENU) {
+        drawAppMotionMenu();
+    } else if (sub == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+        drawAppAirMouse();
+    } else {
+        MotionState s = ui.getMotionState();
+        if (s == MotionState::PAGE_LEVEL) {
+            drawAppMotionLevel();
+        } else if (s == MotionState::PAGE_DATA) {
+            drawAppMotionData();
+        } else if (s == MotionState::PAGE_SETTINGS) {
+            drawAppMotionSettings();
+        }
     }
 }
 
