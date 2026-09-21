@@ -767,11 +767,21 @@ void UICore::handleHealthInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
 
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        int old_page = healthManager.getPage();
         healthManager.previousPage();
+        if (old_page != healthManager.getPage()) {
+            if (healthManager.getPage() == 0) healthManager.startLive();
+            else healthManager.stopLive();
+        }
         needs_redraw = true;
     }
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        int old_page = healthManager.getPage();
         healthManager.nextPage();
+        if (old_page != healthManager.getPage()) {
+            if (healthManager.getPage() == 0) healthManager.startLive();
+            else healthManager.stopLive();
+        }
         needs_redraw = true;
     }
 }
