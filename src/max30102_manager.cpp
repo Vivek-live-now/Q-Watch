@@ -2,6 +2,7 @@
 #include "file_manager.h"
 #include "settings_data.h"
 #include "hw_config.h"
+#include "clock.h"
 #include <Wire.h>
 
 MAX30102Manager max30102Manager;
@@ -12,18 +13,16 @@ MAX30102Manager::MAX30102Manager() :
     ppg_head(0),
     last_sample_time(0),
     last_temp_read_time(0),
-    last_history_log_time(0),
     sample_idx(0) {
     memset(&current_metrics, 0, sizeof(HealthMetrics));
-    memset(ppg_buffer, 0, sizeof(ppg_buffer));
+    memset(ppg_buffer, 128, sizeof(ppg_buffer));
 }
 
 void MAX30102Manager::begin() {
     // Sensor shared I2C bus setup handled in SensorManager (400kHz Wire)
     if (particleSensor.begin(Wire, I2C_SPEED_FAST)) {
         sensor_ok = true;
-        Serial.println("MAX30102 sensor detected.");
-        // Initially put sensor in power-save / disabled state until requested
+        Serial.println("MAX30102 sensor detected at I2C address 0x57.");
         disableSensor();
     } else {
         sensor_ok = false;
@@ -35,7 +34,6 @@ void MAX30102Manager::enableSensor() {
     if (!sensor_ok || sensor_enabled) return;
 
     // Power on / setup MAX30102
-    // Setup parameters: ledMode = 2 (Red + IR), sampleRate = 100, pulseWidth = 411, adcRange = 4096
     byte ledBrightness = 0x1F; // ~6.4mA options for finger detection and low power
     byte sampleAverage = 4;
     byte ledMode = 2; // Red + IR
@@ -67,6 +65,14 @@ void MAX30102Manager::readTemperature() {
     }
 }
 
+void MAX30102Manager::getPPGWaveformChronological(uint8_t* out_buffer) const {
+    if (!out_buffer) return;
+    for (int i = 0; i < 64; i++) {
+        int idx = (ppg_head + i) % 64;
+        out_buffer[i] = ppg_buffer[idx];
+    }
+}
+
 void MAX30102Manager::loop() {
     if (!sensor_ok || !sensor_enabled) return;
 
@@ -85,7 +91,6 @@ void MAX30102Manager::loop() {
             current_metrics.finger_detected = true;
 
             // Normalize IR signal to 0-255 PPG waveform graph
-            // AC component modulation around DC level
             static uint32_t dc_filter = 50000;
             dc_filter = (dc_filter * 15 + ir) / 16;
             int32_t ac = (int32_t)ir - (int32_t)dc_filter;
@@ -103,7 +108,7 @@ void MAX30102Manager::loop() {
                 sample_idx++;
             } else {
                 calculateBPMAndSpO2();
-                // Shift buffer
+                // Shift buffer by 25 samples
                 for (int i = 0; i < SAMPLE_SIZE - 25; i++) {
                     red_samples[i] = red_samples[i + 25];
                     ir_samples[i] = ir_samples[i + 25];
@@ -113,7 +118,7 @@ void MAX30102Manager::loop() {
 
         } else {
             current_metrics.finger_detected = false;
-            current_metrics.bpm = 0;
+            current_metrics.bpm = 0; // Clear stale values when no finger detected
             current_metrics.spo2 = 0;
             sample_idx = 0;
             ppg_buffer[ppg_head] = 128;
@@ -129,7 +134,6 @@ void MAX30102Manager::loop() {
 }
 
 void MAX30102Manager::calculateBPMAndSpO2() {
-    // Basic peak detection and ratio-of-ratios SpO2 approximation
     int peaks = 0;
     uint32_t ir_mean = 0;
     uint32_t red_mean = 0;
@@ -141,7 +145,6 @@ void MAX30102Manager::calculateBPMAndSpO2() {
     ir_mean /= SAMPLE_SIZE;
     red_mean /= SAMPLE_SIZE;
 
-    // Detect AC amplitudes
     int32_t ir_max = 0, ir_min = 0xFFFFFF;
     int32_t red_max = 0, red_min = 0xFFFFFF;
 
@@ -151,7 +154,6 @@ void MAX30102Manager::calculateBPMAndSpO2() {
         if ((int32_t)red_samples[i] > red_max) red_max = red_samples[i];
         if ((int32_t)red_samples[i] < red_min) red_min = red_samples[i];
 
-        // Simple zero-crossing / peak count on AC filtered signal
         if (i > 1 && i < SAMPLE_SIZE - 1) {
             if (ir_samples[i] > ir_samples[i - 1] && ir_samples[i] > ir_samples[i + 1] && ir_samples[i] > ir_mean + 100) {
                 peaks++;
@@ -162,25 +164,28 @@ void MAX30102Manager::calculateBPMAndSpO2() {
     int32_t ir_ac = ir_max - ir_min;
     int32_t red_ac = red_max - red_min;
 
-    if (peaks >= 2 && peaks <= 10 && ir_mean > 0 && red_mean > 0) {
-        // Sample window is 100 samples at 25Hz effective batch = 4 seconds
+    // Reset metrics to invalid (0) unless signal quality passes
+    current_metrics.bpm = 0;
+    current_metrics.spo2 = 0;
+
+    if (peaks >= 2 && peaks <= 10 && ir_mean > 0 && red_mean > 0 && ir_ac > 200 && red_ac > 200) {
         int calculated_bpm = (peaks * 60) / 4;
         if (calculated_bpm >= 40 && calculated_bpm <= 200) {
             current_metrics.bpm = calculated_bpm;
         }
 
-        // SpO2 estimation using standard R = (Red_AC/Red_DC) / (IR_AC/IR_DC)
-        if (ir_ac > 0 && red_ac > 0) {
-            float red_ratio = (float)red_ac / (float)red_mean;
-            float ir_ratio = (float)ir_ac / (float)ir_mean;
+        float red_ratio = (float)red_ac / (float)red_mean;
+        float ir_ratio = (float)ir_ac / (float)ir_mean;
+        if (ir_ratio > 0.0001f) {
             float R = red_ratio / ir_ratio;
-
-            // Linear approximation: SpO2 = 104 - 17 * R
+            // Experimental estimation: SpO2 = 104 - 17 * R
             int calculated_spo2 = (int)(104.0f - 17.0f * R);
-            if (calculated_spo2 > 100) calculated_spo2 = 99;
-            if (calculated_spo2 < 80) calculated_spo2 = 80;
-
-            current_metrics.spo2 = calculated_spo2;
+            // Strict signal quality check: Do NOT clamp arbitrary out-of-bound values to 80/99
+            if (calculated_spo2 >= 70 && calculated_spo2 <= 100) {
+                current_metrics.spo2 = calculated_spo2;
+            } else {
+                current_metrics.spo2 = 0; // Mark as uncalculated/invalid --
+            }
         }
     }
 }
@@ -195,7 +200,7 @@ bool MAX30102Manager::takeSampleAndSave(uint32_t duration_ms) {
     while (millis() - start_time < duration_ms) {
         loop();
         delay(10);
-        if (current_metrics.finger_detected && current_metrics.bpm >= 40 && current_metrics.spo2 >= 80) {
+        if (current_metrics.finger_detected && current_metrics.bpm >= 40 && current_metrics.spo2 >= 70) {
             valid = true;
         }
     }
@@ -209,17 +214,17 @@ bool MAX30102Manager::takeSampleAndSave(uint32_t duration_ms) {
 }
 
 void MAX30102Manager::logSample(uint8_t bpm, uint8_t spo2, float temp) {
-    if (bpm == 0 || spo2 == 0) return; // Ignore invalid readings
+    if (bpm == 0) return; // Do not record invalid readings
 
     HealthHistoryEntry entry;
-    entry.timestamp = millis() / 1000;
+    entry.timestamp = qclock.getEpoch(); // Store real Unix epoch timestamp
     entry.bpm = bpm;
     entry.spo2 = spo2;
     entry.temp_x10 = (int16_t)(temp * 10.0f);
 
     fileManager.append("/health_history.bin", (const uint8_t*)&entry, sizeof(HealthHistoryEntry));
 
-    // Limit binary history file to 288 entries (24 hours at 5 min intervals = 288 entries * 8 bytes = 2304 bytes)
+    // Keep history file capped at 288 records (24 hours at 5 min intervals)
     size_t sz = fileManager.fileSize("/health_history.bin");
     const int MAX_ENTRIES = 288;
     if (sz > (size_t)(MAX_ENTRIES * sizeof(HealthHistoryEntry))) {
@@ -231,8 +236,6 @@ void MAX30102Manager::logSample(uint8_t bpm, uint8_t spo2, float temp) {
         fileManager.write("/health_history.bin", (const uint8_t*)&buf[total - keep], keep * sizeof(HealthHistoryEntry));
         delete[] buf;
     }
-
-    last_history_log_time = millis();
 }
 
 int MAX30102Manager::getHistoryCount() const {

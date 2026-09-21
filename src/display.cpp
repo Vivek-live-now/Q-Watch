@@ -445,22 +445,22 @@ void DisplayManager::drawHealthPage1Live() {
         oled.setFont(u8g2_font_6x10_tr);
         oled.drawStr(10, 32, "[ NO FINGER DETECTED ]");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(10, 44, "Place finger firmly on MAX30102");
-        String tempStr = "DIE TEMP: " + String(m.temperature, 1) + " C";
+        oled.drawStr(10, 44, "Place finger on MAX30102");
+        String tempStr = "SENSOR TEMP: " + String(m.temperature, 1) + " C";
         oled.drawStr(10, 54, tempStr.c_str());
         return;
     }
 
     // BPM and SpO2 display
     oled.setFont(u8g2_font_6x10_tr);
-    String bpmStr = "BPM: " + String(m.bpm > 0 ? String(m.bpm) : "---");
-    String spo2Str = "SpO2: " + String(m.spo2 > 0 ? String(m.spo2) + "%" : "---");
-    String tempStr = "T: " + String(m.temperature, 1) + "C";
+    String bpmStr = "BPM: " + String(m.bpm > 0 ? String(m.bpm) : "--");
+    String spo2Str = "SpO2: " + String(m.spo2 > 0 ? String(m.spo2) + "%" : "--");
+    String tempStr = "DIE: " + String(m.temperature, 1) + "C";
 
     oled.drawStr(2, 28, bpmStr.c_str());
     oled.drawStr(65, 28, spo2Str.c_str());
 
-    // PPG Pulse Waveform Graph (Real-time live buffer)
+    // PPG Pulse Waveform Graph (Real-time live chronological buffer)
     int graph_x = 2;
     int graph_y = 60;
     int graph_w = 88;
@@ -468,7 +468,9 @@ void DisplayManager::drawHealthPage1Live() {
 
     oled.drawFrame(graph_x, graph_y - graph_h, graph_w, graph_h + 1);
 
-    const uint8_t* waveform = max30102Manager.getPPGWaveform();
+    uint8_t waveform[64];
+    max30102Manager.getPPGWaveformChronological(waveform);
+
     int prev_x = graph_x + 1;
     int prev_y = graph_y - 1 - ((waveform[0] * (graph_h - 2)) / 255);
 
@@ -494,37 +496,53 @@ void DisplayManager::drawHealthPage2History() {
     int graph_idx = ui.getHealthHistoryGraphIdx(); // 0: HR, 1: SpO2, 2: Temp
 
     oled.setFont(u8g2_font_5x7_tr);
-    if (graph_idx == 0) oled.drawStr(2, 17, "24H HISTORY: HEART RATE");
-    else if (graph_idx == 1) oled.drawStr(2, 17, "24H HISTORY: SPO2");
-    else oled.drawStr(2, 17, "24H HISTORY: MAX TEMP");
+    if (graph_idx == 0) oled.drawStr(2, 17, "TODAY: HEART RATE");
+    else if (graph_idx == 1) oled.drawStr(2, 17, "TODAY: SPO2");
+    else oled.drawStr(2, 17, "TODAY: SENSOR TEMP");
 
-    HealthHistoryEntry history[64];
-    bool has_h = max30102Manager.getHistory(history, 64);
-    int count = max30102Manager.getHistoryCount();
-    if (count > 64) count = 64;
+    HealthHistoryEntry raw_history[288];
+    bool has_h = max30102Manager.getHistory(raw_history, 288);
+    int total_raw = max30102Manager.getHistoryCount();
+    if (total_raw > 288) total_raw = 288;
 
-    if (!has_h || count == 0) {
+    uint32_t now_epoch = qclock.getEpoch();
+
+    float data[64];
+    int valid_count = 0;
+    float min_val = 999.0f, max_val = -999.0f, sum_val = 0.0f;
+
+    if (has_h && total_raw > 0) {
+        for (int i = 0; i < total_raw && valid_count < 64; i++) {
+            // Filter records to today's local date (within last 86400 seconds if epoch available)
+            if (now_epoch > 0 && raw_history[i].timestamp > 0) {
+                if (now_epoch - raw_history[i].timestamp > 86400) continue;
+            }
+
+            float val = 0.0f;
+            if (graph_idx == 0) val = raw_history[i].bpm;
+            else if (graph_idx == 1) val = raw_history[i].spo2;
+            else val = raw_history[i].temp_x10 / 10.0f;
+
+            if (val <= 0.0f && (graph_idx == 0 || graph_idx == 1)) continue; // Skip invalid records
+
+            data[valid_count] = val;
+            if (val < min_val) min_val = val;
+            if (val > max_val) max_val = val;
+            sum_val += val;
+            valid_count++;
+        }
+    }
+
+    if (valid_count == 0) {
         oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(10, 36, "(NO HISTORY RECORDED)");
+        oled.drawStr(10, 36, "(NO DATA FOR TODAY)");
         oled.setFont(u8g2_font_4x6_tr);
         oled.drawStr(10, 50, "Enable BG Recording in Settings");
         return;
     }
 
-    float data[64];
-    float min_val = 999.0f, max_val = -999.0f, sum_val = 0.0f;
-
-    for (int i = 0; i < count; i++) {
-        if (graph_idx == 0) data[i] = history[i].bpm;
-        else if (graph_idx == 1) data[i] = history[i].spo2;
-        else data[i] = history[i].temp_x10 / 10.0f;
-
-        if (data[i] < min_val) min_val = data[i];
-        if (data[i] > max_val) max_val = data[i];
-        sum_val += data[i];
-    }
-    float avg_val = sum_val / count;
-    float latest_val = data[count - 1];
+    float avg_val = sum_val / valid_count;
+    float latest_val = data[valid_count - 1];
 
     // Summary line
     oled.setFont(u8g2_font_4x6_tr);
@@ -552,8 +570,8 @@ void DisplayManager::drawHealthPage2History() {
     int prev_x = gx + 1;
     int prev_y = gy - 1 - (int)(((data[0] - min_val) / (max_val - min_val)) * (gh - 2));
 
-    for (int i = 1; i < count; i++) {
-        int cx = gx + 1 + (i * (gw - 2)) / (count - 1);
+    for (int i = 1; i < valid_count; i++) {
+        int cx = gx + 1 + (i * (gw - 2)) / (valid_count - 1);
         int cy = gy - 1 - (int)(((data[i] - min_val) / (max_val - min_val)) * (gh - 2));
         if (cy < gy - gh + 1) cy = gy - gh + 1;
         if (cy > gy - 1) cy = gy - 1;

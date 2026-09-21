@@ -891,16 +891,32 @@ void UICore::enterDeepSleep() {
     uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
-    // Configure RTC timer wakeup for periodic sensor logging
+    // Calculate earliest next due timer wakeup independently
+    Preferences sched_prefs;
+    sched_prefs.begin("sched", false);
+    uint32_t now = qclock.getEpoch();
+    if (now == 0) now = millis() / 1000;
+
+    uint32_t last_bme_epoch = sched_prefs.getUInt("last_bme", 0);
+    uint32_t last_health_epoch = sched_prefs.getUInt("last_health", 0);
+
     SettingsData& sleep_s = settingsManager.get();
     uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t s_bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
-    uint32_t s_health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
-    uint32_t sleep_interval_sec = sleep_s.health_bg_enabled ? min(s_bme_sec, s_health_sec) : s_bme_sec;
-    esp_sleep_enable_timer_wakeup((uint64_t)sleep_interval_sec * 1000000ULL);
+    uint32_t bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
+    uint32_t health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
+
+    uint32_t next_bme_in = (last_bme_epoch + bme_sec > now) ? (last_bme_epoch + bme_sec - now) : bme_sec;
+    if (next_bme_in == 0) next_bme_in = bme_sec;
+
+    uint32_t next_health_in = sleep_s.health_bg_enabled ? ((last_health_epoch + health_sec > now) ? (last_health_epoch + health_sec - now) : health_sec) : 0xFFFFFFFF;
+    if (next_health_in == 0) next_health_in = health_sec;
+
+    uint32_t sleep_sec = min(next_bme_in, next_health_in);
+    sched_prefs.end();
+
+    esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
 
     esp_deep_sleep_start();
-
 }
 
 void UICore::handleCompassInput() {

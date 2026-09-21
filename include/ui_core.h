@@ -166,7 +166,7 @@ public:
 
     static const int SENSORS_ITEM_COUNT = 4;
     const char* sensors_items[SENSORS_ITEM_COUNT] = {
-        "COMPASS CAL", "IMU CAL", "HEALTH / MAX30102", "SENSOR STATUS"
+        "COMPASS CAL", "IMU CAL", "HEALTH", "SENSOR STATUS"
     };
 
     static const int HEALTH_SETTINGS_ITEM_COUNT = 2;
