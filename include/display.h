@@ -37,6 +37,9 @@ private:
     float mag_history[64];
     int mag_history_idx;
     void drawAppHealth();
+    void drawHealthLive();
+    void drawHealthToday();
+    void drawHealthSettings();
     void drawAppMotion();
     void drawAppMotionLevel();
     void drawAppMotionData();
