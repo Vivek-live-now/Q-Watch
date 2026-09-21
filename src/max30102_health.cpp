@@ -373,18 +373,28 @@ int Max30102Health::readHistory(HealthHistoryEntry* buffer, int max_entries) con
     return count;
 }
 
-bool Max30102Health::getTodayHistory(HealthHistoryEntry* buffer, int max_entries) const {
+int Max30102Health::getTodayHistory(HealthHistoryEntry* buffer, int max_entries) const {
     int count = readHistory(buffer, max_entries);
-    if (count <= 0) return false;
+    if (count <= 0) return 0;
 
     int64_t day = startOfToday();
-    if (day == 0) return true;
+    if (day == 0) return count;
 
     int write = 0;
     for (int i = 0; i < count; i++) {
         if (buffer[i].timestamp >= day) buffer[write++] = buffer[i];
     }
-    return write > 0;
+    return write;
+}
+
+int Max30102Health::getLiveWaveform(uint32_t* buffer, int max_points) const {
+    if (!buffer || max_points <= 0) return 0;
+    int count = history_count < max_points ? history_count : max_points;
+    for (int i = 0; i < count; i++) {
+        int src = (history_index - count + i + LIVE_POINTS) % LIVE_POINTS;
+        buffer[i] = ir_history[src];
+    }
+    return count;
 }
 
 int Max30102Health::getTodayHistoryCount() const {
