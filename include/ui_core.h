@@ -126,7 +126,7 @@ public:
 
     static const int MOTION_MENU_ITEM_COUNT = 6;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
-        "Swap X/Y", "Invert X", "Invert Y", "Invert Z", "Accel Cal", "Zero Level"
+        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "Swap X/Y", "Invert X", "Invert Y"
     };
 
     bool needsRedraw() const { return needs_redraw; }
@@ -136,7 +136,7 @@ public:
     static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "MOTION", "IR REMOTE", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
     };
 
     static const int SETTINGS_MAIN_ITEM_COUNT = 6;

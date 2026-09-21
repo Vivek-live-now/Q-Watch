@@ -22,7 +22,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -266,6 +266,7 @@ void SensorManager::zeroAltitude() {
     reference_pressure = bme.readPressure() / 100.0F;
     env_data.altitude = 0.0f;
     height_state = BmeHeightState::MEASURING;
+    last_alt_zero_time = millis();
 
     prefs.begin("sensors", false);
     prefs.putFloat("bme_refp", reference_pressure);
@@ -279,6 +280,7 @@ void SensorManager::toggleHeightMeasurement() {
         height_state = BmeHeightState::PAUSED;
     } else if (height_state == BmeHeightState::PAUSED) {
         height_state = BmeHeightState::MEASURING;
+    last_alt_zero_time = millis();
     }
 }
 

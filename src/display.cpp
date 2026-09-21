@@ -605,35 +605,7 @@ void DisplayManager::drawHealthPage2History() {
     oled.drawStr(116, 60, "2/2");
 }
 
-void DisplayManager::drawAppMotionSettings() {
-    oled.setFont(u8g2_font_6x10_tr);
 
-    int sel = ui.getCompassMenuSelection();
-    int offset = ui.getCompassMenuOffset();
-
-    int y_pos = 22;
-    for (int i = offset; i < offset + 3 && i < UICore::MOTION_MENU_ITEM_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-        }
-
-        String label = ui.motion_menu_items[i];
-        if (i == 0) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
-        else if (i == 1) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
-        else if (i == 2) label += sensors.getImuInvY() ? " [ON]" : " [OFF]";
-        else if (i == 3) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
-
-        oled.drawStr(4, y_pos, label.c_str());
-        oled.setDrawColor(1);
-        y_pos += 12;
-    }
-
-    int scroll_h = 30;
-    int scroll_y = 15 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
-    oled.drawFrame(123, 15, 3, 30);
-    oled.drawBox(123, scroll_y, 3, 10);
-}
 
 void DisplayManager::drawAppMotion() {
     MotionState s = ui.getMotionState();
@@ -648,51 +620,119 @@ void DisplayManager::drawAppMotion() {
 
 void DisplayManager::drawAppMotionLevel() {
     OrientationData o = sensors.getOrientation();
+    EnvironmentData env = sensors.getEnvData();
 
-    int cx = 32;
-    int cy = 32;
-    int r = 30;
+    float pitch = o.pitch;
+    float roll = o.roll;
+    float heading = o.yaw;
 
-    oled.drawCircle(cx, cy, r);
-    oled.drawCircle(cx, cy, 6);
-    oled.drawLine(cx - r, cy, cx + r, cy);
-    oled.drawLine(cx, cy - r, cx, cy + r);
+    const char* dirStr = "N";
+    if (heading >= 337.5f || heading < 22.5f) dirStr = "N";
+    else if (heading >= 22.5f && heading < 67.5f) dirStr = "NE";
+    else if (heading >= 67.5f && heading < 112.5f) dirStr = "E";
+    else if (heading >= 112.5f && heading < 157.5f) dirStr = "SE";
+    else if (heading >= 157.5f && heading < 202.5f) dirStr = "S";
+    else if (heading >= 202.5f && heading < 247.5f) dirStr = "SW";
+    else if (heading >= 247.5f && heading < 292.5f) dirStr = "W";
+    else if (heading >= 292.5f && heading < 337.5f) dirStr = "NW";
 
-    float scale = 30.0f;
-    float r_roll = o.roll; if (r_roll > scale) r_roll = scale; if (r_roll < -scale) r_roll = -scale;
-    float r_pitch = o.pitch; if (r_pitch > scale) r_pitch = scale; if (r_pitch < -scale) r_pitch = -scale;
+    oled.setFont(u8g2_font_4x6_tr);
 
-    int bx = cx + (r_roll / scale) * (r - 4);
-    int by = cy + (r_pitch / scale) * (r - 4);
+    // Top Header: Heading (Left) and Altitude (Right)
+    char hdgBuf[16];
+    snprintf(hdgBuf, sizeof(hdgBuf), "%03d° %s", (int)heading, dirStr);
+    oled.drawStr(2, 6, hdgBuf);
 
-    float dx = bx - cx; float dy = by - cy;
-    // Performance Optimization: Use sqrtf for single-precision hardware FPU execution
-    float dist = sqrtf(dx*dx + dy*dy);
-    if (dist > (r - 4)) {
-        bx = cx + (dx / dist) * (r - 4);
-        by = cy + (dy / dist) * (r - 4);
+    char altBuf[16];
+    snprintf(altBuf, sizeof(altBuf), "ALT %+.1fm", env.altitude);
+    int altWidth = oled.getStrWidth(altBuf);
+    oled.drawStr(126 - altWidth, 6, altBuf);
+
+    int cx = 64;
+    int cy = 34;
+
+    // Top Bank Arc (Radius 28)
+    int r_bank = 28;
+    int bank_angles[] = {-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60};
+    for (int b : bank_angles) {
+        float rad = (-90.0f + b) * PI / 180.0f;
+        int x1 = cx + (int)(r_bank * cosf(rad));
+        int y1 = cy + (int)(r_bank * sinf(rad));
+        int tick_len = (b == 0 || b == -30 || b == 30 || b == -60 || b == 60) ? 3 : 2;
+        int x2 = cx + (int)((r_bank - tick_len) * cosf(rad));
+        int y2 = cy + (int)((r_bank - tick_len) * sinf(rad));
+        oled.drawLine(x1, y1, x2, y2);
     }
-    oled.drawDisc(bx, by, 4);
+    // Fixed Sky Pointer Triangle at top center (0° bank mark)
+    oled.drawLine(cx - 2, cy - r_bank, cx, cy - r_bank + 3);
+    oled.drawLine(cx + 2, cy - r_bank, cx, cy - r_bank + 3);
 
-    int vp_x = 112; int vp_y = 2; int vp_w = 12; int vp_h = 60;
-    oled.drawFrame(vp_x, vp_y, vp_w, vp_h);
-    oled.drawLine(vp_x, cy, vp_x + vp_w - 1, cy);
+    // Roll Pointer Triangle along bank arc at angle (-roll)
+    float roll_rad_ptr = (-90.0f - roll) * PI / 180.0f;
+    int rpx = cx + (int)((r_bank - 2) * cosf(roll_rad_ptr));
+    int rpy = cy + (int)((r_bank - 2) * sinf(roll_rad_ptr));
+    oled.drawDisc(rpx, rpy, 1);
 
-    int vp_by = cy + (r_pitch / scale) * (vp_h/2 - 5);
-    oled.drawBox(vp_x + 2, vp_by - 4, vp_w - 4, 8);
+    // Dynamic Artificial Horizon & Pitch Ladder
+    float pitch_scale = 0.8f;
+    float roll_rad = roll * PI / 180.0f;
 
-    int hr_x = 68; int hr_y = 48; int hr_w = 40; int hr_h = 12;
-    oled.drawFrame(hr_x, hr_y, hr_w, hr_h);
-    oled.drawLine(hr_x + hr_w/2, hr_y, hr_x + hr_w/2, hr_y + hr_h - 1);
+    float u_x = cosf(roll_rad);
+    float u_y = sinf(roll_rad);
+    float v_x = -sinf(roll_rad);
+    float v_y = cosf(roll_rad);
 
-    int hr_bx = (hr_x + hr_w/2) + (r_roll / scale) * (hr_w/2 - 5);
-    oled.drawBox(hr_bx - 4, hr_y + 2, 8, hr_h - 4);
+    float pitch_offset = pitch * pitch_scale;
+    float hc_x = cx - pitch_offset * v_x;
+    float hc_y = cy + pitch_offset * v_y;
 
-    oled.setFont(u8g2_font_5x7_tr);
-    String pStr = "P: " + String((int)o.pitch) + "°";
-    String rStr = "R: " + String((int)o.roll) + "°";
-    oled.drawStr(70, 20, pStr.c_str());
-    oled.drawStr(70, 32, rStr.c_str());
+    int L_h = 38;
+    int h_x1 = (int)(hc_x - L_h * u_x);
+    int h_y1 = (int)(hc_y - L_h * u_y);
+    int h_x2 = (int)(hc_x + L_h * u_x);
+    int h_y2 = (int)(hc_y + L_h * u_y);
+    oled.drawLine(h_x1, h_y1, h_x2, h_y2);
+
+    int pitch_marks[] = {20, 10, -10, -20};
+    for (int pm : pitch_marks) {
+        float ladder_offset = (pitch - pm) * pitch_scale;
+        float lc_x = cx - ladder_offset * v_x;
+        float lc_y = cy + ladder_offset * v_y;
+
+        if (lc_y < 8 || lc_y > 60 || lc_x < 10 || lc_x > 118) continue;
+
+        int L_l = 10;
+        int l_x1 = (int)(lc_x - L_l * u_x);
+        int l_y1 = (int)(lc_y - L_l * u_y);
+        int l_x2 = (int)(lc_x + L_l * u_x);
+        int l_y2 = (int)(lc_y + L_l * u_y);
+
+        oled.drawLine(l_x1, l_y1, l_x2, l_y2);
+
+        int tick_dir = (pm > 0) ? 1 : -1;
+        int t_x1 = l_x1 + (int)(3 * tick_dir * v_x);
+        int t_y1 = l_y1 - (int)(3 * tick_dir * v_y);
+        int t_x2 = l_x2 + (int)(3 * tick_dir * v_x);
+        int t_y2 = l_y2 - (int)(3 * tick_dir * v_y);
+        oled.drawLine(l_x1, l_y1, t_x1, t_y1);
+        oled.drawLine(l_x2, l_y2, t_x2, t_y2);
+    }
+
+    // Fixed Center Aircraft Symbol `-[o]-`
+    oled.drawDisc(cx, cy, 2);
+    oled.drawLine(cx - 18, cy, cx - 6, cy);
+    oled.drawLine(cx - 18, cy, cx - 18, cy + 3);
+    oled.drawLine(cx + 6, cy, cx + 18, cy);
+    oled.drawLine(cx + 18, cy, cx + 18, cy + 3);
+
+    // Confirmation banner for ALT ZERO
+    if (millis() - sensors.getLastAltZeroTime() < 1500) {
+        oled.setDrawColor(0);
+        oled.drawBox(32, 48, 64, 13);
+        oled.setDrawColor(1);
+        oled.drawFrame(32, 48, 64, 13);
+        oled.drawStr(42, 57, "ALT ZERO");
+    }
 }
 
 void DisplayManager::drawAppMotionData() {
@@ -700,21 +740,74 @@ void DisplayManager::drawAppMotionData() {
 
     OrientationData o = sensors.getOrientation();
     CalibratedSensorData cal = sensors.getCalData();
+    EnvironmentData env = sensors.getEnvData();
 
-    oled.drawStr(2, 22, "TILT/HDG");
-    oled.drawStr(30, 22, ("P:" + String(o.pitch, 1)).c_str());
-    oled.drawStr(65, 22, ("R:" + String(o.roll, 1)).c_str());
-    oled.drawStr(100, 22, ("Y:" + String(o.yaw, 1)).c_str());
+    float heading = o.yaw;
+    const char* dirStr = "N";
+    if (heading >= 337.5f || heading < 22.5f) dirStr = "N";
+    else if (heading >= 22.5f && heading < 67.5f) dirStr = "NE";
+    else if (heading >= 67.5f && heading < 112.5f) dirStr = "E";
+    else if (heading >= 112.5f && heading < 157.5f) dirStr = "SE";
+    else if (heading >= 157.5f && heading < 202.5f) dirStr = "S";
+    else if (heading >= 202.5f && heading < 247.5f) dirStr = "SW";
+    else if (heading >= 247.5f && heading < 292.5f) dirStr = "W";
+    else if (heading >= 292.5f && heading < 337.5f) dirStr = "NW";
 
-    oled.drawStr(2, 32, "ACC(g)");
-    oled.drawStr(30, 32, ("X:" + String(cal.ax, 2)).c_str());
-    oled.drawStr(65, 32, ("Y:" + String(cal.ay, 2)).c_str());
-    oled.drawStr(100, 32, ("Z:" + String(cal.az, 2)).c_str());
+    oled.drawStr(2, 8, "IMU6500 TELEMETRY");
 
-    oled.drawStr(2, 42, "GYR(d/s)");
-    oled.drawStr(30, 42, ("X:" + String(cal.gx, 1)).c_str());
-    oled.drawStr(65, 42, ("Y:" + String(cal.gy, 1)).c_str());
-    oled.drawStr(100, 42, ("Z:" + String(cal.gz, 1)).c_str());
+    char buf[32];
+    snprintf(buf, sizeof(buf), "ATT: P:%+.1f° R:%+.1f°", o.pitch, o.roll);
+    oled.drawStr(2, 19, buf);
+
+    snprintf(buf, sizeof(buf), "HDG: %03d° %s", (int)heading, dirStr);
+    oled.drawStr(2, 28, buf);
+
+    snprintf(buf, sizeof(buf), "ACC: X:%+.2f Y:%+.2f Z:%+.2f", cal.ax, cal.ay, cal.az);
+    oled.drawStr(2, 37, buf);
+
+    snprintf(buf, sizeof(buf), "GYR: X:%+.1f Y:%+.1f Z:%+.1f", cal.gx, cal.gy, cal.gz);
+    oled.drawStr(2, 46, buf);
+
+    snprintf(buf, sizeof(buf), "BME: %.1fhPa %.1fC", env.pressure, env.temperature);
+    oled.drawStr(2, 55, buf);
+
+    snprintf(buf, sizeof(buf), "ALT: %+.1fm (REF:%.1f)", env.altitude, sensors.getReferencePressure());
+    oled.drawStr(2, 63, buf);
+}
+
+void DisplayManager::drawAppMotionSettings() {
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int sel = ui.getCompassMenuSelection();
+    int offset = ui.getCompassMenuOffset();
+
+    int y_pos = 20;
+    for (int i = offset; i < offset + 3 && i < UICore::MOTION_MENU_ITEM_COUNT; i++) {
+        if (i == sel) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+        }
+
+        String label = ui.motion_menu_items[i];
+        if (i == 3) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
+        else if (i == 4) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
+        else if (i == 5) label += sensors.getImuInvY() ? " [ON]" : " [OFF]";
+
+        oled.drawStr(4, y_pos, label.c_str());
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
+
+    int scroll_h = 30;
+    int scroll_y = 12 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
+    oled.drawFrame(123, 12, 3, 30);
+    oled.drawBox(123, scroll_y, 3, 10);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    String stat = "IMU:" + String(sensors.isMpuOk() ? "OK" : "ERR") +
+                  " MAG:" + String(sensors.isMagOk() ? "OK" : "ERR") +
+                  " BME:" + String(sensors.isBmeOk() ? "OK" : "ERR");
+    oled.drawStr(4, 58, stat.c_str());
 }
 
 void DisplayManager::drawAppIR() {
