@@ -443,12 +443,24 @@ void DisplayManager::drawHealthLive() {
     // Live IR pulse waveform.
     int gx = 2, gy = 39, gw = 124, gh = 15;
     oled.drawFrame(gx, gy - gh, gw, gh + 1);
-    if (h.finger_detected && healthManager.getLiveData().ir > 0) {
-        // The manager keeps a rolling 64-point waveform. Render normalized amplitude.
-        uint32_t maxv = 1, minv = UINT32_MAX;
-        for (int i = 0; i < 64; i++) {
-            // Access is intentionally limited to public live metrics in this first pass.
-            // A flat graph is preferable to exposing unstable raw internals.
+    if (h.finger_detected && h.ir > 0) {
+        uint32_t wave[64];
+        int count = healthManager.getLiveWaveform(wave, 64);
+        if (count > 1) {
+            uint32_t minv = wave[0], maxv = wave[0];
+            for (int i = 1; i < count; i++) {
+                if (wave[i] < minv) minv = wave[i];
+                if (wave[i] > maxv) maxv = wave[i];
+            }
+            uint32_t span = (maxv > minv) ? (maxv - minv) : 1;
+            int px = gx + 1;
+            int py = gy - 1 - (int)(((uint64_t)(wave[0] - minv) * (gh - 2)) / span);
+            for (int i = 1; i < count; i++) {
+                int x = gx + 1 + ((i * (gw - 3)) / (count - 1));
+                int y = gy - 1 - (int)(((uint64_t)(wave[i] - minv) * (gh - 2)) / span);
+                oled.drawLine(px, py, x, y);
+                px = x; py = y;
+            }
         }
     } else {
         oled.setFont(u8g2_font_5x7_tr);
