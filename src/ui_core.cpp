@@ -1057,7 +1057,7 @@ void UICore::handleMotionInput() {
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            sensors.zeroLevel();
+            sensors.zeroAltitude();
             needs_redraw = true;
         }
     }
@@ -1084,12 +1084,13 @@ void UICore::handleMotionInput() {
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            if (compass_menu_selection == 0) sensors.setImuSwapXY(!sensors.getImuSwapXY());
-            else if (compass_menu_selection == 1) sensors.setImuInvX(!sensors.getImuInvX());
-            else if (compass_menu_selection == 2) sensors.setImuInvY(!sensors.getImuInvY());
-            else if (compass_menu_selection == 3) sensors.setImuInvZ(!sensors.getImuInvZ());
-            else if (compass_menu_selection == 4) sensors.calibrateAccel();
-            else if (compass_menu_selection == 5) sensors.zeroLevel();
+            if (compass_menu_selection == 0) sensors.zeroAltitude();
+            else if (compass_menu_selection == 1) sensors.zeroLevel();
+            else if (compass_menu_selection == 2) sensors.calibrateAccel();
+            else if (compass_menu_selection == 3) sensors.setImuSwapXY(!sensors.getImuSwapXY());
+            else if (compass_menu_selection == 4) sensors.setImuInvX(!sensors.getImuInvX());
+            else if (compass_menu_selection == 5) sensors.setImuInvY(!sensors.getImuInvY());
+            else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
             needs_redraw = true;
         }
     }

@@ -142,6 +142,7 @@ public:
     void toggleHeightMeasurement();
     void resetHeightMeasurement();
 
+    uint32_t getLastAltZeroTime() const { return last_alt_zero_time; }
     uint32_t getLastBmeReadingTime() const { return last_bme_update; }
     float getReferencePressure() const { return reference_pressure; }
     void resetReferencePressure();
@@ -159,6 +160,7 @@ private:
     EnvironmentData env_data;
     float reference_pressure;
     float temp_offset;
+    uint32_t last_alt_zero_time;
     uint32_t last_bme_update;
     uint32_t last_bme_log;
     BmeHeightState height_state;
