@@ -50,6 +50,9 @@ void SensorManager::writeRegister(uint8_t deviceAddr, uint8_t regAddr, uint8_t d
 
 
 void SensorManager::loadCalibration() {
+    temp_offset = prefs.getFloat("bme_toff", 0.0f);
+    reference_pressure = prefs.getFloat("bme_refp", 1013.25f);
+
     prefs.begin("sensors", false);
 
 
@@ -247,7 +250,7 @@ bool SensorManager::verifyBmeChip() {
 void SensorManager::readBme() {
     if (!bme_ok) return;
 
-    env_data.temperature = bme.readTemperature();
+    env_data.temperature = bme.readTemperature() + temp_offset;
     env_data.humidity = bme.readHumidity();
     env_data.pressure = bme.readPressure() / 100.0F;
 
@@ -263,6 +266,10 @@ void SensorManager::zeroAltitude() {
     reference_pressure = bme.readPressure() / 100.0F;
     env_data.altitude = 0.0f;
     height_state = BmeHeightState::MEASURING;
+
+    prefs.begin("sensors", false);
+    prefs.putFloat("bme_refp", reference_pressure);
+    prefs.end();
 }
 
 void SensorManager::toggleHeightMeasurement() {
@@ -278,6 +285,25 @@ void SensorManager::toggleHeightMeasurement() {
 void SensorManager::resetHeightMeasurement() {
     height_state = BmeHeightState::OFF;
     env_data.altitude = 0.0f;
+}
+
+
+void SensorManager::setTempOffset(float offset) {
+    temp_offset = offset;
+    prefs.begin("sensors", false);
+    prefs.putFloat("bme_toff", temp_offset);
+    prefs.end();
+}
+
+void SensorManager::resetBmeCalibration() {
+    temp_offset = 0.0f;
+    reference_pressure = 1013.25f;
+    resetHeightMeasurement();
+
+    prefs.begin("sensors", false);
+    prefs.putFloat("bme_toff", 0.0f);
+    prefs.putFloat("bme_refp", 1013.25f);
+    prefs.end();
 }
 
 void SensorManager::resetReferencePressure() {

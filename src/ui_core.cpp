@@ -1031,11 +1031,23 @@ void UICore::handleBmeInput() {
             needs_redraw = true;
             return;
         }
-    } else if (bme_page == 4) { // Page 5: Sensor Info & Calibration Options
+    } else if (bme_page == 4) { // Page 5: Calibration / Diagnostic Options
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            sensors.resetReferencePressure();
-            showToast("[REF RESET]", 1500);
+            sensors.resetBmeCalibration();
+            showToast("[CAL RESET]", 1500);
+            needs_redraw = true;
+            return;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            sensors.setTempOffset(sensors.getTempOffset() + 0.5f);
+            showToast("[TEMP OFF +0.5]", 1200);
+            needs_redraw = true;
+            return;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            sensors.setTempOffset(sensors.getTempOffset() - 0.5f);
+            showToast("[TEMP OFF -0.5]", 1200);
             needs_redraw = true;
             return;
         }
