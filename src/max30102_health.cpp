@@ -51,6 +51,7 @@ void Max30102Health::configureSensor() {
     // 4-sample averaging, 18-bit conversion, moderate LED current.
     sensor.setup(0x3F, 4, 2, 100, 411, 4096);
     sensor.setPulseAmplitudeGreen(0);
+    sensor.enableDIETEMPRDY();
     sensor.clearFIFO();
 }
 
