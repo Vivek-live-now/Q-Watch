@@ -16,6 +16,7 @@ enum class SettingsSubmenu {
     POWER,
     SUB_DISPLAY,
     SENSORS,
+    HEALTH,
     SYSTEM,
     TIME_SYNC_STATUS,
     RESET_CONFIRM
@@ -162,7 +163,11 @@ public:
 
     static const int SENSORS_ITEM_COUNT = 3;
     const char* sensors_items[SENSORS_ITEM_COUNT] = {
-        "COMPASS CAL", "IMU CAL", "SENSOR STATUS"
+        "COMPASS CAL", "IMU CAL", "HEALTH"
+    };
+    static const int HEALTH_SETTINGS_ITEM_COUNT = 2;
+    const char* health_settings_items[HEALTH_SETTINGS_ITEM_COUNT] = {
+        "BACKGROUND", "INTERVAL"
     };
 
     static const int SYSTEM_ITEM_COUNT = 2;
@@ -213,6 +218,7 @@ private:
     bool needs_redraw;
 
     void handleBmeInput();
+    void handleHealthInput();
     void handleWeatherInput();
     void handleHomeInput();
     void handleMainMenuInput();
@@ -231,6 +237,7 @@ private:
     void handlePowerInput();
     void handleDisplayInput();
     void handleSensorsInput();
+    void handleHealthSettingsInput();
     void handleSystemInput();
     void handleResetConfirmInput();
     void handleTimeSyncStatusInput();
