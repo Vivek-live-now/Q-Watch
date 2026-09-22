@@ -5,6 +5,7 @@
 #include "file_manager.h"
 #include "settings_data.h"
 #include "keyboard.h"
+#include "ir_engine.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
@@ -42,6 +43,24 @@ enum class MotionState {
     PAGE_LEVEL,
     PAGE_DATA,
     PAGE_SETTINGS
+};
+
+enum class IrSubmenu {
+    MAIN,
+    TV_B_GONE,
+    CUSTOM_IR,
+    REMOTE_VIEW,
+    IR_READ,
+    IR_READ_WAIT,
+    IR_READ_RESULT,
+    QUICK_REMOTE,
+    QUICK_REMOTE_BUILD,
+    QUICK_REMOTE_WAIT,
+    UNIVERSAL,
+    RECENT,
+    FAVORITES,
+    IR_FILES,
+    IR_LAB
 };
 
 enum class UIState {
@@ -90,6 +109,18 @@ public:
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
     int getSettingsScrollOffset() const { return settings_scroll_offset; }
+
+    // IR Submenu getters & state
+    IrSubmenu getIrSubmenu() const { return ir_submenu; }
+    void setIrSubmenu(IrSubmenu sub) { ir_submenu = sub; needs_redraw = true; }
+    int getIrSelection() const { return ir_selection; }
+    int getIrScrollOffset() const { return ir_scroll_offset; }
+    const IrRemoteFile& getIrActiveRemote() const { return ir_active_remote; }
+    const IrButton& getIrCapturedButton() const { return ir_captured_btn; }
+    void setIrActiveRemotePath(const String& path);
+    void setIrQuickRemoteName(const String& name) { ir_quick_remote_name = name; }
+    void setIrQuickButtonName(const String& name) { ir_quick_button_name = name; }
+
     const char* getToastMessage() const { return toast_msg; }
     uint32_t getToastEndTime() const { return toast_end_time; }
     void showToast(const char* msg, uint32_t duration_ms = 1500);
@@ -151,6 +182,22 @@ public:
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
         "IMU6500", "IR REMOTE", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+    };
+
+    static const int IR_MAIN_ITEM_COUNT = 9;
+    const char* ir_main_items[IR_MAIN_ITEM_COUNT] = {
+        "TV-B-GONE", "CUSTOM IR", "IR READ", "QUICK REMOTE",
+        "UNIVERSAL", "RECENT", "FAVORITES", "IR FILES", "IR LAB"
+    };
+
+    static const int IR_CUSTOM_ITEM_COUNT = 4;
+    const char* ir_custom_items[IR_CUSTOM_ITEM_COUNT] = {
+        "Browse /ir", "Recent", "Favorites", "Search"
+    };
+
+    static const int IR_LAB_ITEM_COUNT = 5;
+    const char* ir_lab_items[IR_LAB_ITEM_COUNT] = {
+        "Carrier 38 kHz", "Carrier 36 kHz", "Carrier 40 kHz", "Raw -> Parsed", "IR Config"
     };
 
     static const int SETTINGS_MAIN_ITEM_COUNT = 6;
@@ -215,8 +262,8 @@ private:
     UIState return_state;
     int bme_page;
     int weather_page;
-    int health_page; // 0: Live Page 1, 1: History Page 2
-    int health_history_graph_idx; // 0: HR, 1: SpO2, 2: Temp
+    int health_page;
+    int health_history_graph_idx;
     int menu_selection;
     int menu_scroll_offset;
     int edit_value;
@@ -224,6 +271,16 @@ private:
     int led_menu_offset;
     int audio_menu_selection;
     int audio_menu_offset;
+
+    // IR state variables
+    IrSubmenu ir_submenu;
+    int ir_selection;
+    int ir_scroll_offset;
+    IrRemoteFile ir_active_remote;
+    IrButton ir_captured_btn;
+    String ir_quick_remote_name;
+    String ir_quick_button_name;
+    std::vector<String> ir_file_list;
 
     SettingsSubmenu settings_submenu;
     int settings_selection;
@@ -245,6 +302,19 @@ private:
     void handleWeatherInput();
     void handleHomeInput();
     void handleMainMenuInput();
+    void handleIRInput();
+    void handleIrMainInput();
+    void handleTvBGoneInput();
+    void handleIrCustomInput();
+    void handleIrRemoteViewInput();
+    void handleIrReadInput();
+    void handleQuickRemoteInput();
+    void handleIrUniversalInput();
+    void handleIrRecentInput();
+    void handleIrFavoritesInput();
+    void handleIrFilesInput();
+    void handleIrLabInput();
+
     void handleSettingsMenuInput();
     void handleValueEditInput();
     void handleKeyboardInput();

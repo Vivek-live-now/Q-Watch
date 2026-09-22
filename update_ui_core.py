@@ -1,4 +1,6 @@
-#include "max30102_manager.h"
+import re
+
+ui_core_cpp = '''#include "max30102_manager.h"
 #include "weather.h"
 #include "display.h"
 #include "ui_core.h"
@@ -48,7 +50,7 @@ UICore::UICore() :
     display_off(false),
     just_woke_display(false),
     needs_redraw(true) {
-    toast_msg[0] = '\0';
+    toast_msg[0] = '\\0';
 }
 
 void UICore::setIrActiveRemotePath(const String& path) {
@@ -117,7 +119,7 @@ void UICore::begin() {
 
 void UICore::showToast(const char* msg, uint32_t duration_ms) {
     strncpy(toast_msg, msg, sizeof(toast_msg) - 1);
-    toast_msg[sizeof(toast_msg) - 1] = '\0';
+    toast_msg[sizeof(toast_msg) - 1] = '\\0';
     toast_end_time = millis() + duration_ms;
     needs_redraw = true;
 }
@@ -189,7 +191,7 @@ void UICore::loop() {
     }
 
     if (toast_end_time > 0 && millis() > toast_end_time) {
-        toast_msg[0] = '\0';
+        toast_msg[0] = '\\0';
         toast_end_time = 0;
         needs_redraw = true;
     }
@@ -438,22 +440,8 @@ void UICore::handleIrReadInput() {
     }
 }
 
-static String pending_qr_remote_name = "";
-
-static void onQuickButtonNameEntered(bool success, const String& btn_name) {
-    if (success && btn_name.length() > 0) {
-        ui.setIrQuickButtonName(btn_name);
-        irEngine.startCapture();
-        ui.setIrSubmenu(IrSubmenu::QUICK_REMOTE_WAIT);
-        ui.showToast("[WAITING SIGNAL]", 1200);
-    }
-}
-
-static void onQuickRemoteNameEntered(bool success, const String& rem_name) {
-    if (success && rem_name.length() > 0) {
-        pending_qr_remote_name = rem_name;
-        ui.setIrQuickRemoteName(rem_name);
-        ui.setIrActiveRemotePath("/ir/" + rem_name + ".ir");
+static void onQuickRemoteNameEntered(bool success, const String& name) {
+    if (success && name.length() > 0) {
         ui.showToast("[REMOTE CREATED]", 1200);
         ui.setIrSubmenu(IrSubmenu::QUICK_REMOTE_BUILD);
     }
@@ -465,12 +453,14 @@ void UICore::handleQuickRemoteInput() {
     if (ir_submenu == IrSubmenu::QUICK_REMOTE) {
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            openKeyboard("MyRemote", "Remote Name", KeyboardMode::ALPHA, false, 24, onQuickRemoteNameEntered);
+            openKeyboard("CustomRemote", "Remote Name", KeyboardMode::ALPHA, false, 24, onQuickRemoteNameEntered);
         }
     } else if (ir_submenu == IrSubmenu::QUICK_REMOTE_BUILD) {
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            openKeyboard("Power", "Button Name", KeyboardMode::ALPHA, false, 24, onQuickButtonNameEntered);
+            irEngine.startCapture();
+            ir_submenu = IrSubmenu::QUICK_REMOTE_WAIT;
+            needs_redraw = true;
         }
     }
 }
@@ -1484,14 +1474,8 @@ void UICore::handleAirMouseInput() {
         }
     }
 }
+'''
 
-void UICore::handleFileServerDetailsInput() {
-    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
-    if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playNavSelect();
-        SettingsData& s = settingsManager.get();
-        s.fileserver_enabled = !s.fileserver_enabled;
-        settingsManager.save();
-        needs_redraw = true;
-    }
-}
+with open('src/ui_core.cpp', 'w') as f:
+    f.write(ui_core_cpp)
+print("Updated src/ui_core.cpp successfully.")
