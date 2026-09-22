@@ -1,3 +1,4 @@
+#include "ir_engine.h"
 #include "max30102_manager.h"
 #include "weather.h"
 #include "display.h"
@@ -14,6 +15,15 @@
 #include "driver/rtc_io.h"
 
 UICore ui;
+
+static IrRemote current_active_remote;
+static int active_remote_btn_sel = 0;
+static int active_remote_scroll = 0;
+static IrButton captured_temp_btn;
+static bool has_captured_temp = false;
+static String quick_remote_name = "";
+static IrRemote quick_remote_obj;
+
 String UICore::pending_selected_ssid = "";
 
 UICore::UICore() :
@@ -26,6 +36,9 @@ UICore::UICore() :
     menu_selection(0),
     menu_scroll_offset(0),
     edit_value(5),
+    ir_submenu(IrSubmenu::MAIN),
+    ir_selection(0),
+    ir_scroll_offset(0),
     settings_submenu(SettingsSubmenu::MAIN),
     settings_selection(0),
     settings_scroll_offset(0),
@@ -332,6 +345,9 @@ void UICore::loop() {
             break;
         case UIState::APP_MOTION:
             handleMotionInput();
+            break;
+        case UIState::APP_IR:
+            handleIrInput();
             break;
         default:
             handleGenericAppInput();
@@ -1066,6 +1082,26 @@ void UICore::handleFileManagerInput() {
         if (fm_current_path == "/" && fm_selection == fm_entry_count) {
             current_state = UIState::APP_STORAGE_INFO;
         } else if (fm_selection < fm_entry_count) {
+
+            if (!fm_entries[fm_selection].isDir) {
+                String fname = fm_entries[fm_selection].name;
+                if (fname.endsWith(".ir")) {
+                    String full_path = fm_current_path;
+                    if (!full_path.endsWith("/")) full_path += "/";
+                    full_path += fname;
+
+                    if (irEngine.loadRemoteFile(full_path, current_active_remote)) {
+                        current_state = UIState::APP_IR;
+                        ir_submenu = IrSubmenu::REMOTE_VIEW;
+                        active_remote_btn_sel = 0;
+                        active_remote_scroll = 0;
+                        irEngine.addRecent(full_path);
+                        needs_redraw = true;
+                        return;
+                    }
+                }
+            }
+
             if (fm_entries[fm_selection].isDir) {
                 String next_path = fm_current_path;
                 if (!next_path.endsWith("/")) next_path += "/";
@@ -1381,5 +1417,359 @@ void UICore::handleWeatherInput() {
         soundManager.playNavMove();
         weather_page = (weather_page + 1) % 6;
         needs_redraw = true;
+    }
+}
+
+void UICore::handleIrInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (ir_submenu == IrSubmenu::MAIN) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= IR_MAIN_ITEM_COUNT) ir_selection = IR_MAIN_ITEM_COUNT - 1;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            switch (ir_selection) {
+                case 0:
+                    ir_submenu = IrSubmenu::CUSTOM_IR;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    break;
+                case 1:
+                    ir_submenu = IrSubmenu::IR_READ;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    break;
+                case 2:
+                    ir_submenu = IrSubmenu::QUICK_REMOTE;
+                    quick_remote_obj = IrRemote();
+                    quick_remote_obj.button_count = 0;
+                    has_captured_temp = false;
+                    openKeyboard("My_Remote", "Remote Name", KeyboardMode::ALPHA, false, 20, [](bool success, const String& result) {
+                        if (success && result.length() > 0) {
+                            quick_remote_name = result;
+                            ui.showToast("[REMOTE CREATED]", 1200);
+                        } else {
+                            ui.showToast("[CANCELLED]", 1000);
+                        }
+                    });
+                    break;
+                case 3:
+                    ir_submenu = IrSubmenu::TV_B_GONE;
+                    irEngine.startTvBGone();
+                    break;
+                case 4:
+                    ir_submenu = IrSubmenu::UNIVERSAL;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    break;
+                case 5:
+                    ir_submenu = IrSubmenu::RECENT_LIST;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    break;
+                case 6:
+                    ir_submenu = IrSubmenu::FAVORITES_LIST;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    fm_current_path = "/ir/favorites";
+                    loadDirectory("/ir/favorites");
+                    break;
+                case 7:
+                    ir_submenu = IrSubmenu::IR_LAB;
+                    ir_selection = 0;
+                    ir_scroll_offset = 0;
+                    break;
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::CUSTOM_IR) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= IR_CUSTOM_ITEM_COUNT) ir_selection = IR_CUSTOM_ITEM_COUNT - 1;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (ir_selection == 0) {
+                ir_submenu = IrSubmenu::CUSTOM_IR_BROWSE;
+                fm_current_path = "/ir/custom";
+                loadDirectory("/ir/custom");
+            } else if (ir_selection == 1) {
+                ir_submenu = IrSubmenu::RECENT_LIST;
+                ir_selection = 0;
+                ir_scroll_offset = 0;
+            } else if (ir_selection == 2) {
+                ir_submenu = IrSubmenu::FAVORITES_LIST;
+                fm_current_path = "/ir/favorites";
+                loadDirectory("/ir/favorites");
+            } else if (ir_selection == 3) {
+                showToast("[SEARCHING...]", 1200);
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::CUSTOM_IR_BROWSE || ir_submenu == IrSubmenu::FAVORITES_LIST) {
+        int total_entries = getFmEntryCount();
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            if (fm_selection > 0) {
+                fm_selection--;
+                if (fm_selection < fm_scroll_offset) fm_scroll_offset = fm_selection;
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            if (fm_selection < total_entries - 1) {
+                fm_selection++;
+                if (fm_selection >= fm_scroll_offset + 3) fm_scroll_offset = fm_selection - 2;
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (total_entries > 0 && fm_selection < total_entries) {
+                soundManager.playNavSelect();
+                const struct FileInfo* entries = getFmEntries();
+                String full_path = fm_current_path;
+                if (!full_path.endsWith("/")) full_path += "/";
+                full_path += entries[fm_selection].name;
+
+                if (entries[fm_selection].isDir) {
+                    fm_current_path = full_path;
+                    loadDirectory(full_path);
+                } else if (irEngine.loadRemoteFile(full_path, current_active_remote)) {
+                    ir_submenu = IrSubmenu::REMOTE_VIEW;
+                    active_remote_btn_sel = 0;
+                    active_remote_scroll = 0;
+                    irEngine.addRecent(full_path);
+                } else {
+                    showToast("[FILE INVALID]", 1500);
+                }
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::REMOTE_VIEW) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            active_remote_btn_sel--;
+            if (active_remote_btn_sel < 0) active_remote_btn_sel = 0;
+            if (active_remote_btn_sel < active_remote_scroll) active_remote_scroll = active_remote_btn_sel;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            active_remote_btn_sel++;
+            if (active_remote_btn_sel >= current_active_remote.button_count) {
+                active_remote_btn_sel = current_active_remote.button_count - 1;
+            }
+            if (active_remote_btn_sel >= active_remote_scroll + 3) active_remote_scroll = active_remote_btn_sel - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (current_active_remote.button_count > 0 && active_remote_btn_sel < current_active_remote.button_count) {
+                soundManager.playNavSelect();
+                irEngine.sendSignal(current_active_remote.buttons[active_remote_btn_sel]);
+                showToast("[TRANSMITTED]", 1000);
+            }
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+            soundManager.playNavSelect();
+            irEngine.toggleFavorite(current_active_remote.filepath);
+            current_active_remote.is_favorite = !current_active_remote.is_favorite;
+            showToast(current_active_remote.is_favorite ? "[★ FAVORITE ADDED]" : "[FAVORITE REMOVED]", 1500);
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::IR_READ) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= IR_READ_ITEM_COUNT) ir_selection = IR_READ_ITEM_COUNT - 1;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (ir_selection == 0) {
+                ir_submenu = IrSubmenu::IR_READ_LEARN;
+                showToast("[WAITING SIGNAL...]", 2000);
+            } else if (ir_selection == 1) {
+                ir_submenu = IrSubmenu::IR_READ_RAW;
+                showToast("[CAPTURING RAW...]", 2000);
+            } else if (ir_selection == 2) {
+                ir_submenu = IrSubmenu::IR_READ_LIVE;
+                irEngine.startReceiver();
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::IR_READ_LEARN || ir_submenu == IrSubmenu::IR_READ_RAW) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (has_captured_temp) {
+                irEngine.sendSignal(captured_temp_btn);
+                showToast("[REPLAYING]", 1000);
+            } else {
+                showToast("[CAPTURING...]", 1000);
+                has_captured_temp = irEngine.captureSignal(captured_temp_btn, 4000);
+                if (!has_captured_temp) showToast("[TIMEOUT]", 1200);
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::IR_READ_LIVE) {
+        if (irEngine.checkLiveSignal(captured_temp_btn)) {
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::TV_B_GONE) {
+        irEngine.loop();
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (irEngine.isTvBGoneRunning()) {
+                irEngine.stopTvBGone();
+                showToast("[STOPPED]", 1000);
+            } else {
+                irEngine.startTvBGone();
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::UNIVERSAL) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= IR_UNIVERSAL_ITEM_COUNT) ir_selection = IR_UNIVERSAL_ITEM_COUNT - 1;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            ir_submenu = IrSubmenu::UNIVERSAL_CATEGORY;
+            String cat = ir_universal_items[ir_selection];
+            fm_current_path = "/ir/universal/" + cat;
+            loadDirectory(fm_current_path);
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::UNIVERSAL_CATEGORY) {
+        int total_entries = getFmEntryCount();
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            if (fm_selection > 0) {
+                fm_selection--;
+                if (fm_selection < fm_scroll_offset) fm_scroll_offset = fm_selection;
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            if (fm_selection < total_entries - 1) {
+                fm_selection++;
+                if (fm_selection >= fm_scroll_offset + 3) fm_scroll_offset = fm_selection - 2;
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (total_entries > 0 && fm_selection < total_entries) {
+                soundManager.playNavSelect();
+                const struct FileInfo* entries = getFmEntries();
+                String full_path = fm_current_path;
+                if (!full_path.endsWith("/")) full_path += "/";
+                full_path += entries[fm_selection].name;
+
+                if (irEngine.loadRemoteFile(full_path, current_active_remote)) {
+                    ir_submenu = IrSubmenu::REMOTE_VIEW;
+                    active_remote_btn_sel = 0;
+                    active_remote_scroll = 0;
+                } else {
+                    showToast("[NO FILE]", 1200);
+                }
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::RECENT_LIST) {
+        int count = irEngine.getRecentCount();
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= count) ir_selection = (count > 0) ? count - 1 : 0;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (count > 0 && ir_selection < count) {
+                soundManager.playNavSelect();
+                String path = irEngine.getRecentPath(ir_selection);
+                if (irEngine.loadRemoteFile(path, current_active_remote)) {
+                    ir_submenu = IrSubmenu::REMOTE_VIEW;
+                    active_remote_btn_sel = 0;
+                    active_remote_scroll = 0;
+                }
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::IR_LAB) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            ir_selection--;
+            if (ir_selection < 0) ir_selection = 0;
+            if (ir_selection < ir_scroll_offset) ir_scroll_offset = ir_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            ir_selection++;
+            if (ir_selection >= IR_LAB_ITEM_COUNT) ir_selection = IR_LAB_ITEM_COUNT - 1;
+            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            switch (ir_selection) {
+                case 0: ir_submenu = IrSubmenu::IR_LAB_CARRIER; break;
+                case 1: ir_submenu = IrSubmenu::IR_LAB_TX; break;
+                case 2: ir_submenu = IrSubmenu::IR_LAB_RX; irEngine.startReceiver(); break;
+                case 3: ir_submenu = IrSubmenu::IR_LAB_TIMING; break;
+                case 4: ir_submenu = IrSubmenu::IR_LAB_CONFIG; break;
+            }
+            needs_redraw = true;
+        }
+    }
+    else if (ir_submenu == IrSubmenu::IR_LAB_CARRIER) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            irEngine.runCarrierTest(38000, 1000);
+            showToast("[38kHz BLAST]", 1200);
+            needs_redraw = true;
+        }
     }
 }

@@ -12,6 +12,33 @@ enum class Imu6500SubApp {
     SUBAPP_AIRMOUSE
 };
 
+
+enum class IrSubmenu {
+    MAIN,
+    CUSTOM_IR,
+    CUSTOM_IR_BROWSE,
+    CUSTOM_IR_RECENT,
+    CUSTOM_IR_FAVORITES,
+    CUSTOM_IR_SEARCH,
+    REMOTE_VIEW,
+    IR_READ,
+    IR_READ_LEARN,
+    IR_READ_RAW,
+    IR_READ_LIVE,
+    QUICK_REMOTE,
+    TV_B_GONE,
+    UNIVERSAL,
+    UNIVERSAL_CATEGORY,
+    RECENT_LIST,
+    FAVORITES_LIST,
+    IR_LAB,
+    IR_LAB_CARRIER,
+    IR_LAB_TX,
+    IR_LAB_RX,
+    IR_LAB_TIMING,
+    IR_LAB_CONFIG
+};
+
 enum class SettingsSubmenu {
     MAIN,
     CONNECTIVITY,
@@ -202,6 +229,39 @@ public:
 
     static String pending_selected_ssid;
 
+
+    IrSubmenu getIrSubmenu() const { return ir_submenu; }
+    int getIrSelection() const { return ir_selection; }
+    int getIrScrollOffset() const { return ir_scroll_offset; }
+
+    static const int IR_MAIN_ITEM_COUNT = 8;
+    const char* ir_main_items[IR_MAIN_ITEM_COUNT] = {
+        "CUSTOM IR", "IR READ", "QUICK REMOTE", "TV-B-GONE",
+        "UNIVERSAL", "RECENT", "FAVORITES", "IR LAB"
+    };
+
+    static const int IR_CUSTOM_ITEM_COUNT = 4;
+    const char* ir_custom_items[IR_CUSTOM_ITEM_COUNT] = {
+        "Browse", "Recent", "Favorites", "Search"
+    };
+
+    static const int IR_READ_ITEM_COUNT = 3;
+    const char* ir_read_items[IR_READ_ITEM_COUNT] = {
+        "LEARN SIGNAL", "RAW CAPTURE", "LIVE DECODE"
+    };
+
+    static const int IR_UNIVERSAL_ITEM_COUNT = 4;
+    const char* ir_universal_items[IR_UNIVERSAL_ITEM_COUNT] = {
+        "TV", "AUDIO", "PROJECTOR", "AC"
+    };
+
+    static const int IR_LAB_ITEM_COUNT = 5;
+    const char* ir_lab_items[IR_LAB_ITEM_COUNT] = {
+        "CARRIER TEST", "TX TEST", "RX TEST", "RAW TIMING", "CONFIG"
+    };
+
+    void handleIrInput();
+
 public:
     uint32_t getLastActivityTime() const { return last_activity_time; }
 private:
@@ -225,6 +285,9 @@ private:
     int audio_menu_selection;
     int audio_menu_offset;
 
+    IrSubmenu ir_submenu;
+    int ir_selection;
+    int ir_scroll_offset;
     SettingsSubmenu settings_submenu;
     int settings_selection;
     int settings_scroll_offset;

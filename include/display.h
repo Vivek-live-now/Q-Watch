@@ -46,6 +46,7 @@ private:
     void drawAppMotionSettings();
     void drawAppAirMouse();
     void drawAppIR();
+    void drawAppIRMenu();
     void drawAppBme();
     void drawBmePage1Pressure();
     void drawBmePage2Humidity();

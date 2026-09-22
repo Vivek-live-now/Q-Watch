@@ -1,3 +1,4 @@
+#include "ir_engine.h"
 #include "max30102_manager.h"
 #include <Arduino.h>
 #include "display.h"
@@ -23,6 +24,7 @@ void setup() {
   Serial.println("Booting Q-Watch...");
 
   fileManager.begin();
+  irEngine.begin();
   settingsManager.begin();
 
   displayManager.begin();
@@ -41,6 +43,7 @@ void setup() {
 
 void loop() {
   wifiPortal.loop();
+  irEngine.loop();
   qclock.loop();
   weather.loop();
 

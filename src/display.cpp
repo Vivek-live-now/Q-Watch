@@ -1,3 +1,4 @@
+#include "ir_engine.h"
 #include "display.h"
 #include "hw_config.h"
 #include "wifi_portal.h"
@@ -885,11 +886,105 @@ void DisplayManager::drawAppMotionSettings() {
     oled.drawStr(4, 58, stat.c_str());
 }
 
+
 void DisplayManager::drawAppIR() {
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(10, 28, "EMITTER: ARMED");
-    oled.drawStr(10, 42, "SENSOR : STANDBY");
+    IrSubmenu sub = ui.getIrSubmenu();
+    int sel = ui.getIrSelection();
+    int offset = ui.getIrScrollOffset();
+
+    if (sub == IrSubmenu::MAIN) {
+        drawMenu("IR REMOTE", ui.ir_main_items, UICore::IR_MAIN_ITEM_COUNT);
+    } else if (sub == IrSubmenu::CUSTOM_IR) {
+        drawMenu("CUSTOM IR", ui.ir_custom_items, UICore::IR_CUSTOM_ITEM_COUNT);
+    } else if (sub == IrSubmenu::CUSTOM_IR_BROWSE) {
+        drawFileManager();
+    } else if (sub == IrSubmenu::REMOTE_VIEW) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, "REMOTE VIEW");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(2, 24, "SELECT BUTTON:");
+        oled.drawStr(2, 40, "[UP/DN: NAV, OK: TX]");
+    } else if (sub == IrSubmenu::IR_READ) {
+        drawMenu("IR READ", ui.ir_read_items, UICore::IR_READ_ITEM_COUNT);
+    } else if (sub == IrSubmenu::IR_READ_LEARN || sub == IrSubmenu::IR_READ_RAW) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, sub == IrSubmenu::IR_READ_LEARN ? "LEARN SIGNAL" : "RAW CAPTURE");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(4, 24, "POINT REMOTE & PRESS");
+        oled.drawStr(4, 40, "[OK: CAPTURE / REPLAY]");
+    } else if (sub == IrSubmenu::IR_READ_LIVE) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, "LIVE DECODE");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(4, 26, "LISTENING ON GPIO17...");
+        IREngine::RxDiagInfo diag = irEngine.getRxDiag();
+        String pstr = "PROTO: " + diag.protocol_str;
+        oled.drawStr(4, 42, pstr.c_str());
+    } else if (sub == IrSubmenu::TV_B_GONE) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, "TV-B-GONE");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+
+        if (irEngine.isTvBGoneRunning()) {
+            oled.drawStr(10, 26, "STATE: RUNNING...");
+            char prog_buf[32];
+            snprintf(prog_buf, sizeof(prog_buf), "CODE : %d/%d", irEngine.getTvBGoneProgress(), irEngine.getTvBGoneTotal());
+            oled.drawStr(10, 42, prog_buf);
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(10, 58, "CANCEL = STOP");
+        } else {
+            oled.drawStr(10, 30, "STATE: IDLE");
+            oled.drawStr(10, 48, "[OK: START SWEEP]");
+        }
+    } else if (sub == IrSubmenu::UNIVERSAL) {
+        drawMenu("UNIVERSAL", ui.ir_universal_items, UICore::IR_UNIVERSAL_ITEM_COUNT);
+    } else if (sub == IrSubmenu::UNIVERSAL_CATEGORY) {
+        drawFileManager();
+    } else if (sub == IrSubmenu::RECENT_LIST) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, "RECENT REMOTES");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+
+        int count = irEngine.getRecentCount();
+        if (count == 0) {
+            oled.drawStr(10, 35, "(NO RECENT REMOTES)");
+        } else {
+            int y_pos = 22;
+            for (int i = offset; i < offset + 3 && i < count; i++) {
+                if (i == sel) {
+                    oled.drawBox(2, y_pos - 8, 118, 10);
+                    oled.setDrawColor(0);
+                }
+                String path = irEngine.getRecentPath(i);
+                int last_slash = path.lastIndexOf('/');
+                String fname = (last_slash != -1) ? path.substring(last_slash + 1) : path;
+                oled.drawStr(4, y_pos, fname.c_str());
+                oled.setDrawColor(1);
+                y_pos += 12;
+            }
+        }
+    } else if (sub == IrSubmenu::FAVORITES_LIST) {
+        drawFileManager();
+    } else if (sub == IrSubmenu::IR_LAB) {
+        drawMenu("IR LAB", ui.ir_lab_items, UICore::IR_LAB_ITEM_COUNT);
+    } else if (sub == IrSubmenu::IR_LAB_CARRIER) {
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(2, 7, "CARRIER TEST");
+        oled.drawLine(0, 9, 128, 9);
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(4, 26, "CARRIER: 38.0 kHz");
+        oled.drawStr(4, 42, "[OK: BLAST 1s]");
+    } else {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(10, 30, "IR APP ACTIVE");
+    }
 }
+
 
 void DisplayManager::drawAppBattery() {
     int pct = battery.readPercentage();
