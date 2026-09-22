@@ -438,8 +438,22 @@ void UICore::handleIrReadInput() {
     }
 }
 
-static void onQuickRemoteNameEntered(bool success, const String& name) {
-    if (success && name.length() > 0) {
+static String pending_qr_remote_name = "";
+
+static void onQuickButtonNameEntered(bool success, const String& btn_name) {
+    if (success && btn_name.length() > 0) {
+        ui.setIrQuickButtonName(btn_name);
+        irEngine.startCapture();
+        ui.setIrSubmenu(IrSubmenu::QUICK_REMOTE_WAIT);
+        ui.showToast("[WAITING SIGNAL]", 1200);
+    }
+}
+
+static void onQuickRemoteNameEntered(bool success, const String& rem_name) {
+    if (success && rem_name.length() > 0) {
+        pending_qr_remote_name = rem_name;
+        ui.setIrQuickRemoteName(rem_name);
+        ui.setIrActiveRemotePath("/ir/" + rem_name + ".ir");
         ui.showToast("[REMOTE CREATED]", 1200);
         ui.setIrSubmenu(IrSubmenu::QUICK_REMOTE_BUILD);
     }
@@ -451,14 +465,12 @@ void UICore::handleQuickRemoteInput() {
     if (ir_submenu == IrSubmenu::QUICK_REMOTE) {
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            openKeyboard("CustomRemote", "Remote Name", KeyboardMode::ALPHA, false, 24, onQuickRemoteNameEntered);
+            openKeyboard("MyRemote", "Remote Name", KeyboardMode::ALPHA, false, 24, onQuickRemoteNameEntered);
         }
     } else if (ir_submenu == IrSubmenu::QUICK_REMOTE_BUILD) {
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            irEngine.startCapture();
-            ir_submenu = IrSubmenu::QUICK_REMOTE_WAIT;
-            needs_redraw = true;
+            openKeyboard("Power", "Button Name", KeyboardMode::ALPHA, false, 24, onQuickButtonNameEntered);
         }
     }
 }

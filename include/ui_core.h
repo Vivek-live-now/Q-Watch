@@ -118,6 +118,8 @@ public:
     const IrRemoteFile& getIrActiveRemote() const { return ir_active_remote; }
     const IrButton& getIrCapturedButton() const { return ir_captured_btn; }
     void setIrActiveRemotePath(const String& path);
+    void setIrQuickRemoteName(const String& name) { ir_quick_remote_name = name; }
+    void setIrQuickButtonName(const String& name) { ir_quick_button_name = name; }
 
     const char* getToastMessage() const { return toast_msg; }
     uint32_t getToastEndTime() const { return toast_end_time; }

@@ -8,6 +8,8 @@
 #include <IRrecv.h>
 #include <IRutils.h>
 
+constexpr size_t MAX_IR_RAW_TIMINGS = 1024;
+
 enum class IrSignalType {
     PARSED,
     RAW
@@ -18,13 +20,14 @@ struct IrButton {
     IrSignalType type;
     // Parsed fields
     String protocol;
-    uint64_t address;
-    uint64_t command;
+    uint32_t address;
+    uint32_t command;
     uint16_t nbits;
     // Raw fields
-    uint32_t frequency; // Hz, e.g. 38000
+    uint32_t frequency; // Hz, e.g. 38000 (0 if unknown)
     float duty_cycle;   // e.g. 0.33
-    std::vector<uint16_t> raw_data; // microseconds timing array
+    std::vector<uint16_t> raw_data; // microsecond timings (max 1024)
+    bool truncated = false;
 };
 
 struct IrRemoteFile {
@@ -49,8 +52,8 @@ public:
 
     // Transmission
     bool sendButton(const IrButton& btn);
-    bool sendParsed(const String& protocol, uint64_t address, uint64_t command, uint16_t nbits);
-    bool sendRaw(const uint16_t* timings, size_t count, uint16_t frequency = 38);
+    bool sendParsed(const String& protocol, uint32_t address, uint32_t command, uint16_t nbits);
+    bool sendRaw(const uint16_t* timings, size_t count, uint32_t frequency = 38000);
 
     // File IO (.ir Flipper / Bruce format)
     bool parseIrFile(const String& path, IrRemoteFile& remote);
@@ -88,9 +91,10 @@ public:
     bool isCarrierTestActive() const { return carrier_test_active; }
     uint32_t getCarrierFreq() const { return carrier_freq; }
 
-    // Helper conversion
+    // Helper conversion & protocol translation
     static decode_type_t strToDecodeType(const String& proto);
     static String decodeTypeToStr(decode_type_t type);
+    static uint32_t parseFlipperHexBytes(const String& val);
 
 private:
     IRsend irsend;
