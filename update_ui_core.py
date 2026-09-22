@@ -1,4 +1,6 @@
-#include "max30102_manager.h"
+import re
+
+ui_core_cpp = '''#include "max30102_manager.h"
 #include "weather.h"
 #include "display.h"
 #include "ui_core.h"
@@ -48,7 +50,7 @@ UICore::UICore() :
     display_off(false),
     just_woke_display(false),
     needs_redraw(true) {
-    toast_msg[0] = '\0';
+    toast_msg[0] = '\\0';
 }
 
 void UICore::setIrActiveRemotePath(const String& path) {
@@ -117,7 +119,7 @@ void UICore::begin() {
 
 void UICore::showToast(const char* msg, uint32_t duration_ms) {
     strncpy(toast_msg, msg, sizeof(toast_msg) - 1);
-    toast_msg[sizeof(toast_msg) - 1] = '\0';
+    toast_msg[sizeof(toast_msg) - 1] = '\\0';
     toast_end_time = millis() + duration_ms;
     needs_redraw = true;
 }
@@ -189,7 +191,7 @@ void UICore::loop() {
     }
 
     if (toast_end_time > 0 && millis() > toast_end_time) {
-        toast_msg[0] = '\0';
+        toast_msg[0] = '\\0';
         toast_end_time = 0;
         needs_redraw = true;
     }
@@ -1472,14 +1474,8 @@ void UICore::handleAirMouseInput() {
         }
     }
 }
+'''
 
-void UICore::handleFileServerDetailsInput() {
-    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
-    if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playNavSelect();
-        SettingsData& s = settingsManager.get();
-        s.fileserver_enabled = !s.fileserver_enabled;
-        settingsManager.save();
-        needs_redraw = true;
-    }
-}
+with open('src/ui_core.cpp', 'w') as f:
+    f.write(ui_core_cpp)
+print("Updated src/ui_core.cpp successfully.")
