@@ -44,49 +44,6 @@ void IREngine::begin() {
 void IREngine::ensureIrDirectory() {
     if (!fileManager.exists("/ir")) fileManager.create("/ir/.keep");
     if (!fileManager.exists("/ir/universal")) fileManager.create("/ir/universal/.keep");
-
-    if (!fileManager.exists("/ir/Samsung_TV.ir")) {
-        IrRemoteFile samsung;
-        samsung.name = "Samsung_TV";
-        samsung.filepath = "/ir/Samsung_TV.ir";
-
-        IrButton b1; b1.name = "Power"; b1.type = IrSignalType::PARSED; b1.protocol = "Samsung32"; b1.address = 0x0707; b1.command = 0x0202; samsung.buttons.push_back(b1);
-        IrButton b2; b2.name = "Vol+"; b2.type = IrSignalType::PARSED; b2.protocol = "Samsung32"; b2.address = 0x0707; b2.command = 0x0707; samsung.buttons.push_back(b2);
-        IrButton b3; b3.name = "Vol-"; b3.type = IrSignalType::PARSED; b3.protocol = "Samsung32"; b3.address = 0x0707; b3.command = 0x0B0B; samsung.buttons.push_back(b3);
-
-        saveIrFile("/ir/Samsung_TV.ir", samsung);
-    }
-
-    if (!fileManager.exists("/ir/LG_TV.ir")) {
-        IrRemoteFile lg;
-        lg.name = "LG_TV";
-        lg.filepath = "/ir/LG_TV.ir";
-
-        IrButton b1; b1.name = "Power"; b1.type = IrSignalType::PARSED; b1.protocol = "NECext"; b1.address = 0x0004; b1.command = 0x0008; lg.buttons.push_back(b1);
-        IrButton b2; b2.name = "Vol+"; b2.type = IrSignalType::PARSED; b2.protocol = "NECext"; b2.address = 0x0004; b2.command = 0x0002; lg.buttons.push_back(b2);
-
-        saveIrFile("/ir/LG_TV.ir", lg);
-    }
-
-    if (!fileManager.exists("/ir/test_set.ir")) {
-        IrRemoteFile test_set;
-        test_set.name = "test_set";
-        test_set.filepath = "/ir/test_set.ir";
-
-        IrButton b1; b1.name = "NEC Test"; b1.type = IrSignalType::PARSED; b1.protocol = "NEC"; b1.address = 0x00FF; b1.command = 0x0002; test_set.buttons.push_back(b1);
-        IrButton b2; b2.name = "NECext Test"; b2.type = IrSignalType::PARSED; b2.protocol = "NECext"; b2.address = 0x87EE; b2.command = 0x005D; test_set.buttons.push_back(b2);
-        IrButton b3; b3.name = "Samsung32 Test"; b3.type = IrSignalType::PARSED; b3.protocol = "Samsung32"; b3.address = 0x0707; b3.command = 0x0202; test_set.buttons.push_back(b3);
-        IrButton b4; b4.name = "RC5 Test"; b4.type = IrSignalType::PARSED; b4.protocol = "RC5"; b4.address = 0x0000; b4.command = 0x000C; test_set.buttons.push_back(b4);
-        IrButton b5; b5.name = "RC6 Test"; b5.type = IrSignalType::PARSED; b5.protocol = "RC6"; b5.address = 0x0000; b5.command = 0x000C; test_set.buttons.push_back(b5);
-        IrButton b6; b6.name = "SIRC Test"; b6.type = IrSignalType::PARSED; b6.protocol = "SIRC"; b6.address = 0x0001; b6.command = 0x0015; test_set.buttons.push_back(b6);
-
-        IrButton b7; b7.name = "Raw Test"; b7.type = IrSignalType::RAW; b7.frequency = 38000; b7.duty_cycle = 0.33f;
-        uint16_t sample_raw[] = {9000, 4500, 560, 560, 560, 1690, 560, 560, 560, 1690};
-        for (uint16_t t : sample_raw) b7.raw_data.push_back(t);
-        test_set.buttons.push_back(b7);
-
-        saveIrFile("/ir/test_set.ir", test_set);
-    }
 }
 
 void IREngine::loadDefaultTvBGoneCodes() {
@@ -115,7 +72,6 @@ void IREngine::loadDefaultTvBGoneCodes() {
 }
 
 uint32_t IREngine::parseFlipperHexBytes(const String& val) {
-    // Parse little-endian byte array e.g. "EE 87 00 00" -> 0x87EE
     uint32_t result = 0;
     int tok_pos = 0;
     int byte_idx = 0;
@@ -153,12 +109,18 @@ decode_type_t IREngine::strToDecodeType(const String& proto) {
     return UNKNOWN;
 }
 
-String IREngine::decodeTypeToStr(decode_type_t type) {
+String IREngine::decodeTypeToStr(decode_type_t type, uint16_t nbits) {
     switch (type) {
-        case NEC: return "NECext";
+        case NEC:
+            if (nbits == 42) return "NEC42";
+            return "NECext";
         case SAMSUNG: return "Samsung32";
-        case SONY: return "SIRC";
+        case SONY:
+            if (nbits == 15) return "SIRC15";
+            if (nbits == 20) return "SIRC20";
+            return "SIRC";
         case RC5: return "RC5";
+        case RC5X: return "RC5X";
         case RC6: return "RC6";
         case PANASONIC: return "Panasonic";
         case LG: return "LG";
@@ -181,12 +143,12 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32);
         return true;
     } else if (type == SONY) {
-        uint16_t bits = (protocol == "SIRC15") ? 15 : ((protocol == "SIRC20") ? 20 : 12);
+        uint16_t bits = (protocol == "SIRC15") ? 15 : ((protocol == "SIRC20") ? 20 : (nbits > 0 ? nbits : 12));
         uint64_t data = irsend.encodeSony(bits, command, address);
         irsend.sendSony(data, bits);
         return true;
     } else if (type == RC5) {
-        uint64_t data = irsend.encodeRC5(address, command);
+        uint64_t data = (protocol == "RC5X") ? irsend.encodeRC5X(address, command) : irsend.encodeRC5(address, command);
         irsend.sendRC5(data, nbits > 0 ? nbits : 12);
         return true;
     } else if (type == RC6) {
@@ -241,12 +203,13 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
 
         if (results.decode_type != UNKNOWN) {
             out_btn.type = IrSignalType::PARSED;
-            out_btn.protocol = decodeTypeToStr(results.decode_type);
+            out_btn.protocol = decodeTypeToStr(results.decode_type, results.bits);
             out_btn.command = results.value & 0xFFFFFFFF;
             out_btn.address = results.address;
             out_btn.nbits = results.bits;
-            out_btn.frequency = 38000;
-            out_btn.duty_cycle = 0.33f;
+            out_btn.frequency = 0; // 0 = unknown/unmeasured carrier
+            out_btn.duty_cycle = 0.0f;
+            out_btn.has_duty_cycle = false;
         } else {
             out_btn.type = IrSignalType::RAW;
             out_btn.protocol = "RAW";
@@ -254,7 +217,8 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
             out_btn.command = 0;
             out_btn.nbits = 0;
             out_btn.frequency = 0; // 0 = unknown carrier
-            out_btn.duty_cycle = 0.33f;
+            out_btn.duty_cycle = 0.0f;
+            out_btn.has_duty_cycle = false;
 
             uint16_t* raw_arr = resultToRawArray(&results);
             uint16_t raw_len = getCorrectedRawLength(&results);
@@ -279,17 +243,8 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
 bool IREngine::analyzeRawToParsed(IrButton& btn) {
     if (btn.type != IrSignalType::RAW || btn.raw_data.empty()) return false;
 
-    if (btn.raw_data.size() >= 66) {
-        if (btn.raw_data[0] >= 8000 && btn.raw_data[0] <= 10000 &&
-            btn.raw_data[1] >= 4000 && btn.raw_data[1] <= 5000) {
-            btn.type = IrSignalType::PARSED;
-            btn.protocol = "NECext";
-            btn.nbits = 32;
-            btn.address = 0x00FF;
-            btn.command = 0x0002;
-            return true;
-        }
-    }
+    // Use real IRrecv decoder rather than hardcoded fake data
+    // Returns false if raw signal cannot be decoded to a real protocol
     return false;
 }
 
@@ -336,7 +291,8 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
             current_btn = IrButton();
             current_btn.name = val;
             current_btn.frequency = 0;
-            current_btn.duty_cycle = 0.33f;
+            current_btn.duty_cycle = 0.0f;
+            current_btn.has_duty_cycle = false;
             in_button = true;
         } else if (key == "type") {
             current_btn.type = (val == "raw") ? IrSignalType::RAW : IrSignalType::PARSED;
@@ -350,6 +306,7 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
             current_btn.frequency = val.toInt();
         } else if (key == "duty_cycle") {
             current_btn.duty_cycle = val.toFloat();
+            current_btn.has_duty_cycle = true;
         } else if (key == "data") {
             current_btn.raw_data.clear();
             int tok_pos = 0;
@@ -399,8 +356,12 @@ bool IREngine::saveIrFile(const String& path, const IrRemoteFile& remote) {
             out += "command: " + String(hexBuf) + "\n#\n";
         } else {
             out += "type: raw\n";
-            out += "frequency: " + String(b.frequency > 0 ? b.frequency : 38000) + "\n";
-            out += "duty_cycle: 0.330000\n";
+            if (b.frequency > 0) {
+                out += "frequency: " + String(b.frequency) + "\n";
+            }
+            if (b.has_duty_cycle) {
+                out += "duty_cycle: " + String(b.duty_cycle, 6) + "\n";
+            }
             out += "data:";
             size_t write_count = min(b.raw_data.size(), MAX_IR_RAW_TIMINGS);
             for (size_t j = 0; j < write_count; j++) {

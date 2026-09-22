@@ -24,8 +24,9 @@ struct IrButton {
     uint32_t command;
     uint16_t nbits;
     // Raw fields
-    uint32_t frequency; // Hz, e.g. 38000 (0 if unknown)
-    float duty_cycle;   // e.g. 0.33
+    uint32_t frequency; // Hz, e.g. 38000 (0 = unknown)
+    float duty_cycle;   // e.g. 0.33 (0.0 = unmeasured/unknown)
+    bool has_duty_cycle = false;
     std::vector<uint16_t> raw_data; // microsecond timings (max 1024)
     bool truncated = false;
 };
@@ -53,7 +54,7 @@ public:
     // Transmission
     bool sendButton(const IrButton& btn);
     bool sendParsed(const String& protocol, uint32_t address, uint32_t command, uint16_t nbits);
-    bool sendRaw(const uint16_t* timings, size_t count, uint32_t frequency = 38000);
+    bool sendRaw(const uint16_t* timings, size_t count, uint32_t frequency = 0);
 
     // File IO (.ir Flipper / Bruce format)
     bool parseIrFile(const String& path, IrRemoteFile& remote);
@@ -93,7 +94,7 @@ public:
 
     // Helper conversion & protocol translation
     static decode_type_t strToDecodeType(const String& proto);
-    static String decodeTypeToStr(decode_type_t type);
+    static String decodeTypeToStr(decode_type_t type, uint16_t nbits = 32);
     static uint32_t parseFlipperHexBytes(const String& val);
 
 private:
