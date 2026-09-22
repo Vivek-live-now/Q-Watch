@@ -21,30 +21,64 @@ public:
     void begin();
     void loop();
 
+    // Direct Tone Control & SW Volume / Envelope
+    void playTone(uint16_t freq, uint16_t duration_ms);
+    void stop();
+
+    // Sound Effects
     void playBoot();
+    void playWake();
+    void playSleep();
+    void playNotification();
+    void playWarning();
+    void playAlert();
+    void playQBranch();
+
+    // UI Navigation Feedback
     void playNavMove();
     void playNavSelect();
     void playNavBack();
     void playError();
     void playSuccess();
 
-    void setMasterSwitch(bool state);
-    bool isMasterSwitchOn() const { return master_switch; }
+    // File Melody Playback
+    bool playMelodyFile(const String& path);
 
-    void setStyle(SoundStyle style);
-    SoundStyle getStyle() const { return current_style; }
-
-private:
+    // Dynamic Melody Sequence Playback
     void playSequence(const SoundNote* sequence, uint8_t length);
 
-    bool master_switch;
-    SoundStyle current_style;
+    // Morse Code Playback
+    void playMorse(const String& text);
 
+    // Settings Sync & Controls
+    void setMasterSwitch(bool state);
+    bool isMasterSwitchOn() const;
+
+    void setVolumePct(int pct);
+    int getVolumePct() const;
+
+    void setButtonSoundsEnabled(bool enabled);
+    bool isButtonSoundsEnabled() const;
+
+    void setNotificationsEnabled(bool enabled);
+    bool isNotificationsEnabled() const;
+
+    void setStyle(SoundStyle style);
+    SoundStyle getStyle() const;
+
+    bool isPlaying() const { return is_playing; }
+
+private:
+    void startCurrentNote();
+
+    SoundNote dynamic_sequence[64];
     const SoundNote* current_sequence;
     uint8_t sequence_length;
     uint8_t current_note_index;
     uint32_t note_start_time;
+    uint16_t active_duration;
     bool is_playing;
+    bool is_tone_active;
 };
 
 extern SoundManager soundManager;
