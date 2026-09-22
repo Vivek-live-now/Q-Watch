@@ -178,6 +178,26 @@ static void onMelodyNameEntered(bool success, const String& name) {
         if (!fileManager.exists(path)) {
             fileManager.write(path, "2700,200\n0,50\n2400,200\n");
         }
+        String content = fileManager.read(path);
+        int pos = 0;
+        SoundNote notes[64];
+        int count = 0;
+        while (pos < content.length() && count < 64) {
+            int next_nl = content.indexOf('\n', pos);
+            if (next_nl == -1) next_nl = content.length();
+            String line = content.substring(pos, next_nl);
+            line.trim();
+            pos = next_nl + 1;
+            if (line.length() == 0 || line.startsWith("#")) continue;
+
+            int comma = line.indexOf(',');
+            if (comma != -1) {
+                uint16_t freq = line.substring(0, comma).toInt();
+                uint16_t dur = line.substring(comma + 1).toInt();
+                notes[count++] = { freq, dur };
+            }
+        }
+        ui.loadCreatorNotes(notes, count);
         ui.setSoundSubmenu(SoundSubmenu::CREATOR_EDIT);
         ui.showToast("[EDITING MELODY]", 1200);
     }

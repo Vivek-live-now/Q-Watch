@@ -38,7 +38,7 @@ SoundManager::SoundManager() :
     sequence_length(0),
     current_note_index(0),
     note_start_time(0),
-    active_duty_pct(50),
+    active_duty_pct(0),
     is_playing(false),
     is_tone_active(false)
 {}
@@ -106,6 +106,7 @@ void SoundManager::stop() {
     digitalWrite(BUZZER_PIN, LOW);
     is_playing = false;
     is_tone_active = false;
+    active_duty_pct = 0;
 }
 
 void SoundManager::applyPwmTone(uint16_t freq, uint8_t duty_pct) {
@@ -115,7 +116,6 @@ void SoundManager::applyPwmTone(uint16_t freq, uint8_t duty_pct) {
         return;
     }
     ledcWriteTone(BUZZER_LEDC_CHANNEL, freq);
-    // Convert duty_pct (0-100%) to 8-bit duty value (0-255)
     uint32_t duty_val = (uint32_t)duty_pct * 255 / 100;
     ledcWrite(BUZZER_LEDC_CHANNEL, duty_val);
 }
@@ -132,8 +132,7 @@ void SoundManager::playSequence(const SoundNote* sequence, uint8_t length) {
 
 void SoundManager::playTone(uint16_t freq, uint16_t duration_ms, uint8_t duty_pct) {
     if (!isMasterSwitchOn() || getVolumePct() == 0) return;
-    active_duty_pct = (duty_pct > 0) ? duty_pct : (uint8_t)(getVolumePct() * 50 / 100);
-    if (active_duty_pct == 0) active_duty_pct = 1;
+    active_duty_pct = duty_pct;
     dynamic_sequence[0] = { freq, duration_ms };
     playSequence(dynamic_sequence, 1);
 }
@@ -152,9 +151,13 @@ void SoundManager::startCurrentNote() {
     int vol = getVolumePct();
 
     if (raw_freq > 0 && vol > 0) {
-        // Calculate PWM duty cycle proportional to volume setting (max rated acoustic output @ 50% square wave)
-        uint8_t duty = (uint8_t)(vol * 50 / 100);
-        if (duty == 0) duty = 1;
+        uint8_t duty = 0;
+        if (active_duty_pct > 0) {
+            duty = active_duty_pct;
+        } else {
+            duty = (uint8_t)(vol * 50 / 100);
+            if (duty == 0) duty = 1;
+        }
         applyPwmTone(raw_freq, duty);
         is_tone_active = true;
     } else {
@@ -174,6 +177,7 @@ void SoundManager::loop() {
         if (current_note_index >= sequence_length) {
             stop();
         } else {
+            active_duty_pct = 0; // Reset explicit duty for subsequent notes in sequence
             startCurrentNote();
         }
     }
@@ -279,7 +283,7 @@ void SoundManager::playMorse(const String& text) {
             case 'M': code = "--"; break;
             case 'N': code = "-."; break;
             case 'O': code = "---"; break;
-            case 'P': code = ".--."; break;
+            case 'P': code = "--.-"; break;
             case 'Q': code = "--.-"; break;
             case 'R': code = ".-."; break;
             case 'S': code = "..."; break;

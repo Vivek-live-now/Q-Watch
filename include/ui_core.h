@@ -343,6 +343,8 @@ private:
     String active_melody_name;
 public:
     void setActiveMelodyName(const String& n) { active_melody_name = n; }
+    void setCreatorCount(int c) { creator_count = c; }
+    void loadCreatorNotes(const SoundNote* notes, int count) { creator_count = min(count, 64); for (int i = 0; i < creator_count; i++) creator_notes[i] = notes[i]; creator_cursor = 0; creator_edit_field = 0; }
 
     int metronome_bpm;
     bool metronome_active;
