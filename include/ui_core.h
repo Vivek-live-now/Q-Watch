@@ -148,6 +148,7 @@ public:
 
     int getCreatorNoteCount() const { return creator_count; }
     int getCreatorCursor() const { return creator_cursor; }
+    int getCreatorEditField() const { return creator_edit_field; }
     const SoundNote* getCreatorNotes() const { return creator_notes; }
     const SoundNote* getComposerNotes() const { return composer_notes; }
     String getActiveMelodyName() const { return active_melody_name; }
@@ -338,6 +339,7 @@ private:
     SoundNote creator_notes[64];
     int creator_count;
     int creator_cursor;
+    int creator_edit_field;
     String active_melody_name;
 public:
     void setActiveMelodyName(const String& n) { active_melody_name = n; }

@@ -3,10 +3,19 @@
 #include "settings_data.h"
 #include "button_manager.h"
 
-static const uint16_t NOTE_FREQS[] = { 262, 294, 330, 349, 392, 440, 494, 2700 }; // C, D, E, F, G, A, B, 2700Hz
-static const char* const NOTE_NAMES[] = { "C", "D", "E", "F", "G", "A", "B", "RES" };
+static const uint16_t NOTE_BASE_FREQS[] = { 262, 294, 330, 349, 392, 440, 494, 0 }; // C4, D4, E4, F4, G4, A4, B4, REST (0Hz)
+static const char* const NOTE_NAMES[] = { "C", "D", "E", "F", "G", "A", "B", "REST" };
 static const uint16_t DUR_MS[] = { 100, 200, 400, 800 };
 static const char* const DUR_NAMES[] = { "1/8", "1/4", "1/2", "1/1" };
+
+static const uint16_t CREATOR_PITCH_LIST[] = { 0, 262, 294, 330, 349, 392, 440, 494, 523, 587, 659, 698, 784, 880, 988, 2700 };
+static const char* const CREATOR_PITCH_NAMES[] = { "REST", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5", "A5", "B5", "2700Hz" };
+static const int CREATOR_PITCH_COUNT = 16;
+
+static uint16_t getComposerFreq(int note_idx, int octave) {
+    if (note_idx == 7) return 0; // REST
+    return NOTE_BASE_FREQS[note_idx] * octave;
+}
 
 void UICore::handleSoundInput() {
     if (sound_submenu == SoundSubmenu::METRONOME && metronome_active) {
@@ -229,6 +238,7 @@ void UICore::handleSoundCreatorListInput() {
                 }
             }
             creator_cursor = 0;
+            creator_edit_field = 0;
             sound_submenu = SoundSubmenu::CREATOR_EDIT;
             showToast(("[OPEN " + mel_name + "]").c_str(), 1000);
         }
@@ -241,26 +251,15 @@ void UICore::handleSoundCreatorEditInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
-    if (up_evt == BTN_EVT_SHORT_PRESS) {
-        if (creator_count > 0) {
-            creator_cursor = (creator_cursor > 0) ? creator_cursor - 1 : creator_count - 1;
-            soundManager.playTone(creator_notes[creator_cursor].freq, 80);
-        }
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        creator_edit_field = (creator_edit_field + 1) % 6; // Fields: 0:NoteIdx, 1:Pitch, 2:Dur, 3:Insert, 4:Delete, 5:Save&Play
         needs_redraw = true;
-    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
-        if (creator_count > 0) {
-            creator_cursor = (creator_cursor + 1) % creator_count;
-            soundManager.playTone(creator_notes[creator_cursor].freq, 80);
-        }
-        needs_redraw = true;
-    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        if (creator_count > 0 && creator_notes[creator_cursor].freq > 0) {
-            creator_notes[creator_cursor].freq = (creator_notes[creator_cursor].freq == 2700) ? 2400 : ((creator_notes[creator_cursor].freq == 2400) ? 2000 : 2700);
-            soundManager.playTone(creator_notes[creator_cursor].freq, 100);
-        }
-        needs_redraw = true;
-    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
-        // Play entire melody & Save file to LittleFS
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_LONG_PRESS) {
+        // Save & Play Melody
         String path = "/sounds/" + active_melody_name + ".mel";
         String out = "";
         for (int i = 0; i < creator_count; i++) {
@@ -270,6 +269,108 @@ void UICore::handleSoundCreatorEditInput() {
         soundManager.playSequence(creator_notes, creator_count);
         showToast("[MELODY SAVED & PLAY]", 1200);
         needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (creator_edit_field == 0) { // Select Note Index
+            if (creator_count > 0) {
+                creator_cursor = (creator_cursor > 0) ? creator_cursor - 1 : creator_count - 1;
+                if (creator_notes[creator_cursor].freq > 0) soundManager.playTone(creator_notes[creator_cursor].freq, 80);
+            }
+        } else if (creator_edit_field == 1) { // Pitch Selection
+            if (creator_count > 0) {
+                uint16_t cur_freq = creator_notes[creator_cursor].freq;
+                int p_idx = 0;
+                for (int i = 0; i < CREATOR_PITCH_COUNT; i++) {
+                    if (CREATOR_PITCH_LIST[i] == cur_freq) { p_idx = i; break; }
+                }
+                p_idx = (p_idx + 1) % CREATOR_PITCH_COUNT;
+                creator_notes[creator_cursor].freq = CREATOR_PITCH_LIST[p_idx];
+                if (creator_notes[creator_cursor].freq > 0) soundManager.playTone(creator_notes[creator_cursor].freq, 100);
+            }
+        } else if (creator_edit_field == 2) { // Duration
+            if (creator_count > 0) {
+                uint16_t dur = creator_notes[creator_cursor].duration;
+                if (dur <= 100) dur = 200;
+                else if (dur <= 200) dur = 400;
+                else if (dur <= 400) dur = 800;
+                else dur = 100;
+                creator_notes[creator_cursor].duration = dur;
+            }
+        } else if (creator_edit_field == 3) { // Insert Note
+            if (creator_count < 64) {
+                for (int i = creator_count; i > creator_cursor + 1; i--) {
+                    creator_notes[i] = creator_notes[i - 1];
+                }
+                creator_notes[creator_cursor + 1] = { 2700, 200 };
+                creator_count++;
+                creator_cursor++;
+                soundManager.playTone(2700, 100);
+                showToast("[NOTE INSERTED]", 800);
+            }
+        } else if (creator_edit_field == 4) { // Delete Note
+            if (creator_count > 1) {
+                for (int i = creator_cursor; i < creator_count - 1; i++) {
+                    creator_notes[i] = creator_notes[i + 1];
+                }
+                creator_count--;
+                if (creator_cursor >= creator_count) creator_cursor = creator_count - 1;
+                showToast("[NOTE DELETED]", 800);
+            }
+        } else if (creator_edit_field == 5) { // Play & Save
+            soundManager.playSequence(creator_notes, creator_count);
+        }
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (creator_edit_field == 0) { // Select Note Index
+            if (creator_count > 0) {
+                creator_cursor = (creator_cursor + 1) % creator_count;
+                if (creator_notes[creator_cursor].freq > 0) soundManager.playTone(creator_notes[creator_cursor].freq, 80);
+            }
+        } else if (creator_edit_field == 1) { // Pitch Selection (Prev)
+            if (creator_count > 0) {
+                uint16_t cur_freq = creator_notes[creator_cursor].freq;
+                int p_idx = 0;
+                for (int i = 0; i < CREATOR_PITCH_COUNT; i++) {
+                    if (CREATOR_PITCH_LIST[i] == cur_freq) { p_idx = i; break; }
+                }
+                p_idx = (p_idx > 0) ? p_idx - 1 : CREATOR_PITCH_COUNT - 1;
+                creator_notes[creator_cursor].freq = CREATOR_PITCH_LIST[p_idx];
+                if (creator_notes[creator_cursor].freq > 0) soundManager.playTone(creator_notes[creator_cursor].freq, 100);
+            }
+        } else if (creator_edit_field == 2) { // Duration
+            if (creator_count > 0) {
+                uint16_t dur = creator_notes[creator_cursor].duration;
+                if (dur >= 800) dur = 400;
+                else if (dur >= 400) dur = 200;
+                else if (dur >= 200) dur = 100;
+                else dur = 800;
+                creator_notes[creator_cursor].duration = dur;
+            }
+        } else if (creator_edit_field == 3) { // Insert Note
+            if (creator_count < 64) {
+                for (int i = creator_count; i > creator_cursor + 1; i--) {
+                    creator_notes[i] = creator_notes[i - 1];
+                }
+                creator_notes[creator_cursor + 1] = { 0, 100 }; // Insert Rest
+                creator_count++;
+                creator_cursor++;
+                showToast("[REST INSERTED]", 800);
+            }
+        } else if (creator_edit_field == 4) { // Delete Note
+            if (creator_count > 1) {
+                for (int i = creator_cursor; i < creator_count - 1; i++) {
+                    creator_notes[i] = creator_notes[i + 1];
+                }
+                creator_count--;
+                if (creator_cursor >= creator_count) creator_cursor = creator_count - 1;
+                showToast("[NOTE DELETED]", 800);
+            }
+        } else if (creator_edit_field == 5) { // Play & Save
+            soundManager.playSequence(creator_notes, creator_count);
+        }
+        needs_redraw = true;
     }
 }
 
@@ -277,7 +378,7 @@ static void onComposerSaveEntered(bool success, const String& name) {
     if (success && name.length() > 0) {
         String path = "/sounds/" + name + ".mel";
         String out = "";
-        const SoundNote* notes = ui.getComposerNotes(); // Re-use composer sequence buffer
+        const SoundNote* notes = ui.getComposerNotes();
         for (int i = 0; i < ui.getComposerCount(); i++) {
             out += String(notes[i].freq) + "," + String(notes[i].duration) + "\n";
         }
@@ -293,19 +394,20 @@ void UICore::handleSoundComposerInput() {
 
     if (up_evt == BTN_EVT_SHORT_PRESS) {
         composer_note_idx = (composer_note_idx + 1) % 8;
-        soundManager.playTone(NOTE_FREQS[composer_note_idx] * composer_octave, 80);
+        uint16_t freq = getComposerFreq(composer_note_idx, composer_octave);
+        if (freq > 0) soundManager.playTone(freq, 80);
         needs_redraw = true;
     } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
         composer_dur_idx = (composer_dur_idx + 1) % 4;
         soundManager.playNavMove();
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        // Append note to composer sequence
+        // Append note or rest to composer sequence
         if (composer_count < 32) {
-            uint16_t freq = NOTE_FREQS[composer_note_idx] * composer_octave;
+            uint16_t freq = getComposerFreq(composer_note_idx, composer_octave);
             uint16_t dur = DUR_MS[composer_dur_idx];
             composer_notes[composer_count++] = { freq, dur };
-            soundManager.playTone(freq, dur);
+            if (freq > 0) soundManager.playTone(freq, dur);
             showToast(("[NOTE ADDED #" + String(composer_count) + "]").c_str(), 800);
         }
         needs_redraw = true;
@@ -353,7 +455,6 @@ void UICore::handleSoundLabInput() {
             soundManager.setToneDuty(2700, lab_duty);
             showToast(("[DUTY " + String(lab_duty) + "% PWM]").c_str(), 1000);
         } else if (sound_selection == 3) {
-            // Real interactive multi-frequency audio diagnostic sequence
             soundManager.playQBranch();
             showToast("[BUZZER FREQ CHECK]", 1200);
         }

@@ -1842,25 +1842,25 @@ void DisplayManager::drawAppAudio() {
         oled.setFont(u8g2_font_6x10_tf);
         int total = ui.getCreatorNoteCount();
         int cursor = ui.getCreatorCursor();
+        int field = ui.getCreatorEditField();
         const SoundNote* notes = ui.getCreatorNotes();
 
         if (total == 0) {
             oled.drawStr(10, 36, "(NO NOTES IN MELODY)");
         } else {
             char buf[32];
-            snprintf(buf, sizeof(buf), "NOTE %d/%d: %dHz", cursor + 1, total, notes[cursor].freq);
-            oled.drawStr(4, 32, buf);
-            snprintf(buf, sizeof(buf), "DUR : %d ms", notes[cursor].duration);
-            oled.drawStr(4, 44, buf);
+            snprintf(buf, sizeof(buf), "%sPOS: %d/%d", (field == 0 ? ">" : " "), cursor + 1, total);
+            oled.drawStr(4, 29, buf);
 
-            oled.drawFrame(4, 52, 120, 8);
-            if (total > 0) {
-                int fill_w = ((cursor + 1) * 120) / total;
-                oled.drawBox(4, 52, fill_w, 8);
-            }
+            snprintf(buf, sizeof(buf), "%sFREQ: %d Hz", (field == 1 ? ">" : " "), notes[cursor].freq);
+            oled.drawStr(4, 39, buf);
+
+            snprintf(buf, sizeof(buf), "%sDUR : %d ms", (field == 2 ? ">" : " "), notes[cursor].duration);
+            oled.drawStr(4, 49, buf);
+
+            const char* actStr = (field == 3) ? "> [INSERT NOTE]" : ((field == 4) ? "> [DELETE NOTE]" : ((field == 5) ? "> [SAVE & PLAY]" : "  [OK: NEXT FIELD]"));
+            oled.drawStr(4, 59, actStr);
         }
-        oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(2, 63, "UP/DN:NAV OK:MOD L-OK:PLAY/SAVE");
     } else if (sub == SoundSubmenu::COMPOSER) {
         oled.setFont(u8g2_font_6x10_tf);
         oled.drawStr(10, 12, "BASIC COMPOSER");
