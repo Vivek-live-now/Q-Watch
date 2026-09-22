@@ -6,6 +6,7 @@
 #include "settings_data.h"
 #include "keyboard.h"
 #include "ir_engine.h"
+#include "sound_manager.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
@@ -61,6 +62,18 @@ enum class IrSubmenu {
     FAVORITES,
     IR_FILES,
     IR_LAB
+};
+
+enum class SoundSubmenu {
+    MAIN,
+    SETTINGS,
+    EFFECTS,
+    CREATOR_LIST,
+    CREATOR_EDIT,
+    COMPOSER,
+    LAB,
+    METRONOME,
+    MORSE
 };
 
 enum class UIState {
@@ -121,6 +134,34 @@ public:
     void setIrQuickRemoteName(const String& name) { ir_quick_remote_name = name; }
     void setIrQuickButtonName(const String& name) { ir_quick_button_name = name; }
 
+    // Sound Submenu getters & state
+    SoundSubmenu getSoundSubmenu() const { return sound_submenu; }
+    void setSoundSubmenu(SoundSubmenu sub) { sound_submenu = sub; needs_redraw = true; }
+    int getSoundSelection() const { return sound_selection; }
+    int getSoundScrollOffset() const { return sound_scroll_offset; }
+
+    // Composer & Creator getters
+    int getComposerNoteIdx() const { return composer_note_idx; }
+    int getComposerOctave() const { return composer_octave; }
+    int getComposerDurIdx() const { return composer_dur_idx; }
+    int getComposerCount() const { return composer_count; }
+
+    int getCreatorNoteCount() const { return creator_count; }
+    int getCreatorCursor() const { return creator_cursor; }
+    int getCreatorEditField() const { return creator_edit_field; }
+    const SoundNote* getCreatorNotes() const { return creator_notes; }
+    const SoundNote* getComposerNotes() const { return composer_notes; }
+    String getActiveMelodyName() const { return active_melody_name; }
+
+    int getMetronomeBpm() const { return metronome_bpm; }
+    bool isMetronomeActive() const { return metronome_active; }
+    int getMetronomeBeat() const { return metronome_beat; }
+
+    uint16_t getLabFreq() const { return lab_freq; }
+    uint8_t getLabDuty() const { return lab_duty; }
+    bool isLabSweepActive() const { return lab_sweep_active; }
+    uint16_t getLabSweepFreq() const { return lab_sweep_freq; }
+
     const char* getToastMessage() const { return toast_msg; }
     uint32_t getToastEndTime() const { return toast_end_time; }
     void showToast(const char* msg, uint32_t duration_ms = 1500);
@@ -147,14 +188,7 @@ public:
     void handleMotionInput();
 
     void handleLedInput();
-
-    void handleAudioInput();
-    static const int AUDIO_MENU_ITEM_COUNT = 2;
-    const char* audio_menu_items[AUDIO_MENU_ITEM_COUNT] = {
-        "Master Sw", "Theme Style"
-    };
-    int getAudioMenuSelection() const { return audio_menu_selection; }
-    int getAudioMenuOffset() const { return audio_menu_offset; }
+    void handleSoundInput();
 
     int getLedMenuSelection() const { return led_menu_selection; }
     int getLedMenuOffset() const { return led_menu_offset; }
@@ -181,7 +215,27 @@ public:
     static const int MAIN_MENU_ITEM_COUNT = 13;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+    };
+
+    static const int SOUND_MAIN_ITEM_COUNT = 7;
+    const char* sound_main_items[SOUND_MAIN_ITEM_COUNT] = {
+        "SETTINGS", "SOUND EFFECTS", "MELODY CREATOR", "COMPOSER", "SOUND LAB", "METRONOME", "MORSE / Q-CODE"
+    };
+
+    static const int SOUND_SETTINGS_ITEM_COUNT = 5;
+    const char* sound_settings_items[SOUND_SETTINGS_ITEM_COUNT] = {
+        "Master Switch", "Volume %", "Button Sounds", "Notifications", "Sound Style"
+    };
+
+    static const int SOUND_EFFECTS_ITEM_COUNT = 7;
+    const char* sound_effects_items[SOUND_EFFECTS_ITEM_COUNT] = {
+        "Boot", "Wake", "Sleep", "Notification", "Warning", "Alert", "Q-Branch"
+    };
+
+    static const int SOUND_LAB_ITEM_COUNT = 4;
+    const char* sound_lab_items[SOUND_LAB_ITEM_COUNT] = {
+        "2700 Hz Resonance", "Frequency Sweep", "Duty Cycle Test", "Buzzer Diagnostic"
     };
 
     static const int IR_MAIN_ITEM_COUNT = 9;
@@ -269,8 +323,41 @@ private:
     int edit_value;
     int led_menu_selection;
     int led_menu_offset;
-    int audio_menu_selection;
-    int audio_menu_offset;
+
+    // Sound sub-app state
+    SoundSubmenu sound_submenu;
+    int sound_selection;
+    int sound_scroll_offset;
+
+    // Composer & Melody Creator Sequences
+    int composer_note_idx;
+    int composer_octave;
+    int composer_dur_idx;
+    int composer_count;
+    SoundNote composer_notes[32];
+
+    SoundNote creator_notes[64];
+    int creator_count;
+    int creator_cursor;
+    int creator_edit_field;
+    String active_melody_name;
+public:
+    void setActiveMelodyName(const String& n) { active_melody_name = n; }
+    void setCreatorCount(int c) { creator_count = c; }
+    void loadCreatorNotes(const SoundNote* notes, int count) { creator_count = min(count, 64); for (int i = 0; i < creator_count; i++) creator_notes[i] = notes[i]; creator_cursor = 0; creator_edit_field = 0; }
+
+    int metronome_bpm;
+    bool metronome_active;
+    int metronome_beat;
+    uint32_t last_metronome_tick;
+
+    uint16_t lab_freq;
+    uint8_t lab_duty;
+    bool lab_sweep_active;
+    uint16_t lab_sweep_freq;
+    uint32_t last_sweep_time;
+
+    std::vector<String> melody_file_list;
 
     // IR state variables
     IrSubmenu ir_submenu;
@@ -314,6 +401,16 @@ private:
     void handleIrFavoritesInput();
     void handleIrFilesInput();
     void handleIrLabInput();
+
+    void handleSoundMainInput();
+    void handleSoundSettingsInput();
+    void handleSoundEffectsInput();
+    void handleSoundCreatorListInput();
+    void handleSoundCreatorEditInput();
+    void handleSoundComposerInput();
+    void handleSoundLabInput();
+    void handleMetronomeInput();
+    void handleMorseInput();
 
     void handleSettingsMenuInput();
     void handleValueEditInput();

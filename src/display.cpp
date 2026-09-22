@@ -1202,35 +1202,6 @@ void DisplayManager::drawAppLED() {
 
 
 
-void DisplayManager::drawAppAudio() {
-    drawTopStatusBar();
-    oled.setFont(u8g2_font_6x10_tr);
-
-    int sel = ui.getAudioMenuSelection();
-    int offset = ui.getAudioMenuOffset();
-
-    int y_pos = 22;
-    for (int i = offset; i < offset + 3 && i < UICore::AUDIO_MENU_ITEM_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-        }
-
-        String label = ui.audio_menu_items[i];
-        if (i == 0) label += soundManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
-        else if (i == 1) {
-            SoundStyle s = soundManager.getStyle();
-            if (s == SoundStyle::SILENT) label += " [SILENT]";
-            else if (s == SoundStyle::MODERN) label += " [MODERN]";
-            else if (s == SoundStyle::TACTICAL) label += " [TACTICAL]";
-            else if (s == SoundStyle::RETRO) label += " [RETRO]";
-        }
-
-        oled.drawStr(4, y_pos, label.c_str());
-        oled.setDrawColor(1);
-        y_pos += 12;
-    }
-}
 
 void DisplayManager::drawAppAbout() {
     oled.setFont(u8g2_font_5x7_tr);
@@ -1833,4 +1804,112 @@ void DisplayManager::drawBmePage5Info() {
     uint32_t age_sec = (millis() - last_t) / 1000;
     snprintf(buf, sizeof(buf), "AGE   : %us | [OK] RESET CAL", age_sec);
     oled.drawStr(2, 54, buf);
+}
+
+
+void DisplayManager::drawAppAudio() {
+    drawTopStatusBar();
+    oled.setFont(u8g2_font_6x10_tr);
+    SoundSubmenu sub = ui.getSoundSubmenu();
+
+    if (sub == SoundSubmenu::MAIN) {
+        drawMenu("SOUND SYSTEM", ui.sound_main_items, UICore::SOUND_MAIN_ITEM_COUNT);
+    } else if (sub == SoundSubmenu::SETTINGS) {
+        String vals[5];
+        vals[0] = soundManager.isMasterSwitchOn() ? "ON" : "OFF";
+        vals[1] = String(soundManager.getVolumePct()) + "%";
+        vals[2] = soundManager.isButtonSoundsEnabled() ? "ON" : "OFF";
+        vals[3] = soundManager.isNotificationsEnabled() ? "ON" : "OFF";
+        vals[4] = SOUND_STYLE_OPTIONS[(int)soundManager.getStyle()];
+        drawSettingsMenuWithValues("SOUND SETTINGS", ui.sound_settings_items, vals, UICore::SOUND_SETTINGS_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset());
+    } else if (sub == SoundSubmenu::EFFECTS) {
+        drawMenu("SOUND EFFECTS", ui.sound_effects_items, UICore::SOUND_EFFECTS_ITEM_COUNT);
+    } else if (sub == SoundSubmenu::CREATOR_LIST) {
+        FileInfo entries[16];
+        size_t count = fileManager.listDir("/sounds", entries, 16);
+        const char* items[17];
+        items[0] = "+ New Melody";
+        for (size_t i = 0; i < count; i++) {
+            items[i + 1] = entries[i].name.c_str();
+        }
+        drawMenu("MELODY CREATOR", items, count + 1);
+    } else if (sub == SoundSubmenu::CREATOR_EDIT) {
+        oled.setFont(u8g2_font_5x7_tf);
+        String title = "MELODY: " + ui.getActiveMelodyName();
+        oled.drawStr(2, 17, title.c_str());
+        oled.drawLine(0, 19, 128, 19);
+
+        oled.setFont(u8g2_font_6x10_tf);
+        int total = ui.getCreatorNoteCount();
+        int cursor = ui.getCreatorCursor();
+        int field = ui.getCreatorEditField();
+        const SoundNote* notes = ui.getCreatorNotes();
+
+        if (total == 0) {
+            oled.drawStr(10, 36, "(NO NOTES IN MELODY)");
+        } else {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%sPOS: %d/%d", (field == 0 ? ">" : " "), cursor + 1, total);
+            oled.drawStr(4, 29, buf);
+
+            snprintf(buf, sizeof(buf), "%sFREQ: %d Hz", (field == 1 ? ">" : " "), notes[cursor].freq);
+            oled.drawStr(4, 39, buf);
+
+            snprintf(buf, sizeof(buf), "%sDUR : %d ms", (field == 2 ? ">" : " "), notes[cursor].duration);
+            oled.drawStr(4, 49, buf);
+
+            const char* actStr = (field == 3) ? "> [INSERT NOTE]" : ((field == 4) ? "> [DELETE NOTE]" : ((field == 5) ? "> [SAVE & PLAY]" : "  [OK: NEXT FIELD]"));
+            oled.drawStr(4, 59, actStr);
+        }
+    } else if (sub == SoundSubmenu::COMPOSER) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(10, 12, "BASIC COMPOSER");
+        oled.drawLine(0, 15, 128, 15);
+
+        static const char* const n_names[] = { "C", "D", "E", "F", "G", "A", "B", "RES" };
+        static const char* const d_names[] = { "1/8", "1/4", "1/2", "1/1" };
+
+        String noteStr = "NOTE: " + String(n_names[ui.getComposerNoteIdx()]);
+        String durStr  = "DUR:  " + String(d_names[ui.getComposerDurIdx()]);
+        String seqStr  = "SEQ:  " + String(ui.getComposerCount()) + " NOTES";
+
+        oled.drawStr(4, 28, noteStr.c_str());
+        oled.drawStr(4, 40, durStr.c_str());
+        oled.drawStr(4, 52, seqStr.c_str());
+
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 62, "OK:ADD L-OK:PLAY&SAVE");
+    } else if (sub == SoundSubmenu::LAB) {
+        drawMenu("SOUND LAB", ui.sound_lab_items, UICore::SOUND_LAB_ITEM_COUNT);
+    } else if (sub == SoundSubmenu::METRONOME) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(25, 12, "METRONOME");
+        oled.drawLine(0, 15, 128, 15);
+
+        String bpmStr = "BPM: " + String(ui.getMetronomeBpm());
+        oled.drawStr(35, 30, bpmStr.c_str());
+
+        int beat = ui.getMetronomeBeat();
+        for (int i = 1; i <= 4; i++) {
+            int x = 28 + (i - 1) * 20;
+            if (i == beat && ui.isMetronomeActive()) {
+                oled.drawDisc(x, 48, 5);
+            } else {
+                oled.drawCircle(x, 48, 5);
+            }
+        }
+
+        oled.drawStr(22, 62, ui.isMetronomeActive() ? "[RUNNING]" : "[STOPPED]");
+    } else if (sub == SoundSubmenu::MORSE) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(15, 12, "MORSE SOUNDER");
+        oled.drawLine(0, 15, 128, 15);
+
+        oled.drawStr(10, 30, "UP:   TX CQ CQ");
+        oled.drawStr(10, 42, "DN:   TX SOS");
+        oled.drawStr(10, 54, "OK:   CUSTOM TEXT");
+    }
+
+    drawTopStatusBar();
+    drawToastOverlay();
 }

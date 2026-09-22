@@ -53,6 +53,11 @@ void SettingsManager::load() {
         else if (key == "bme_interval_idx") settings.bme_interval_idx = val.toInt();
         else if (key == "health_bg_enabled") settings.health_bg_enabled = (val == "1");
         else if (key == "health_interval_idx") settings.health_interval_idx = val.toInt();
+        else if (key == "sound_master_on") settings.sound_master_on = (val == "1");
+        else if (key == "volume_pct") settings.volume_pct = val.toInt();
+        else if (key == "button_sounds_on") settings.button_sounds_on = (val == "1");
+        else if (key == "notifications_on") settings.notifications_on = (val == "1");
+        else if (key == "sound_style_idx") settings.sound_style_idx = val.toInt();
     }
 }
 
@@ -75,6 +80,11 @@ void SettingsManager::save() {
     out += "bme_interval_idx=" + String(settings.bme_interval_idx) + "\n";
     out += "health_bg_enabled=" + String(settings.health_bg_enabled ? "1" : "0") + "\n";
     out += "health_interval_idx=" + String(settings.health_interval_idx) + "\n";
+    out += "sound_master_on=" + String(settings.sound_master_on ? "1" : "0") + "\n";
+    out += "volume_pct=" + String(settings.volume_pct) + "\n";
+    out += "button_sounds_on=" + String(settings.button_sounds_on ? "1" : "0") + "\n";
+    out += "notifications_on=" + String(settings.notifications_on ? "1" : "0") + "\n";
+    out += "sound_style_idx=" + String(settings.sound_style_idx) + "\n";
 
     fileManager.write("/config/settings", out);
 }

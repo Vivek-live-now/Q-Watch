@@ -31,6 +31,13 @@ struct SettingsData {
     // MAX30102 / HEALTH SENSOR
     bool health_bg_enabled = false;
     int health_interval_idx = 0;  // 0: 5m, 1: 10m, 2: 15m, 3: 30m, 4: 1h
+
+    // SOUND SYSTEM
+    bool sound_master_on = true;
+    int volume_pct = 70;          // 0 - 100%
+    bool button_sounds_on = true;
+    bool notifications_on = true;
+    int sound_style_idx = 1;      // 0: SILENT, 1: MODERN, 2: TACTICAL, 3: RETRO
 };
 
 // Option labels lists
@@ -70,6 +77,9 @@ static const int TIMEZONE_OPTION_COUNT = 12;
 
 static const char* const UI_OPTIONS_LIST[] = {"Default", "Compact", "High Contrast"};
 static const int UI_OPTIONS_COUNT = 3;
+
+static const char* const SOUND_STYLE_OPTIONS[] = {"SILENT", "MODERN", "TACTICAL", "RETRO"};
+static const int SOUND_STYLE_COUNT = 4;
 
 class SettingsManager {
 public:
