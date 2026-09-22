@@ -6,6 +6,7 @@
 #include "settings_data.h"
 #include "keyboard.h"
 #include "ir_engine.h"
+#include "sound_manager.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
@@ -139,11 +140,17 @@ public:
     int getSoundSelection() const { return sound_selection; }
     int getSoundScrollOffset() const { return sound_scroll_offset; }
 
-    // Composer / Creator / Metronome / Sound Lab state getters
+    // Composer & Creator getters
     int getComposerNoteIdx() const { return composer_note_idx; }
     int getComposerOctave() const { return composer_octave; }
     int getComposerDurIdx() const { return composer_dur_idx; }
-    int getComposerBpm() const { return composer_bpm; }
+    int getComposerCount() const { return composer_count; }
+
+    int getCreatorNoteCount() const { return creator_count; }
+    int getCreatorCursor() const { return creator_cursor; }
+    const SoundNote* getCreatorNotes() const { return creator_notes; }
+    const SoundNote* getComposerNotes() const { return composer_notes; }
+    String getActiveMelodyName() const { return active_melody_name; }
 
     int getMetronomeBpm() const { return metronome_bpm; }
     bool isMetronomeActive() const { return metronome_active; }
@@ -227,7 +234,7 @@ public:
 
     static const int SOUND_LAB_ITEM_COUNT = 4;
     const char* sound_lab_items[SOUND_LAB_ITEM_COUNT] = {
-        "2700 Hz Test", "Frequency Sweep", "Duty Test", "Buzzer Test"
+        "2700 Hz Resonance", "Frequency Sweep", "Duty Cycle Test", "Buzzer Diagnostic"
     };
 
     static const int IR_MAIN_ITEM_COUNT = 9;
@@ -321,10 +328,19 @@ private:
     int sound_selection;
     int sound_scroll_offset;
 
+    // Composer & Melody Creator Sequences
     int composer_note_idx;
     int composer_octave;
     int composer_dur_idx;
-    int composer_bpm;
+    int composer_count;
+    SoundNote composer_notes[32];
+
+    SoundNote creator_notes[64];
+    int creator_count;
+    int creator_cursor;
+    String active_melody_name;
+public:
+    void setActiveMelodyName(const String& n) { active_melody_name = n; }
 
     int metronome_bpm;
     bool metronome_active;
@@ -386,6 +402,7 @@ private:
     void handleSoundSettingsInput();
     void handleSoundEffectsInput();
     void handleSoundCreatorListInput();
+    void handleSoundCreatorEditInput();
     void handleSoundComposerInput();
     void handleSoundLabInput();
     void handleMetronomeInput();

@@ -30,12 +30,15 @@ const SoundNote seq_ret_back[] = { {1500, 30}, {800, 30} };
 const SoundNote seq_err[] = { {1200, 120}, {0, 30}, {1000, 140} };
 const SoundNote seq_succ[] = { {2200, 80}, {2700, 80}, {3200, 120} };
 
+#define BUZZER_LEDC_CHANNEL 0
+#define BUZZER_LEDC_RES_BITS 8
+
 SoundManager::SoundManager() :
     current_sequence(nullptr),
     sequence_length(0),
     current_note_index(0),
     note_start_time(0),
-    active_duration(0),
+    active_duty_pct(50),
     is_playing(false),
     is_tone_active(false)
 {}
@@ -43,6 +46,9 @@ SoundManager::SoundManager() :
 void SoundManager::begin() {
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
+    ledcSetup(BUZZER_LEDC_CHANNEL, 2700, BUZZER_LEDC_RES_BITS);
+    ledcAttachPin(BUZZER_PIN, BUZZER_LEDC_CHANNEL);
+    ledcWrite(BUZZER_LEDC_CHANNEL, 0);
 }
 
 bool SoundManager::isMasterSwitchOn() const {
@@ -96,10 +102,22 @@ void SoundManager::setStyle(SoundStyle style) {
 }
 
 void SoundManager::stop() {
-    noTone(BUZZER_PIN);
+    ledcWrite(BUZZER_LEDC_CHANNEL, 0);
     digitalWrite(BUZZER_PIN, LOW);
     is_playing = false;
     is_tone_active = false;
+}
+
+void SoundManager::applyPwmTone(uint16_t freq, uint8_t duty_pct) {
+    if (freq == 0 || duty_pct == 0) {
+        ledcWrite(BUZZER_LEDC_CHANNEL, 0);
+        digitalWrite(BUZZER_PIN, LOW);
+        return;
+    }
+    ledcWriteTone(BUZZER_LEDC_CHANNEL, freq);
+    // Convert duty_pct (0-100%) to 8-bit duty value (0-255)
+    uint32_t duty_val = (uint32_t)duty_pct * 255 / 100;
+    ledcWrite(BUZZER_LEDC_CHANNEL, duty_val);
 }
 
 void SoundManager::playSequence(const SoundNote* sequence, uint8_t length) {
@@ -112,10 +130,16 @@ void SoundManager::playSequence(const SoundNote* sequence, uint8_t length) {
     startCurrentNote();
 }
 
-void SoundManager::playTone(uint16_t freq, uint16_t duration_ms) {
+void SoundManager::playTone(uint16_t freq, uint16_t duration_ms, uint8_t duty_pct) {
     if (!isMasterSwitchOn() || getVolumePct() == 0) return;
+    active_duty_pct = (duty_pct > 0) ? duty_pct : (uint8_t)(getVolumePct() * 50 / 100);
+    if (active_duty_pct == 0) active_duty_pct = 1;
     dynamic_sequence[0] = { freq, duration_ms };
     playSequence(dynamic_sequence, 1);
+}
+
+void SoundManager::setToneDuty(uint16_t freq, uint8_t duty_pct) {
+    applyPwmTone(freq, duty_pct);
 }
 
 void SoundManager::startCurrentNote() {
@@ -125,18 +149,16 @@ void SoundManager::startCurrentNote() {
     }
 
     uint16_t raw_freq = current_sequence[current_note_index].freq;
-    uint16_t dur = current_sequence[current_note_index].duration;
     int vol = getVolumePct();
 
     if (raw_freq > 0 && vol > 0) {
-        active_duration = (uint16_t)((uint32_t)dur * vol / 100);
-        if (active_duration == 0) active_duration = 1;
-        tone(BUZZER_PIN, raw_freq);
+        // Calculate PWM duty cycle proportional to volume setting (max rated acoustic output @ 50% square wave)
+        uint8_t duty = (uint8_t)(vol * 50 / 100);
+        if (duty == 0) duty = 1;
+        applyPwmTone(raw_freq, duty);
         is_tone_active = true;
     } else {
-        active_duration = dur;
-        noTone(BUZZER_PIN);
-        digitalWrite(BUZZER_PIN, LOW);
+        applyPwmTone(0, 0);
         is_tone_active = false;
     }
     note_start_time = millis();
@@ -146,12 +168,6 @@ void SoundManager::loop() {
     if (!is_playing) return;
 
     uint32_t elapsed = millis() - note_start_time;
-
-    if (is_tone_active && elapsed >= active_duration) {
-        noTone(BUZZER_PIN);
-        digitalWrite(BUZZER_PIN, LOW);
-        is_tone_active = false;
-    }
 
     if (elapsed >= current_sequence[current_note_index].duration) {
         current_note_index++;

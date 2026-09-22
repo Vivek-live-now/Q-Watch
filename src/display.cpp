@@ -1833,6 +1833,34 @@ void DisplayManager::drawAppAudio() {
             items[i + 1] = entries[i].name.c_str();
         }
         drawMenu("MELODY CREATOR", items, count + 1);
+    } else if (sub == SoundSubmenu::CREATOR_EDIT) {
+        oled.setFont(u8g2_font_5x7_tf);
+        String title = "MELODY: " + ui.getActiveMelodyName();
+        oled.drawStr(2, 17, title.c_str());
+        oled.drawLine(0, 19, 128, 19);
+
+        oled.setFont(u8g2_font_6x10_tf);
+        int total = ui.getCreatorNoteCount();
+        int cursor = ui.getCreatorCursor();
+        const SoundNote* notes = ui.getCreatorNotes();
+
+        if (total == 0) {
+            oled.drawStr(10, 36, "(NO NOTES IN MELODY)");
+        } else {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "NOTE %d/%d: %dHz", cursor + 1, total, notes[cursor].freq);
+            oled.drawStr(4, 32, buf);
+            snprintf(buf, sizeof(buf), "DUR : %d ms", notes[cursor].duration);
+            oled.drawStr(4, 44, buf);
+
+            oled.drawFrame(4, 52, 120, 8);
+            if (total > 0) {
+                int fill_w = ((cursor + 1) * 120) / total;
+                oled.drawBox(4, 52, fill_w, 8);
+            }
+        }
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(2, 63, "UP/DN:NAV OK:MOD L-OK:PLAY/SAVE");
     } else if (sub == SoundSubmenu::COMPOSER) {
         oled.setFont(u8g2_font_6x10_tf);
         oled.drawStr(10, 12, "BASIC COMPOSER");
@@ -1843,14 +1871,14 @@ void DisplayManager::drawAppAudio() {
 
         String noteStr = "NOTE: " + String(n_names[ui.getComposerNoteIdx()]);
         String durStr  = "DUR:  " + String(d_names[ui.getComposerDurIdx()]);
-        String octStr  = "OCT:  " + String(ui.getComposerOctave());
+        String seqStr  = "SEQ:  " + String(ui.getComposerCount()) + " NOTES";
 
-        oled.drawStr(10, 30, noteStr.c_str());
-        oled.drawStr(10, 42, durStr.c_str());
-        oled.drawStr(10, 54, octStr.c_str());
+        oled.drawStr(4, 28, noteStr.c_str());
+        oled.drawStr(4, 40, durStr.c_str());
+        oled.drawStr(4, 52, seqStr.c_str());
 
-        oled.drawFrame(75, 22, 45, 36);
-        oled.drawStr(80, 42, "[PLAY]");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 62, "OK:ADD L-OK:PLAY&SAVE");
     } else if (sub == SoundSubmenu::LAB) {
         drawMenu("SOUND LAB", ui.sound_lab_items, UICore::SOUND_LAB_ITEM_COUNT);
     } else if (sub == SoundSubmenu::METRONOME) {
@@ -1877,9 +1905,9 @@ void DisplayManager::drawAppAudio() {
         oled.drawStr(15, 12, "MORSE SOUNDER");
         oled.drawLine(0, 15, 128, 15);
 
-        oled.drawStr(10, 32, "UP:   TX CQ CQ");
-        oled.drawStr(10, 46, "DN:   TX SOS");
-        oled.drawStr(10, 60, "OK:   TX 007");
+        oled.drawStr(10, 30, "UP:   TX CQ CQ");
+        oled.drawStr(10, 42, "DN:   TX SOS");
+        oled.drawStr(10, 54, "OK:   CUSTOM TEXT");
     }
 
     drawTopStatusBar();

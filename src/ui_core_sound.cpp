@@ -41,6 +41,7 @@ void UICore::handleSoundInput() {
         case SoundSubmenu::SETTINGS: handleSoundSettingsInput(); break;
         case SoundSubmenu::EFFECTS: handleSoundEffectsInput(); break;
         case SoundSubmenu::CREATOR_LIST: handleSoundCreatorListInput(); break;
+        case SoundSubmenu::CREATOR_EDIT: handleSoundCreatorEditInput(); break;
         case SoundSubmenu::COMPOSER: handleSoundComposerInput(); break;
         case SoundSubmenu::LAB: handleSoundLabInput(); break;
         case SoundSubmenu::METRONOME: handleMetronomeInput(); break;
@@ -163,10 +164,13 @@ void UICore::handleSoundEffectsInput() {
 
 static void onMelodyNameEntered(bool success, const String& name) {
     if (success && name.length() > 0) {
+        ui.setActiveMelodyName(name);
         String path = "/sounds/" + name + ".mel";
-        fileManager.write(path, "2700,100\n0,50\n2400,100\n0,50\n2700,200\n");
-        ui.showToast("[MELODY SAVED]", 1200);
-        ui.setSoundSubmenu(SoundSubmenu::CREATOR_LIST);
+        if (!fileManager.exists(path)) {
+            fileManager.write(path, "2700,200\n0,50\n2400,200\n");
+        }
+        ui.setSoundSubmenu(SoundSubmenu::CREATOR_EDIT);
+        ui.showToast("[EDITING MELODY]", 1200);
     }
 }
 
@@ -178,7 +182,7 @@ void UICore::handleSoundCreatorListInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
-    int total_items = count + 1; // +1 for "New Melody"
+    int total_items = count + 1; // +1 for "+ New Melody"
 
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
         if (sound_selection > 0) {
@@ -199,11 +203,86 @@ void UICore::handleSoundCreatorListInput() {
         if (sound_selection == 0) {
             openKeyboard("my_theme", "Melody Name", KeyboardMode::ALPHA, false, 20, onMelodyNameEntered);
         } else {
-            String path = "/sounds/" + entries[sound_selection - 1].name;
-            soundManager.playMelodyFile(path);
-            showToast(("[PLAY " + entries[sound_selection - 1].name + "]").c_str(), 1000);
+            String full_filename = entries[sound_selection - 1].name;
+            String mel_name = full_filename;
+            if (mel_name.endsWith(".mel")) mel_name = mel_name.substring(0, mel_name.length() - 4);
+            active_melody_name = mel_name;
+
+            // Load melody notes into creator buffer
+            String path = "/sounds/" + full_filename;
+            String content = fileManager.read(path);
+            creator_count = 0;
+            int pos = 0;
+            while (pos < content.length() && creator_count < 64) {
+                int next_nl = content.indexOf('\n', pos);
+                if (next_nl == -1) next_nl = content.length();
+                String line = content.substring(pos, next_nl);
+                line.trim();
+                pos = next_nl + 1;
+                if (line.length() == 0 || line.startsWith("#")) continue;
+
+                int comma = line.indexOf(',');
+                if (comma != -1) {
+                    uint16_t freq = line.substring(0, comma).toInt();
+                    uint16_t dur = line.substring(comma + 1).toInt();
+                    creator_notes[creator_count++] = { freq, dur };
+                }
+            }
+            creator_cursor = 0;
+            sound_submenu = SoundSubmenu::CREATOR_EDIT;
+            showToast(("[OPEN " + mel_name + "]").c_str(), 1000);
         }
         needs_redraw = true;
+    }
+}
+
+void UICore::handleSoundCreatorEditInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        if (creator_count > 0) {
+            creator_cursor = (creator_cursor > 0) ? creator_cursor - 1 : creator_count - 1;
+            soundManager.playTone(creator_notes[creator_cursor].freq, 80);
+        }
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        if (creator_count > 0) {
+            creator_cursor = (creator_cursor + 1) % creator_count;
+            soundManager.playTone(creator_notes[creator_cursor].freq, 80);
+        }
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (creator_count > 0 && creator_notes[creator_cursor].freq > 0) {
+            creator_notes[creator_cursor].freq = (creator_notes[creator_cursor].freq == 2700) ? 2400 : ((creator_notes[creator_cursor].freq == 2400) ? 2000 : 2700);
+            soundManager.playTone(creator_notes[creator_cursor].freq, 100);
+        }
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        // Play entire melody & Save file to LittleFS
+        String path = "/sounds/" + active_melody_name + ".mel";
+        String out = "";
+        for (int i = 0; i < creator_count; i++) {
+            out += String(creator_notes[i].freq) + "," + String(creator_notes[i].duration) + "\n";
+        }
+        fileManager.write(path, out);
+        soundManager.playSequence(creator_notes, creator_count);
+        showToast("[MELODY SAVED & PLAY]", 1200);
+        needs_redraw = true;
+    }
+}
+
+static void onComposerSaveEntered(bool success, const String& name) {
+    if (success && name.length() > 0) {
+        String path = "/sounds/" + name + ".mel";
+        String out = "";
+        const SoundNote* notes = ui.getComposerNotes(); // Re-use composer sequence buffer
+        for (int i = 0; i < ui.getComposerCount(); i++) {
+            out += String(notes[i].freq) + "," + String(notes[i].duration) + "\n";
+        }
+        fileManager.write(path, out);
+        ui.showToast("[COMPOSITION SAVED]", 1200);
     }
 }
 
@@ -221,11 +300,21 @@ void UICore::handleSoundComposerInput() {
         soundManager.playNavMove();
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playTone(NOTE_FREQS[composer_note_idx] * composer_octave, DUR_MS[composer_dur_idx]);
+        // Append note to composer sequence
+        if (composer_count < 32) {
+            uint16_t freq = NOTE_FREQS[composer_note_idx] * composer_octave;
+            uint16_t dur = DUR_MS[composer_dur_idx];
+            composer_notes[composer_count++] = { freq, dur };
+            soundManager.playTone(freq, dur);
+            showToast(("[NOTE ADDED #" + String(composer_count) + "]").c_str(), 800);
+        }
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_LONG_PRESS) {
-        composer_octave = (composer_octave == 1) ? 2 : 1;
-        showToast(composer_octave == 1 ? "[OCTAVE 1]" : "[OCTAVE 2]", 1000);
+        if (composer_count > 0) {
+            // Play built sequence and offer save prompt
+            soundManager.playSequence(composer_notes, composer_count);
+            openKeyboard("my_tune", "Save Composition", KeyboardMode::ALPHA, false, 20, onComposerSaveEntered);
+        }
         needs_redraw = true;
     }
 }
@@ -260,11 +349,13 @@ void UICore::handleSoundLabInput() {
             last_sweep_time = millis();
             showToast("[SWEEP 2000-3500 Hz]", 1000);
         } else if (sound_selection == 2) {
-            lab_duty = (lab_duty == 50) ? 75 : ((lab_duty == 75) ? 25 : 50);
-            showToast(("[DUTY " + String(lab_duty) + "%]").c_str(), 1000);
+            lab_duty = (lab_duty == 50) ? 75 : ((lab_duty == 75) ? 25 : ((lab_duty == 25) ? 10 : 50));
+            soundManager.setToneDuty(2700, lab_duty);
+            showToast(("[DUTY " + String(lab_duty) + "% PWM]").c_str(), 1000);
         } else if (sound_selection == 3) {
+            // Real interactive multi-frequency audio diagnostic sequence
             soundManager.playQBranch();
-            showToast("[BUZZER DIAG PASS]", 1200);
+            showToast("[BUZZER FREQ CHECK]", 1200);
         }
         needs_redraw = true;
     }
@@ -292,6 +383,13 @@ void UICore::handleMetronomeInput() {
     }
 }
 
+static void onMorseTextEntered(bool success, const String& text) {
+    if (success && text.length() > 0) {
+        soundManager.playMorse(text);
+        ui.showToast(("[MORSE: " + text + "]").c_str(), 1500);
+    }
+}
+
 void UICore::handleMorseInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
@@ -306,8 +404,7 @@ void UICore::handleMorseInput() {
         showToast("[TX SOS]", 1200);
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playMorse("007");
-        showToast("[TX 007]", 1200);
+        openKeyboard("HELLO", "Morse Text", KeyboardMode::ALPHA, false, 20, onMorseTextEntered);
         needs_redraw = true;
     }
 }

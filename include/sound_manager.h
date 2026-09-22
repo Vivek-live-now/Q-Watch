@@ -21,8 +21,9 @@ public:
     void begin();
     void loop();
 
-    // Direct Tone Control & SW Volume / Envelope
-    void playTone(uint16_t freq, uint16_t duration_ms);
+    // Direct Tone Control & SW Volume / Duty Control
+    void playTone(uint16_t freq, uint16_t duration_ms, uint8_t duty_pct = 0);
+    void setToneDuty(uint16_t freq, uint8_t duty_pct);
     void stop();
 
     // Sound Effects
@@ -70,13 +71,14 @@ public:
 
 private:
     void startCurrentNote();
+    void applyPwmTone(uint16_t freq, uint8_t duty_pct);
 
     SoundNote dynamic_sequence[64];
     const SoundNote* current_sequence;
     uint8_t sequence_length;
     uint8_t current_note_index;
     uint32_t note_start_time;
-    uint16_t active_duration;
+    uint8_t active_duty_pct;
     bool is_playing;
     bool is_tone_active;
 };
