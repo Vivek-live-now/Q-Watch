@@ -39,11 +39,6 @@ public:
     void playNavMove();
     void playNavSelect();
     void playNavBack();
-    void playError();
-    void playSuccess();
-
-    // File Melody Playback
-    bool playMelodyFile(const String& path);
 
     // Dynamic Melody Sequence Playback
     void playSequence(const SoundNote* sequence, uint8_t length);

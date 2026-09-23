@@ -67,7 +67,6 @@ public:
     void stopCapture();
     bool isCapturing() const { return capturing; }
     bool checkCapturedSignal(IrButton& out_btn);
-    bool analyzeRawToParsed(IrButton& btn);
 
     // TV-B-Gone
     void startTvBGone();

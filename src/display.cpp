@@ -252,12 +252,6 @@ void DisplayManager::drawTopStatusBar() {
     oled.drawLine(0, 8, 128, 8);
 }
 
-void DisplayManager::drawFooter(const char* status) {
-    oled.drawLine(0, 54, 128, 54);
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 62, status);
-}
-
 void DisplayManager::drawPortalScreen() {
     oled.setFont(u8g2_font_6x10_tr);
     oled.drawStr(10, 30, "LINK: Q-Watch-Setup");

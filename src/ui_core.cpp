@@ -242,6 +242,9 @@ void UICore::loop() {
             if (irEngine.isCapturing()) irEngine.stopCapture();
             if (irEngine.isTvBGoneRunning()) irEngine.stopTvBGone();
             current_state = UIState::MAIN_MENU;
+        } else if (current_state == UIState::APP_AUDIO) {
+            soundManager.stop();
+            current_state = UIState::MAIN_MENU;
         } else {
             current_state = UIState::APP_HOME;
         }
@@ -254,6 +257,7 @@ void UICore::loop() {
         case UIState::MAIN_MENU: handleMainMenuInput(); break;
         case UIState::APP_SETTINGS: handleSettingsMenuInput(); break;
         case UIState::APP_IR: handleIRInput(); break;
+        case UIState::APP_AUDIO: handleSoundInput(); break;
         case UIState::APP_FILE_MANAGER: handleFileManagerInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
@@ -675,17 +679,18 @@ void UICore::handleMainMenuInput() {
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
             case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
             case 6: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
-            case 7: current_state = UIState::APP_ALTIMETER; break;
-            case 8: current_state = UIState::APP_BATTERY; break;
-            case 9: current_state = UIState::APP_LED; break;
-            case 10: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
-            case 11:
+            case 7: current_state = UIState::APP_AUDIO; sound_submenu = SoundSubmenu::MAIN; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 8: current_state = UIState::APP_ALTIMETER; break;
+            case 9: current_state = UIState::APP_BATTERY; break;
+            case 10: current_state = UIState::APP_LED; break;
+            case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
+            case 12:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 12: current_state = UIState::APP_ABOUT; break;
+            case 13: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
