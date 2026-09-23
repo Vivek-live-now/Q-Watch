@@ -1,2 +1,4 @@
 .pio
 lib/U8g2
+__pycache__/
+*.pyc

@@ -48,6 +48,7 @@ void IREngine::ensureIrDirectory() {
 
 void IREngine::loadDefaultTvBGoneCodes() {
     tv_bgone_codes.clear();
+    tv_bgone_codes.reserve(DEFAULT_TV_POWER_CODES_COUNT + 16);
     for (size_t i = 0; i < DEFAULT_TV_POWER_CODES_COUNT; i++) {
         tv_bgone_codes.push_back(DEFAULT_TV_POWER_CODES[i]);
     }
@@ -96,17 +97,11 @@ decode_type_t IREngine::strToDecodeType(const String& proto) {
     p.trim();
 
     if (p == "NEC" || p == "NECext" || p == "NEC42") return NEC;
-    if (p == "Samsung32" || p == "SAMSUNG") return SAMSUNG;
-    if (p == "Sony" || p == "SIRC" || p == "SIRC15" || p == "SIRC20") return SONY;
-    if (p == "RC5" || p == "RC5X") return RC5;
-    if (p == "RC6") return RC6;
-    if (p == "Panasonic") return PANASONIC;
-    if (p == "LG" || p == "LG2") return LG;
-    if (p == "JVC") return JVC;
-    if (p == "Sharp") return SHARP;
-    if (p == "Denon") return DENON;
+    if (p == "Samsung32") return SAMSUNG;
+    if (p == "SIRC" || p == "SIRC15" || p == "SIRC20") return SONY;
+    if (p == "RC5X") return RC5;
 
-    return UNKNOWN;
+    return ::strToDecodeType(p.c_str());
 }
 
 String IREngine::decodeTypeToStr(decode_type_t type, uint16_t nbits) {
@@ -119,15 +114,8 @@ String IREngine::decodeTypeToStr(decode_type_t type, uint16_t nbits) {
             if (nbits == 15) return "SIRC15";
             if (nbits == 20) return "SIRC20";
             return "SIRC";
-        case RC5: return "RC5";
         case RC5X: return "RC5X";
-        case RC6: return "RC6";
-        case PANASONIC: return "Panasonic";
-        case LG: return "LG";
-        case JVC: return "JVC";
-        case SHARP: return "Sharp";
-        case DENON: return "Denon";
-        default: return "UNKNOWN";
+        default: return typeToString(type);
     }
 }
 
