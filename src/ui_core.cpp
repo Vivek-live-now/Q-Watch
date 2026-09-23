@@ -23,6 +23,7 @@ UICore::UICore() :
     imu_subapp_selection(0),
     last_activity_time(millis()),
     display_off(false),
+    display_off_time(0),
     just_woke_display(false),
     return_state(UIState::APP_HOME),
     bme_page(0),
@@ -113,9 +114,15 @@ void UICore::begin() {
 
         rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
         rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
-        rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
-        rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
-        uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
+        uint64_t wake_mask = (1ULL << BTN_CANCEL);
+
+        if (s.raise_to_wake) {
+            sensors.enableMotionInterruptForSleep();
+            rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
+            rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+            wake_mask |= (1ULL << MPU_INT);
+        }
+
         esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
         esp_deep_sleep_start();
@@ -185,6 +192,27 @@ void UICore::loop() {
         if (millis() - last_activity_time >= disp_timeouts_ms[s.display_timeout_idx]) {
             display_off = true;
             displayManager.setPowerSave(true);
+            display_off_time = millis();
+        }
+    }
+
+    if (display_off) {
+        if (s.raise_to_wake) {
+            OrientationData o = sensors.getOrientation();
+            // Wrist raise detection: typical watch viewing angle
+            if (o.pitch >= 15.0f && o.pitch <= 65.0f && fabsf(o.roll) <= 35.0f) {
+                display_off = false;
+                displayManager.setPowerSave(false);
+                last_activity_time = millis();
+                needs_redraw = true;
+                return;
+            }
+        }
+
+        // 10 seconds after display is turned off, enter deep sleep
+        if (millis() - display_off_time >= 10000) {
+            enterDeepSleep();
+            return;
         }
     }
 
@@ -207,6 +235,9 @@ void UICore::loop() {
         if (current_state == UIState::APP_HOME) {
             display_off = !display_off;
             displayManager.setPowerSave(display_off);
+            if (display_off) {
+                display_off_time = millis();
+            }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_IR) {
@@ -1027,9 +1058,12 @@ void UICore::handlePowerInput() {
             s.sleep_time_idx = (s.sleep_time_idx + 1) % SLEEP_TIMEOUT_COUNT;
             settingsManager.save();
         } else if (settings_selection == 2) {
-            s.wifi_auto_off_idx = (s.wifi_auto_off_idx + 1) % WIFI_AUTO_OFF_COUNT;
+            s.raise_to_wake = !s.raise_to_wake;
             settingsManager.save();
         } else if (settings_selection == 3) {
+            s.wifi_auto_off_idx = (s.wifi_auto_off_idx + 1) % WIFI_AUTO_OFF_COUNT;
+            settingsManager.save();
+        } else if (settings_selection == 4) {
             s.low_power = !s.low_power;
             settingsManager.save();
         }
@@ -1475,15 +1509,21 @@ void UICore::enterDeepSleep() {
     current_state = UIState::SLEEPING;
     delay(100);
 
-    sensors.enableMotionInterruptForSleep();
+    SettingsData& sleep_s = settingsManager.get();
 
     rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
     rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
+    uint64_t wake_mask = (1ULL << BTN_CANCEL);
 
-    rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
-    rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+    if (sleep_s.raise_to_wake) {
+        sensors.enableMotionInterruptForSleep();
+        rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
+        rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+        wake_mask |= (1ULL << MPU_INT);
+    } else {
+        sensors.clearMpuInterrupt();
+    }
 
-    uint64_t wake_mask = (1ULL << BTN_CANCEL) | (1ULL << MPU_INT);
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
     Preferences sched_prefs;
@@ -1493,8 +1533,6 @@ void UICore::enterDeepSleep() {
 
     uint32_t last_bme_epoch = sched_prefs.getUInt("last_bme", 0);
     uint32_t last_health_epoch = sched_prefs.getUInt("last_health", 0);
-
-    SettingsData& sleep_s = settingsManager.get();
     uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600};
     uint32_t bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
     uint32_t health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];

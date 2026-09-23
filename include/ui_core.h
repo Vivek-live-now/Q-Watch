@@ -269,9 +269,9 @@ public:
         "SYNC NOW", "SYNC STATUS", "AUTO SYNC", "TIMEZONE", "24 HOUR"
     };
 
-    static const int POWER_ITEM_COUNT = 4;
+    static const int POWER_ITEM_COUNT = 5;
     const char* power_items[POWER_ITEM_COUNT] = {
-        "DISPLAY TIMEOUT", "SLEEP TIME", "WIFI AUTO-OFF", "LOW POWER"
+        "DISPLAY TIMEOUT", "SLEEP TIME", "RAISE TO WAKE", "WIFI AUTO-OFF", "LOW POWER"
     };
 
     static const int DISPLAY_ITEM_COUNT = 3;
@@ -312,6 +312,7 @@ private:
 
     uint32_t last_activity_time;
     bool display_off;
+    uint32_t display_off_time;
     bool just_woke_display;
     UIState return_state;
     int bme_page;
