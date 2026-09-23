@@ -503,7 +503,8 @@ void DisplayManager::drawHomeMission() {
     SettingsData& s = settingsManager.get();
 
     // Top Mission Bar
-    float heading = sensors.getHeading();
+    OrientationData o = sensors.getOrientation();
+    float heading = o.yaw;
     int alt = sensors.isBmeOk() ? (int)sensors.getEnvData().altitude : 0;
     char hud_top[32];
     snprintf(hud_top, sizeof(hud_top), "HDG %03dM  ALT %dm", (int)heading, alt);
@@ -574,7 +575,7 @@ void DisplayManager::drawAppClock() {
 void DisplayManager::drawClockMenu() {
     SettingsData& s = settingsManager.get();
     String vals[UICore::CLOCK_MENU_ITEM_COUNT];
-    vals[0] = String(WATCH_FACE_OPTIONS[s.watch_face_style]);
+    vals[0] = String(ui.watch_face_items[s.watch_face_style]);
     vals[1] = ">";
     vals[2] = timekeeping.stopwatch.isRunning() ? "RUN" : (timekeeping.stopwatch.isPaused() ? "PAUS" : "");
     vals[3] = timekeeping.timer.isRunning() ? "RUN" : (timekeeping.timer.isExpired() ? "DONE" : "");
@@ -592,11 +593,11 @@ void DisplayManager::drawClockMenu() {
 
 void DisplayManager::drawClockFaceSelect() {
     SettingsData& s = settingsManager.get();
-    String vals[WATCH_FACE_COUNT];
-    for (int i = 0; i < WATCH_FACE_COUNT; i++) {
+    String vals[UICore::WATCH_FACE_COUNT];
+    for (int i = 0; i < UICore::WATCH_FACE_COUNT; i++) {
         vals[i] = (s.watch_face_style == i) ? "[*]" : "[ ]";
     }
-    drawStandardMenu("WATCH FACE", WATCH_FACE_OPTIONS, WATCH_FACE_COUNT, ui.getClockSelection(), ui.getClockScrollOffset(), vals);
+    drawStandardMenu("WATCH FACE", ui.watch_face_items, UICore::WATCH_FACE_COUNT, ui.getClockSelection(), ui.getClockScrollOffset(), vals);
 }
 
 void DisplayManager::drawClockFaceWidgets() {

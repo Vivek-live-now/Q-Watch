@@ -241,6 +241,11 @@ public:
         "SHOW DATE", "SHOW BATTERY", "WEATHER WIDGET", "STEPS WIDGET", "STATUS ICONS"
     };
 
+    static const int WATCH_FACE_COUNT = 4;
+    const char* watch_face_items[WATCH_FACE_COUNT] = {
+        "DIGITAL", "ANALOG", "RETRO LCD", "MISSION"
+    };
+
     bool needsRedraw() const { return needs_redraw; }
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
