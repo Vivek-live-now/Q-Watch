@@ -15,6 +15,7 @@
 #include "air_mouse.h"
 #include "keyboard.h"
 #include "timekeeping.h"
+#include "qapp_loader.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -52,6 +53,8 @@ void DisplayManager::update() {
             case UIState::APP_AUDIO: drawAppAudio(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
             case UIState::APP_FILE_MANAGER: drawFileManager(); break;
+            case UIState::APP_APPS: drawAppApps(); break;
+            case UIState::APP_RUNNING: qappLoader.render(); break;
             case UIState::APP_STORAGE_INFO: drawStorageInfo(); break;
 
             case UIState::MAIN_MENU:
@@ -1859,6 +1862,50 @@ void DisplayManager::drawFileManager() {
             }
         }
     }
+}
+
+void DisplayManager::drawAppApps() {
+    drawTopStatusBar();
+
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(0, 18, "Q-APP STORE");
+    oled.drawHLine(0, 21, 128);
+
+    int count = ui.getAppCount();
+    if (count == 0) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(10, 36, "NO APPS INSTALLED");
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(10, 48, "Drop .qapp to /apps/");
+        oled.drawStr(10, 58, "via http://.../fm");
+        return;
+    }
+
+    int sel = ui.getAppSelection();
+    int offset = ui.getAppScrollOffset();
+
+    for (int i = 0; i < 3; i++) {
+        int idx = offset + i;
+        if (idx >= count) break;
+
+        int y = 35 + (i * 12);
+
+        if (idx == sel) {
+            oled.drawStr(0, y, ">");
+        }
+
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(8, y, ui.getAppName(idx));
+
+        const UICore::AppEntry* app = ui.getAppEntry(idx);
+        if (app && app->valid) {
+            oled.setFont(u8g2_font_4x6_tr);
+            int sw = oled.getStrWidth(app->version);
+            oled.drawStr(128 - sw, y, app->version);
+        }
+    }
+
+    drawScrollBar(offset, count);
 }
 
 void DisplayManager::drawStorageInfo() {

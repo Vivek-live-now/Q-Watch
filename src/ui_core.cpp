@@ -14,6 +14,7 @@
 #include "ir_engine.h"
 #include "driver/rtc_io.h"
 #include "timekeeping.h"
+#include "qapp_loader.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -64,7 +65,10 @@ UICore::UICore() :
     fm_selection(0),
     fm_scroll_offset(0),
     fm_entry_count(0),
-    fm_entries(nullptr) {
+    fm_entries(nullptr),
+    app_count(0),
+    app_selection(0),
+    app_scroll_offset(0) {
     toast_msg[0] = '\0';
 }
 
@@ -156,6 +160,22 @@ void UICore::openKeyboard(const String& initial_text, const String& title, Keybo
 void UICore::loop() {
     if (current_state == UIState::APP_IR && ir_submenu == IrSubmenu::TV_B_GONE) {
         if (irEngine.isTvBGoneRunning()) {
+            needs_redraw = true;
+        }
+    }
+
+    if (current_state == UIState::APP_RUNNING) {
+        if (!qappLoader.isRunning()) {
+            current_state = UIState::APP_APPS;
+            needs_redraw = true;
+        } else {
+            static uint32_t last_app_tick = 0;
+            uint32_t now = millis();
+            float dt = (now - last_app_tick) / 1000.0f;
+            if (dt > 0.1f) dt = 0.1f;
+            if (dt < 0.001f) dt = 0.001f;
+            last_app_tick = now;
+            qappLoader.update(dt);
             needs_redraw = true;
         }
     }
@@ -398,6 +418,8 @@ void UICore::loop() {
         case UIState::APP_ALTIMETER: handleBmeInput(); break;
         case UIState::APP_LED: handleLedInput(); break;
         case UIState::APP_FILE_MANAGER: handleFileManagerInput(); break;
+        case UIState::APP_APPS: handleAppsInput(); break;
+        case UIState::APP_RUNNING: handleAppRunningInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
         case UIState::VALUE_EDIT: handleValueEditInput(); break;
@@ -1266,13 +1288,14 @@ void UICore::handleMainMenuInput() {
             case 9: current_state = UIState::APP_BATTERY; break;
             case 10: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
             case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
-            case 12:
+            case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
+            case 13:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 13: current_state = UIState::APP_ABOUT; break;
+            case 14: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -1948,6 +1971,135 @@ void UICore::handleFileManagerInput() {
 }
 
 void UICore::handleStorageInfoInput() {
+}
+
+void UICore::loadAppsList() {
+    app_count = 0;
+    app_selection = 0;
+    app_scroll_offset = 0;
+
+    if (!LittleFS.exists("/apps")) {
+        LittleFS.mkdir("/apps");
+        return;
+    }
+
+    File dir = LittleFS.open("/apps");
+    if (!dir || !dir.isDirectory()) return;
+
+    File file = dir.openNextFile();
+    while (file && app_count < MAX_APPS) {
+        String fname = file.name();
+        if (fname.startsWith("/apps/")) {
+            fname = fname.substring(6);
+        } else if (fname.startsWith("/")) {
+            fname = fname.substring(1);
+        }
+
+        if (fname.endsWith(".qapp")) {
+            AppEntry& entry = app_entries[app_count];
+            entry.filename = fname;
+            entry.valid = false;
+
+            QAppHeader hdr;
+            String full_path = String("/apps/") + fname;
+            if (QAppLoader::inspectFile(full_path.c_str(), &hdr) == QAPP_OK) {
+                strncpy(entry.name, hdr.name, sizeof(entry.name) - 1);
+                entry.name[sizeof(entry.name) - 1] = '\0';
+                strncpy(entry.version, hdr.version, sizeof(entry.version) - 1);
+                entry.version[sizeof(entry.version) - 1] = '\0';
+                strncpy(entry.author, hdr.author, sizeof(entry.author) - 1);
+                entry.author[sizeof(entry.author) - 1] = '\0';
+                entry.valid = true;
+            } else {
+                strncpy(entry.name, fname.c_str(), sizeof(entry.name) - 1);
+                entry.name[sizeof(entry.name) - 1] = '\0';
+                strcpy(entry.version, "?");
+                strcpy(entry.author, "Unknown");
+            }
+            app_count++;
+        }
+        file = dir.openNextFile();
+    }
+}
+
+void UICore::handleAppsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (app_selection > 0) {
+            app_selection--;
+            if (app_selection < app_scroll_offset) {
+                app_scroll_offset = app_selection;
+            }
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (app_selection < app_count - 1) {
+            app_selection++;
+            if (app_selection >= app_scroll_offset + 3) {
+                app_scroll_offset = app_selection - 2;
+            }
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (app_count > 0 && app_selection < app_count) {
+            String full_path = String("/apps/") + app_entries[app_selection].filename;
+            soundManager.playNavSelect();
+            QAppErrorCode err = qappLoader.loadApp(full_path.c_str());
+            if (err == QAPP_OK) {
+                current_state = UIState::APP_RUNNING;
+            } else {
+                soundManager.playAlert();
+                showToast("LOAD FAILED", 1500);
+            }
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        current_state = UIState::MAIN_MENU;
+        menu_selection = 12; // APPS
+        if (menu_selection >= menu_scroll_offset + 3) {
+            menu_scroll_offset = menu_selection - 2;
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleAppRunningInput() {
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+    if (cancel_evt == BTN_EVT_LONG_PRESS) {
+        qappLoader.unloadApp();
+        current_state = UIState::APP_APPS;
+        soundManager.playNavBack();
+        needs_redraw = true;
+        return;
+    }
+
+    for (int b = 0; b < BTN_COUNT; b++) {
+        ButtonEvent evt = btnManager.getEvent((ButtonID)b);
+        if (evt != BTN_EVT_NONE) {
+            uint8_t qbtn = 0;
+            if (b == BTN_ID_UP) qbtn = QBTN_UP;
+            else if (b == BTN_ID_OK) qbtn = QBTN_OK;
+            else if (b == BTN_ID_DN) qbtn = QBTN_DOWN;
+            else if (b == BTN_ID_CANCEL) qbtn = QBTN_CANCEL;
+
+            QButtonEvent qevt = QEVT_BTN_SHORT_CLICK;
+            if (evt == BTN_EVT_LONG_PRESS) qevt = QEVT_BTN_LONG_HOLD;
+
+            qappLoader.handleButton(qbtn, qevt);
+        }
+    }
 }
 
 void UICore::handleValueEditInput() {

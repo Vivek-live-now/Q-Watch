@@ -72,6 +72,7 @@ private:
     void drawAppAudio();
     void drawAppAbout();
     void drawFileManager();
+    void drawAppApps();
     void drawStorageInfo();
 
     // Settings Screens Rendering

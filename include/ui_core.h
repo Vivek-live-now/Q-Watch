@@ -104,6 +104,8 @@ enum class UIState {
     APP_AUDIO,
     APP_ABOUT,
     APP_FILE_MANAGER,
+    APP_APPS,
+    APP_RUNNING,
     APP_STORAGE_INFO,
     APP_KEYBOARD,
     VALUE_EDIT,
@@ -250,10 +252,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 14;
+    static const int MAIN_MENU_ITEM_COUNT = 15;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;
@@ -501,6 +503,34 @@ public:
     void handleStorageInfoInput();
     void loadDirectory(const String& path);
     void freeFileManager();
+
+    struct AppEntry {
+        String filename;
+        char name[20];
+        char version[8];
+        char author[16];
+        bool valid;
+    };
+    static const int MAX_APPS = 16;
+    AppEntry app_entries[MAX_APPS];
+    int app_count;
+    int app_selection;
+    int app_scroll_offset;
+
+    void loadAppsList();
+    void handleAppsInput();
+    void handleAppRunningInput();
+    int getAppCount() const { return app_count; }
+    int getAppSelection() const { return app_selection; }
+    int getAppScrollOffset() const { return app_scroll_offset; }
+    const char* getAppName(int idx) const {
+        if (idx >= 0 && idx < app_count) return app_entries[idx].name;
+        return "";
+    }
+    const AppEntry* getAppEntry(int idx) const {
+        if (idx >= 0 && idx < app_count) return &app_entries[idx];
+        return nullptr;
+    }
 
     void processNavUp();
     void processNavDown();

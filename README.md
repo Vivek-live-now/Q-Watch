@@ -125,6 +125,15 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     * **World Clock:** 12 major world cities (Kolkata, UTC, London, Berlin, New York, Chicago, Denver, Los Angeles, Dubai, Singapore, Tokyo, Sydney) with precise quarter-hour timezone offset calculations and relative day indicator (`+1 DAY`, `SAME DAY`, `-1 DAY`).
     * **Pedometer & Step Goal:** Real-time MPU-6500 accelerometer magnitude step detector with threshold hysteresis and debouncing, estimated distance (`km`), calories (`kcal`), step goal adjustment (+/- 1,000 steps), and step counter reset.
 
+### Milestone 12: Micro-ELF Relocatable Q-App Store Architecture, Loader & Target Ecosystem
+* **Q-App Binary Interface (`qwatch_api.h`):** Versioned C-ABI export table (`QWatchAPI`) providing modular, hardware-abstracted access to OLED display graphics, 4-button input events, MPU-6500 6-axis motion fusion, QMC5883P 3D magnetometer, MAX30102 PPG/health, IR transceiver, audio tones, WS2812 RGB LED, LittleFS sandboxed file I/O, system time, and lifecycle hooks.
+* **Micro-ELF Relocatable Binary Format (`.qapp`):** Dual-segment architecture cleanly separating executable code placed in executable internal SRAM (`MALLOC_CAP_EXEC | MALLOC_CAP_INTERNAL`) from initialized data/BSS/heap allocated in external 2MB PSRAM (`MALLOC_CAP_SPIRAM`), resolved via relocation table records (`QAppReloc`).
+* **Dynamic In-Firmware App Launcher:** Dynamic scanning of LittleFS `/apps/*.qapp`, binary header validation, dynamic symbol resolution, per-frame `update(dt)` / `render()`, button routing, and clean unmapping on exit.
+* **Reference Q-Apps:**
+    * **Tilt Ball (`apps/tilt_ball.qapp`):** 6-axis MPU-6500 roll/pitch physics simulation, bounce damping, target collision, audio score chimes, and LED flash.
+    * **Compass HUD (`apps/compass_hud.qapp`):** QMC5883P 3D magnetometer tactical HUD, rotating North-seeking needle, 8-point cardinal telemetry, waypoint bearing lock, course deviation indicator, and declination adjustment.
+* **Automated Verification:** Comprehensive test harness (`tests/test_qapp_system.cpp`) with ESP32-S3 IRAM/PSRAM POC execution, fault injection (corrupt magic, ABI mismatch, OOB entry, invalid relocations), and 100-cycle zero-leak stress tests.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

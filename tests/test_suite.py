@@ -162,10 +162,73 @@ def test_analog_trigonometry():
 
     print("  [PASS] Analog hour hand coordinates at 12, 3, 6, and 9 verified.")
 
+def test_qapp_abi_and_system():
+    print("\n--- 6. Q-App ABI, Dynamic Loader & Tilt Game Stress Test ---")
+    import subprocess
+    import os
+
+    # 1. Verify Q-App constants from include/qwatch_api.h
+    api_h_path = os.path.join(os.path.dirname(__file__), "..", "include", "qwatch_api.h")
+    with open(api_h_path, "r") as f:
+        content = f.read()
+
+    assert "QAPP_MAGIC 0x51415050U" in content, "QAPP_MAGIC mismatch"
+    assert "QAPP_API_VERSION 1U" in content, "QAPP_API_VERSION mismatch"
+    assert "QAPP_CAP_ALL" in content, "QAPP_CAP_ALL missing"
+    print("  [PASS] qwatch_api.h ABI constants (magic, version, caps) verified.")
+
+    # 2. Build relocatable .qapp binaries for both apps
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    
+    # Generate Tilt Ball .qapp
+    gen_tilt_bin = os.path.join(os.path.dirname(__file__), "gen_tilt_qapp_bin")
+    res_tilt_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/tilt_game",
+        "apps/tilt_game/generate_qapp.c", "apps/tilt_game/tilt_game.c", "-lm",
+        "-o", gen_tilt_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_tilt_cmp.returncode == 0, f"Failed to compile tilt packager:\n{res_tilt_cmp.stderr}"
+    res_tilt_run = subprocess.run([gen_tilt_bin, "apps/tilt_ball.qapp"], cwd=base_dir, capture_output=True, text=True)
+    assert res_tilt_run.returncode == 0, f"Failed to generate tilt_ball.qapp:\n{res_tilt_run.stderr}"
+    if os.path.exists(gen_tilt_bin):
+        os.remove(gen_tilt_bin)
+
+    # Generate Compass HUD .qapp
+    gen_compass_bin = os.path.join(os.path.dirname(__file__), "gen_compass_qapp_bin")
+    res_compass_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/compass_hud",
+        "apps/compass_hud/generate_compass_qapp.c", "apps/compass_hud/compass_hud.c", "-lm",
+        "-o", gen_compass_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_compass_cmp.returncode == 0, f"Failed to compile compass packager:\n{res_compass_cmp.stderr}"
+    res_compass_run = subprocess.run([gen_compass_bin, "apps/compass_hud.qapp"], cwd=base_dir, capture_output=True, text=True)
+    assert res_compass_run.returncode == 0, f"Failed to generate compass_hud.qapp:\n{res_compass_run.stderr}"
+    if os.path.exists(gen_compass_bin):
+        os.remove(gen_compass_bin)
+    print("  [PASS] Relocatable .qapp binaries generated for Tilt Ball and Compass HUD.")
+
+    # 3. Re-compile and execute the C++ Q-App test harness
+    bin_path = os.path.join(os.path.dirname(__file__), "test_qapp_system_bin")
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude", "-Itests", "-Iapps/tilt_game", "-Iapps/compass_hud",
+        "tests/test_qapp_system.cpp", "tests/mock_qwatch_api.cpp",
+        "src/qapp_loader.cpp", "src/qapp_target_poc.cpp",
+        "apps/tilt_game/tilt_game.c", "apps/compass_hud/compass_hud.c",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_qapp_system_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_qapp_system_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
+    assert "ALL RELOCATABLE LOADER & POC TESTS PASSED" in run_res.stdout, "POC & Relocatable test verification string missing"
+    print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, Tilt Ball & Compass HUD stress tests verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
     test_menu_scrollbar_geometry()
     test_timekeeping_math_and_formatting()
     test_analog_trigonometry()
+    test_qapp_abi_and_system()
     print("\nAll self-test verifications PASSED!")
