@@ -122,9 +122,10 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("TIME", ui.time_items, vals, UICore::TIME_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::POWER) {
-        String vals[4] = {
+        String vals[5] = {
             DISPLAY_TIMEOUT_OPTIONS[s.display_timeout_idx],
             SLEEP_TIMEOUT_OPTIONS[s.sleep_time_idx],
+            s.raise_to_wake ? "ON" : "OFF",
             WIFI_AUTO_OFF_OPTIONS[s.wifi_auto_off_idx],
             s.low_power ? "ON" : "OFF"
         };

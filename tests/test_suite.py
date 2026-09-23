@@ -67,6 +67,7 @@ def test_menu_scrollbar_geometry():
     # For any item_count > 3 and valid offset, test bounds
     test_cases = [
         (4, 0), (4, 1),
+        (5, 0), (5, 1), (5, 2),
         (6, 0), (6, 2), (6, 3),
         (14, 0), (14, 5), (14, 11),
     ]

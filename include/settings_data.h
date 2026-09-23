@@ -17,6 +17,7 @@ struct SettingsData {
     // POWER
     int display_timeout_idx = 1; // 0: 10s, 1: 30s, 2: 1m, 3: 5m, 4: NEVER
     int sleep_time_idx = 0;       // 0: OFF, 1: 1m, 2: 5m, 3: 15m, 4: 30m
+    bool raise_to_wake = true;    // Hand raise to wake gesture (IMU motion interrupt)
     int wifi_auto_off_idx = 0;    // 0: OFF, 1: After Sync, 2: When Idle
     bool low_power = false;
 
