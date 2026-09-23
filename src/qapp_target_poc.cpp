@@ -6,6 +6,29 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+
+#if __has_include(<esp_rom_spiflash.h>)
+#include <esp_rom_spiflash.h>
+#define QAPP_FLUSH_ICACHE() esp_rom_spiflash_cache_flush()
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32S3)
+#if __has_include("esp32s3/rom/cache.h")
+#include "esp32s3/rom/cache.h"
+#define QAPP_FLUSH_ICACHE() Cache_Invalidate_ICache_All()
+#else
+extern "C" void Cache_Invalidate_ICache_All(void);
+#define QAPP_FLUSH_ICACHE() Cache_Invalidate_ICache_All()
+#endif
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+#if __has_include("esp32/rom/cache.h")
+#include "esp32/rom/cache.h"
+#define QAPP_FLUSH_ICACHE() Cache_Flush(0)
+#else
+extern "C" void Cache_Flush(int);
+#define QAPP_FLUSH_ICACHE() Cache_Flush(0)
+#endif
+#else
+#define QAPP_FLUSH_ICACHE() do {} while(0)
+#endif
 #else
 #include <sys/mman.h>
 #include <unistd.h>
@@ -88,7 +111,10 @@ QAppPocResult run_target_esp32s3_poc(const QWatchAPI* api) {
         res.code_relocated = true;
 
         // 4. Invalidate instruction cache so CPU fetches new instructions
-        esp_rom_spiflash_cache_flush();
+        QAPP_FLUSH_ICACHE();
+#if defined(__XTENSA__)
+        asm volatile("isync\n\tmemw\n\t");
+#endif
 
         // 5. Execute directly from the dynamically allocated IRAM memory
         PocWorkerFunc dynamic_func = (PocWorkerFunc)iram_code;

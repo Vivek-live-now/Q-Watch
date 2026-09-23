@@ -7,7 +7,30 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
+
+#if __has_include(<esp_rom_spiflash.h>)
 #include <esp_rom_spiflash.h>
+#define QAPP_FLUSH_ICACHE() esp_rom_spiflash_cache_flush()
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32S3)
+#if __has_include("esp32s3/rom/cache.h")
+#include "esp32s3/rom/cache.h"
+#define QAPP_FLUSH_ICACHE() Cache_Invalidate_ICache_All()
+#else
+extern "C" void Cache_Invalidate_ICache_All(void);
+#define QAPP_FLUSH_ICACHE() Cache_Invalidate_ICache_All()
+#endif
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+#if __has_include("esp32/rom/cache.h")
+#include "esp32/rom/cache.h"
+#define QAPP_FLUSH_ICACHE() Cache_Flush(0)
+#else
+extern "C" void Cache_Flush(int);
+#define QAPP_FLUSH_ICACHE() Cache_Flush(0)
+#endif
+#else
+#define QAPP_FLUSH_ICACHE() do {} while(0)
+#endif
+
 #include "display.h"
 #include "sensors.h"
 #include "max30102_manager.h"
@@ -91,10 +114,10 @@ static void live_flush_display(void) {
 
 static uint8_t live_get_button_state(void) {
     uint8_t state = 0;
-    if (digitalRead(PIN_BTN_UP) == LOW)     state |= QBTN_UP;
-    if (digitalRead(PIN_BTN_OK) == LOW)     state |= QBTN_OK;
-    if (digitalRead(PIN_BTN_DN) == LOW)     state |= QBTN_DOWN;
-    if (digitalRead(PIN_BTN_CANCEL) == LOW) state |= QBTN_CANCEL;
+    if (digitalRead(BTN_UP) == LOW)     state |= QBTN_UP;
+    if (digitalRead(BTN_OK) == LOW)     state |= QBTN_OK;
+    if (digitalRead(BTN_DN) == LOW)     state |= QBTN_DOWN;
+    if (digitalRead(BTN_CANCEL) == LOW) state |= QBTN_CANCEL;
     return state;
 }
 
@@ -122,29 +145,28 @@ static void live_get_telemetry(QTelemetry* out) {
     out->heading = ori.yaw;
     out->mag_calibrated = sensors.isMagOk();
 
-    out->heart_rate_bpm = hm.heart_rate;
-    out->spo2_pct = hm.spo2;
+    out->heart_rate_bpm = (uint16_t)hm.bpm;
+    out->spo2_pct = (uint8_t)hm.spo2;
     out->finger_detected = hm.finger_detected;
     out->max30102_temp_c = hm.temperature;
-    out->ppg_raw_red = hm.raw_red;
-    out->ppg_raw_ir = hm.raw_ir;
+    out->ppg_raw_red = hm.red_value;
+    out->ppg_raw_ir = hm.ir_value;
 
     out->temperature_c = env.temperature;
     out->humidity_pct = env.humidity;
     out->pressure_hpa = env.pressure;
     out->altitude_m = env.altitude;
 
-    out->battery_pct = (uint8_t)battery.getPercentage();
-    out->battery_mv = (uint16_t)battery.getVoltage();
-    out->is_charging = battery.isCharging();
+    out->battery_pct = (uint8_t)battery.readPercentage();
+    out->battery_mv = (uint16_t)(battery.readVoltage() * 1000.0f);
+    out->is_charging = false;
 
-    TimeData td = clockManager.getTime();
-    out->hour = td.hour;
-    out->minute = td.minute;
-    out->second = td.second;
-    out->day = 1;
-    out->month = 1;
-    out->year = 2026;
+    out->hour = (uint8_t)qclock.getHour();
+    out->minute = (uint8_t)qclock.getMinute();
+    out->second = (uint8_t)qclock.getSecond();
+    out->day = (uint8_t)qclock.getDay();
+    out->month = (uint8_t)qclock.getMonth();
+    out->year = (uint16_t)qclock.getYear();
 }
 
 static void live_enable_health_sensor(bool enable) {
@@ -160,15 +182,15 @@ static void live_get_ppg_buffer(uint32_t* red_buf, uint32_t* ir_buf, uint16_t co
 }
 
 static void live_ir_send_raw(const uint16_t* timings, uint16_t length, uint16_t khz) {
-    irEngine.sendRaw(timings, length, khz);
+    irEngine.sendRaw(timings, length, khz * 1000);
 }
 
 static void live_ir_send_nec(uint32_t address, uint32_t command) {
-    irEngine.sendParsed(decode_type_t::NEC, address, command, 32);
+    irEngine.sendParsed("NEC", address, command, 32);
 }
 
 static bool live_ir_has_received(void) {
-    return irEngine.hasPendingSignal();
+    return false;
 }
 
 static bool live_ir_get_received(uint32_t* protocol, uint32_t* address, uint32_t* command) {
@@ -517,7 +539,10 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     f.close();
 
     // 6. Invalidate CPU Instruction Cache so IRAM is coherent
-    esp_rom_spiflash_cache_flush();
+    QAPP_FLUSH_ICACHE();
+#if defined(__XTENSA__)
+    asm volatile("isync\n\tmemw\n\t");
+#endif
 
     // 7. Invoke Relocated Entry Point
     QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr.entry_offset);
@@ -710,7 +735,10 @@ QAppErrorCode QAppLoader::loadAppFromMemory(const uint8_t* buffer, uint32_t size
         }
     }
 
-    esp_rom_spiflash_cache_flush();
+    QAPP_FLUSH_ICACHE();
+#if defined(__XTENSA__)
+    asm volatile("isync\n\tmemw\n\t");
+#endif
 
     QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr->entry_offset);
     const QAppHeader* hdr = entry_fn(&s_live_qwatch_api);
