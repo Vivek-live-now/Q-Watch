@@ -21,12 +21,22 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     imu_subapp(Imu6500SubApp::SUBAPP_MENU),
     imu_subapp_selection(0),
+    last_activity_time(millis()),
+    display_off(false),
+    just_woke_display(false),
     return_state(UIState::APP_HOME),
+    bme_page(0),
+    weather_page(0),
     health_page(0),
     health_history_graph_idx(0),
     menu_selection(0),
     menu_scroll_offset(0),
     edit_value(5),
+    led_menu_selection(0),
+    led_menu_offset(0),
+    sound_submenu(SoundSubmenu::MAIN),
+    sound_selection(0),
+    sound_scroll_offset(0),
     ir_submenu(IrSubmenu::MAIN),
     ir_selection(0),
     ir_scroll_offset(0),
@@ -39,15 +49,12 @@ UICore::UICore() :
     compass_menu_selection(0),
     compass_menu_offset(0),
     motion_state(MotionState::PAGE_LEVEL),
+    needs_redraw(true),
     fm_current_path("/"),
     fm_selection(0),
     fm_scroll_offset(0),
     fm_entry_count(0),
-    fm_entries(nullptr),
-    last_activity_time(millis()),
-    display_off(false),
-    just_woke_display(false),
-    needs_redraw(true) {
+    fm_entries(nullptr) {
     toast_msg[0] = '\0';
 }
 
@@ -219,16 +226,93 @@ void UICore::loop() {
             }
             needs_redraw = true;
             return;
+        } else if (current_state == UIState::APP_AUDIO) {
+            soundManager.playNavBack();
+            if (sound_submenu == SoundSubmenu::MAIN) {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 7;
+                menu_scroll_offset = 5;
+            } else {
+                sound_submenu = SoundSubmenu::MAIN;
+                sound_selection = 0;
+                sound_scroll_offset = 0;
+            }
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_SETTINGS) {
+            soundManager.playNavBack();
+            if (settings_submenu == SettingsSubmenu::MAIN) {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 12;
+                menu_scroll_offset = 10;
+            } else {
+                settings_submenu = SettingsSubmenu::MAIN;
+                settings_selection = 0;
+                settings_scroll_offset = 0;
+            }
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_ALTIMETER) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 8;
+            menu_scroll_offset = 6;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_LED) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 10;
+            menu_scroll_offset = 8;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_WEATHER) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 2;
+            menu_scroll_offset = 0;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_HEALTH) {
+            soundManager.playNavBack();
+            max30102Manager.disableSensor();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 4;
+            menu_scroll_offset = 2;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_BATTERY) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 9;
+            menu_scroll_offset = 7;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_COMPASS) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 3;
+            menu_scroll_offset = 1;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_CLOCK) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 1;
+            menu_scroll_offset = 0;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_ABOUT) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 13;
+            menu_scroll_offset = 11;
+            needs_redraw = true;
+            return;
         } else {
             soundManager.playNavBack();
             if (current_state == UIState::MAIN_MENU) {
                 current_state = UIState::APP_HOME;
-            } else if (current_state == UIState::APP_SETTINGS) {
-                if (settings_submenu == SettingsSubmenu::MAIN) {
-                    current_state = UIState::MAIN_MENU;
-                } else {
-                    settings_submenu = SettingsSubmenu::MAIN;
-                }
             } else {
                 current_state = UIState::MAIN_MENU;
             }
@@ -255,9 +339,12 @@ void UICore::loop() {
     switch (current_state) {
         case UIState::APP_HOME: handleHomeInput(); break;
         case UIState::MAIN_MENU: handleMainMenuInput(); break;
+        case UIState::APP_WEATHER: handleWeatherInput(); break;
         case UIState::APP_SETTINGS: handleSettingsMenuInput(); break;
         case UIState::APP_IR: handleIRInput(); break;
         case UIState::APP_AUDIO: handleSoundInput(); break;
+        case UIState::APP_ALTIMETER: handleBmeInput(); break;
+        case UIState::APP_LED: handleLedInput(); break;
         case UIState::APP_FILE_MANAGER: handleFileManagerInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
@@ -674,15 +761,15 @@ void UICore::handleMainMenuInput() {
         switch(menu_selection) {
             case 0: current_state = UIState::APP_HOME; break;
             case 1: current_state = UIState::APP_CLOCK; break;
-            case 2: current_state = UIState::APP_WEATHER; break;
+            case 2: current_state = UIState::APP_WEATHER; weather_page = 0; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
             case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
             case 6: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
             case 7: current_state = UIState::APP_AUDIO; sound_submenu = SoundSubmenu::MAIN; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 8: current_state = UIState::APP_ALTIMETER; break;
+            case 8: current_state = UIState::APP_ALTIMETER; bme_page = 0; break;
             case 9: current_state = UIState::APP_BATTERY; break;
-            case 10: current_state = UIState::APP_LED; break;
+            case 10: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
             case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
             case 12:
                 current_state = UIState::APP_SETTINGS;
@@ -1119,12 +1206,184 @@ void UICore::handleSystemInput() {
 
 void UICore::handleResetConfirmInput() {
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
-    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playAlert();
+        showToast("[RESETTING...]", 1500);
+        settingsManager.get() = SettingsData();
+        settingsManager.save();
+        sensors.factoryResetCalibration();
+        delay(800);
+        ESP.restart();
+    } else if (cancel_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavBack();
-        showToast("[CANCELLED]", 1200);
+        showToast("[CANCELLED]", 1000);
         settings_submenu = SettingsSubmenu::SYSTEM;
         settings_selection = 1;
         settings_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleBmeInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (bme_page == 4) {
+        // Calibration & Diagnostic page
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            float off = sensors.getTempOffset() + 0.5f;
+            if (off > 10.0f) off = 10.0f;
+            sensors.setTempOffset(off);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            float off = sensors.getTempOffset() - 0.5f;
+            if (off < -10.0f) off = -10.0f;
+            sensors.setTempOffset(off);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_LONG_PRESS) {
+            soundManager.playNavMove();
+            bme_page = 3;
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_LONG_PRESS) {
+            soundManager.playNavMove();
+            bme_page = 0;
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            sensors.resetBmeCalibration();
+            soundManager.playNavSelect();
+            showToast("[CAL RESET]", 1200);
+            needs_redraw = true;
+        }
+    } else {
+        // Pages 0 (Pressure), 1 (Humidity), 2 (Temperature), 3 (Altitude)
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            bme_page = (bme_page > 0) ? bme_page - 1 : 4;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            bme_page = (bme_page < 4) ? bme_page + 1 : 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (bme_page == 3) {
+                // Altitude page: toggle measuring/paused or set zero
+                if (sensors.getHeightState() == BmeHeightState::OFF) {
+                    sensors.zeroAltitude();
+                    sensors.toggleHeightMeasurement();
+                    showToast("[ZERO SET / RUN]", 1200);
+                } else {
+                    sensors.toggleHeightMeasurement();
+                    if (sensors.getHeightState() == BmeHeightState::PAUSED) {
+                        showToast("[PAUSED]", 1200);
+                    } else {
+                        showToast("[MEASURING]", 1200);
+                    }
+                }
+            } else {
+                // Log sample
+                sensors.logBmeSample();
+                showToast("[SAMPLE LOGGED]", 1200);
+            }
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_LONG_PRESS && bme_page == 3) {
+            sensors.zeroAltitude();
+            soundManager.playNavSelect();
+            showToast("[ALT ZEROED]", 1200);
+            needs_redraw = true;
+        }
+    }
+}
+
+void UICore::handleLedInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (led_menu_selection > 0) {
+            led_menu_selection--;
+            if (led_menu_selection < led_menu_offset) led_menu_offset = led_menu_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (led_menu_selection < LED_MENU_ITEM_COUNT - 1) {
+            led_menu_selection++;
+            if (led_menu_selection >= led_menu_offset + 3) led_menu_offset = led_menu_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        switch (led_menu_selection) {
+            case 0: // Master Sw
+                ledManager.setMasterSwitch(!ledManager.isMasterSwitchOn());
+                showToast(ledManager.isMasterSwitchOn() ? "[LED ON]" : "[LED OFF]", 1000);
+                break;
+            case 1: { // Mode
+                LedMode cur = ledManager.getMode();
+                LedMode next;
+                if (cur == LedMode::OFF) next = LedMode::SOLID;
+                else if (cur == LedMode::SOLID) next = LedMode::BREATHING;
+                else if (cur == LedMode::BREATHING) next = LedMode::RAINBOW;
+                else if (cur == LedMode::RAINBOW) next = LedMode::COMPASS_SYNC;
+                else next = LedMode::OFF;
+                ledManager.setMode(next);
+                break;
+            }
+            case 2: { // Brightness
+                uint8_t b = ledManager.getBrightness();
+                if (b < 64) b = 64;
+                else if (b < 128) b = 128;
+                else if (b < 192) b = 192;
+                else if (b < 255) b = 255;
+                else b = 32;
+                ledManager.setBrightness(b);
+                break;
+            }
+            case 3: { // Presets
+                static int preset_idx = 0;
+                preset_idx = (preset_idx + 1) % LedManager::LED_PRESET_COUNT;
+                ledManager.setColor(ledManager.preset_colors[preset_idx]);
+                if (ledManager.getMode() == LedMode::OFF) ledManager.setMode(LedMode::SOLID);
+                showToast("[COLOR CHANGED]", 1000);
+                break;
+            }
+            case 4: // Effects
+                ledManager.triggerPulse(CRGB::White, 3, 80);
+                showToast("[BURST EFFECT]", 1000);
+                break;
+            case 5: // Factory Rst
+                ledManager.setMasterSwitch(true);
+                ledManager.setBrightness(50);
+                ledManager.setColor(CRGB::Blue);
+                ledManager.setMode(LedMode::SOLID);
+                showToast("[LED RESET]", 1200);
+                break;
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleWeatherInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_SHORT_PRESS) {
+        weather_page = (weather_page == 0) ? 1 : 0;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        weather.forceUpdate();
+        soundManager.playNavSelect();
+        showToast("[SYNCING OWM...]", 1500);
         needs_redraw = true;
     }
 }
