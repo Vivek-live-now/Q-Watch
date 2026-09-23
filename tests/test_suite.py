@@ -180,7 +180,7 @@ def test_qapp_abi_and_system():
     # 2. Build relocatable .qapp binaries for both apps
     base_dir = os.path.join(os.path.dirname(__file__), "..")
     
-    # Generate Tilt Ball .qapp
+    # Generate Tilt Ball .qapp (test packager)
     gen_tilt_bin = os.path.join(os.path.dirname(__file__), "gen_tilt_qapp_bin")
     res_tilt_cmp = subprocess.run([
         "clang", "-O2", "-Iinclude", "-Iapps/tilt_game",
@@ -188,12 +188,16 @@ def test_qapp_abi_and_system():
         "-o", gen_tilt_bin
     ], cwd=base_dir, capture_output=True, text=True)
     assert res_tilt_cmp.returncode == 0, f"Failed to compile tilt packager:\n{res_tilt_cmp.stderr}"
-    res_tilt_run = subprocess.run([gen_tilt_bin, "apps/tilt_ball.qapp"], cwd=base_dir, capture_output=True, text=True)
+    
+    test_tilt_qapp = os.path.join(os.path.dirname(__file__), "test_tilt_pkg.qapp")
+    res_tilt_run = subprocess.run([gen_tilt_bin, test_tilt_qapp], cwd=base_dir, capture_output=True, text=True)
     assert res_tilt_run.returncode == 0, f"Failed to generate tilt_ball.qapp:\n{res_tilt_run.stderr}"
     if os.path.exists(gen_tilt_bin):
         os.remove(gen_tilt_bin)
+    if os.path.exists(test_tilt_qapp):
+        os.remove(test_tilt_qapp)
 
-    # Generate Compass HUD .qapp
+    # Generate Compass HUD .qapp (test packager)
     gen_compass_bin = os.path.join(os.path.dirname(__file__), "gen_compass_qapp_bin")
     res_compass_cmp = subprocess.run([
         "clang", "-O2", "-Iinclude", "-Iapps/compass_hud",
@@ -201,11 +205,16 @@ def test_qapp_abi_and_system():
         "-o", gen_compass_bin
     ], cwd=base_dir, capture_output=True, text=True)
     assert res_compass_cmp.returncode == 0, f"Failed to compile compass packager:\n{res_compass_cmp.stderr}"
-    res_compass_run = subprocess.run([gen_compass_bin, "apps/compass_hud.qapp"], cwd=base_dir, capture_output=True, text=True)
+
+    test_compass_qapp = os.path.join(os.path.dirname(__file__), "test_compass_pkg.qapp")
+    res_compass_run = subprocess.run([gen_compass_bin, test_compass_qapp], cwd=base_dir, capture_output=True, text=True)
     assert res_compass_run.returncode == 0, f"Failed to generate compass_hud.qapp:\n{res_compass_run.stderr}"
     if os.path.exists(gen_compass_bin):
         os.remove(gen_compass_bin)
-    print("  [PASS] Relocatable .qapp binaries generated for Tilt Ball and Compass HUD.")
+    if os.path.exists(test_compass_qapp):
+        os.remove(test_compass_qapp)
+
+    print("  [PASS] Relocatable .qapp packagers compiled and verified for Tilt Ball and Compass HUD.")
 
     # 3. Re-compile and execute the C++ Q-App test harness
     bin_path = os.path.join(os.path.dirname(__file__), "test_qapp_system_bin")
