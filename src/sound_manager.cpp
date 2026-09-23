@@ -27,9 +27,6 @@ const SoundNote seq_ret_move[] = { {1000, 25} };
 const SoundNote seq_ret_sel[] = { {1500, 30}, {2500, 30} };
 const SoundNote seq_ret_back[] = { {1500, 30}, {800, 30} };
 
-const SoundNote seq_err[] = { {1200, 120}, {0, 30}, {1000, 140} };
-const SoundNote seq_succ[] = { {2200, 80}, {2700, 80}, {3200, 120} };
-
 #define BUZZER_LEDC_CHANNEL 0
 #define BUZZER_LEDC_RES_BITS 8
 
@@ -191,9 +188,6 @@ void SoundManager::playWarning() { playSequence(seq_warning, 3); }
 void SoundManager::playAlert() { playSequence(seq_alert, 5); }
 void SoundManager::playQBranch() { playSequence(seq_qbranch, 4); }
 
-void SoundManager::playError() { playSequence(seq_err, 3); }
-void SoundManager::playSuccess() { playSequence(seq_succ, 3); }
-
 void SoundManager::playNavMove() {
     if (!isButtonSoundsEnabled()) return;
     SoundStyle st = getStyle();
@@ -216,37 +210,6 @@ void SoundManager::playNavBack() {
     if (st == SoundStyle::MODERN) playSequence(seq_mod_back, 1);
     else if (st == SoundStyle::TACTICAL) playSequence(seq_tac_back, 1);
     else if (st == SoundStyle::RETRO) playSequence(seq_ret_back, 2);
-}
-
-bool SoundManager::playMelodyFile(const String& path) {
-    if (!fileManager.exists(path)) return false;
-    String content = fileManager.read(path);
-    if (content.length() == 0) return false;
-
-    uint8_t idx = 0;
-    int pos = 0;
-    while (pos < content.length() && idx < 64) {
-        int next_nl = content.indexOf('\n', pos);
-        if (next_nl == -1) next_nl = content.length();
-        String line = content.substring(pos, next_nl);
-        line.trim();
-        pos = next_nl + 1;
-
-        if (line.length() == 0 || line.startsWith("#")) continue;
-
-        int comma = line.indexOf(',');
-        if (comma != -1) {
-            uint16_t freq = line.substring(0, comma).toInt();
-            uint16_t dur = line.substring(comma + 1).toInt();
-            dynamic_sequence[idx++] = { freq, dur };
-        }
-    }
-
-    if (idx > 0) {
-        playSequence(dynamic_sequence, idx);
-        return true;
-    }
-    return false;
 }
 
 void SoundManager::playMorse(const String& text) {

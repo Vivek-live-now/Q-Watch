@@ -124,6 +124,10 @@ String Clock::getSecondsStr() {
     return String(buffer);
 }
 
+int Clock::getSecond() const {
+    return time_set ? timeinfo.tm_sec : -1;
+}
+
 String Clock::getDateStr() {
     if (!time_set) return "Syncing...";
     char buffer[12];

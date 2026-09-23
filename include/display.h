@@ -77,7 +77,6 @@ private:
 
     // Helpers
     void drawTopStatusBar();
-    void drawFooter(const char* status);
     void drawTacticalOverlay();
     void drawToastOverlay();
 };

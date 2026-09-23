@@ -27,6 +27,7 @@ public:
 
     String getTimeStr(); // HH:MM or HH:MM AM/PM based on settings
     String getSecondsStr(); // SS
+    int getSecond() const;
     String getDateStr(); // DD MMM YYYY
 
     static void onSntpSync(struct timeval *tv);
