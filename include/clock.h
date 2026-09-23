@@ -28,6 +28,14 @@ public:
     String getTimeStr(); // HH:MM or HH:MM AM/PM based on settings
     String getSecondsStr(); // SS
     int getSecond() const;
+    int getHour() const { return time_set ? timeinfo.tm_hour : 0; }
+    int getMinute() const { return time_set ? timeinfo.tm_min : 0; }
+    int getDayOfWeek() const { return time_set ? timeinfo.tm_wday : 0; }
+    int getDay() const { return time_set ? timeinfo.tm_mday : 1; }
+    int getMonth() const { return time_set ? (timeinfo.tm_mon + 1) : 1; }
+    int getYear() const { return time_set ? (timeinfo.tm_year + 1900) : 2026; }
+    String getDayOfWeekStr() const;
+    String getMonthStr() const;
     String getDateStr(); // DD MMM YYYY
 
     static void onSntpSync(struct timeval *tv);
