@@ -14,9 +14,6 @@
 #include "settings_data.h"
 #include "air_mouse.h"
 #include "keyboard.h"
-#include "keyboard.h"
-#include "keyboard.h"
-#include "keyboard.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -221,13 +218,14 @@ void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** 
 
 void DisplayManager::drawResetConfirm() {
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, "RESET SETTINGS");
+    oled.drawStr(2, 7, "FACTORY RESET");
     oled.drawLine(0, 9, 128, 9);
 
     oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(10, 26, "RESET SYSTEM?");
-    oled.drawStr(10, 42, "PRESS SELECT: NO");
-    oled.drawStr(10, 56, "[NOT IMPLEMENTED]");
+    oled.drawStr(6, 25, "ERASE CONFIG & CAL?");
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(6, 41, "[OK]     : CONFIRM RESET");
+    oled.drawStr(6, 54, "[CANCEL] : ABORT");
 }
 
 void DisplayManager::drawTacticalOverlay() {
@@ -288,11 +286,97 @@ void DisplayManager::drawAppClock() {
 }
 
 void DisplayManager::drawAppWeather() {
-    oled.setFont(u8g2_font_ncenB14_tr);
-    oled.drawStr(10, 30, "27\260C");
+    drawTopStatusBar();
+    const WeatherData& wd = weather.getData();
+    AppConfig& cfg = configManager.get();
 
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 46, "HUM: 62%  WND: 1.2M/S");
+    if (weather.isUpdateInProgress()) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(16, 28, "UPDATING...");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(8, 42, "FETCHING OPENWEATHER");
+        oled.drawStr(8, 54, "PLEASE WAIT...");
+        return;
+    }
+
+    int page = ui.getWeatherPage();
+    if (page == 1) {
+        // Page 2: Weather & Sensor Telemetry
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(4, 18, "WEATHER TELEMETRY");
+        oled.drawLine(0, 20, 128, 20);
+
+        char buf[40];
+        snprintf(buf, sizeof(buf), "GPS: %.2f, %.2f", cfg.latitude, cfg.longitude);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 29, buf);
+
+        String loc = cfg.owm_location.length() > 0 ? cfg.owm_location : "DEFAULT";
+        snprintf(buf, sizeof(buf), "LOC: %s", loc.c_str());
+        oled.drawStr(4, 38, buf);
+
+        if (sensors.isBmeOk()) {
+            EnvironmentData env = sensors.getEnvData();
+            snprintf(buf, sizeof(buf), "BME: %.1fC  %.0fhPa  %.0f%%", env.temperature, env.pressure, env.humidity);
+            oled.drawStr(4, 47, buf);
+        } else {
+            oled.drawStr(4, 47, "BME: SENSOR NOT FOUND");
+        }
+
+        oled.drawStr(4, 59, "[OK]: SYNC    (2/2)");
+        return;
+    }
+
+    // Page 0: Live weather overview
+    if (wd.valid) {
+        const char* unit_sym = (cfg.owm_units == "imperial") ? "\260F" : "\260C";
+        char temp_str[16];
+        snprintf(temp_str, sizeof(temp_str), "%.1f%s", wd.temperature, unit_sym);
+
+        oled.setFont(u8g2_font_ncenB14_tr);
+        oled.drawStr(4, 28, temp_str);
+
+        oled.setFont(u8g2_font_5x7_tr);
+        String cond = wd.condition;
+        if (cond.length() > 9) cond = cond.substring(0, 9);
+        oled.drawStr(72, 21, cond.c_str());
+
+        String loc = cfg.owm_location.length() > 0 ? cfg.owm_location : "OWM";
+        if (loc.length() > 9) loc = loc.substring(0, 9);
+        oled.drawStr(72, 31, loc.c_str());
+
+        char details[40];
+        const char* wind_unit = (cfg.owm_units == "imperial") ? "mph" : "m/s";
+        snprintf(details, sizeof(details), "HUM:%d%% WND:%.1f%s FL:%.0f%s", wd.humidity, wd.wind_speed, wind_unit, wd.feels_like, unit_sym);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 44, details);
+
+        oled.drawStr(4, 59, "[OK]: SYNC OWM NOW (1/2)");
+    } else if (sensors.isBmeOk()) {
+        EnvironmentData env = sensors.getEnvData();
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(4, 18, "OFFLINE - LOCAL BME");
+        oled.drawLine(0, 20, 128, 20);
+
+        char temp_str[16];
+        snprintf(temp_str, sizeof(temp_str), "%.1f\260C", env.temperature);
+        oled.setFont(u8g2_font_ncenB14_tr);
+        oled.drawStr(4, 38, temp_str);
+
+        char details[40];
+        snprintf(details, sizeof(details), "HUM: %.0f%%  P: %.0f hPa", env.humidity, env.pressure);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 49, details);
+
+        oled.drawStr(4, 59, "[OK]: SYNC OWM NOW (1/2)");
+    } else {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(10, 26, "NO WEATHER DATA");
+        oled.setFont(u8g2_font_5x7_tr);
+        oled.drawStr(10, 40, "CONNECT WI-FI");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(10, 56, "[OK]: SYNC OWM NOW");
+    }
 }
 
 void DisplayManager::drawAppCompass() {
@@ -1158,6 +1242,9 @@ void DisplayManager::drawAppLED() {
     else if (m == LedMode::COMPASS_SYNC) vals[1] = "SYNC";
     else vals[1] = "SYS";
     vals[2] = String(ledManager.getBrightness());
+    vals[3] = "COLOR";
+    vals[4] = "BURST";
+    vals[5] = "RESET";
 
     drawStandardMenu("LED CONTROL", ui.led_menu_items, UICore::LED_MENU_ITEM_COUNT, ui.getLedMenuSelection(), ui.getLedMenuOffset(), vals);
 }
