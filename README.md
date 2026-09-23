@@ -39,7 +39,7 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 ### Milestone 5: 4-Button Navigation & Gesture Framework
 *   **On-Screen Input & Control:** Multi-button layout (K1 3-way directional + dedicated CANCEL button).
 *   **Gestures & Semantics:**
-    *   **HOME Screen:** Short CANCEL = Display ON/OFF toggle; Long CANCEL = Enter Deep Sleep.
+    *   **HOME Screen:** Short UP / DOWN = Cycle Watch Face styles; Short CANCEL = Display ON/OFF toggle (10s auto-sleep); Long CANCEL = Enter Deep Sleep.
     *   **Sub-Screens:** Short CANCEL = Back; Long OK = Back; Long CANCEL = Return to HOME.
     *   **Combinations & Double-Tap:** Generic framework support for CANCEL+UP, CANCEL+OK, CANCEL+DN, and Double-Tap CANCEL for future shortcut mapping.
 *   **Dual Deep Sleep Wake:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (CANCEL button) and **GPIO 8** (MPU-6500 raise-to-wake motion interrupt). The initial wake event is automatically consumed so it does not trigger accidental in-app actions.
@@ -94,6 +94,36 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **IR Signal Lab Diagnostics:** Engineering laboratory tool featuring 36 kHz, 38 kHz, and 40 kHz PWM carrier output validation (LEDC channel) and real-time raw-to-parsed protocol decoding analysis.
 * **File Manager Integration:** Selecting any `.ir` file directly from the main Q-Watch File Manager (`APP_FILE_MANAGER`) launches the IR Remote viewer to inspect and transmit buttons immediately.
 * **Signal Limits & Storage:** Strict `MAX_IR_RAW_TIMINGS = 1024` buffer enforcement across parsing, capturing, and serialization. Persistent Recent signals log (`/ir/recent.txt`) and Favorite button shortcuts (`/ir/favorites.txt`).
+
+### Milestone 9: Altimeter Control, RGB LED System, Weather Binding & Factory Reset
+* **BME Altimeter Input Handling:** Interactive page navigation and calibration controls on the BME280 Altimeter app (`[UP]`/`[DN]` to cycle pages, `[OK]` to zero reference altitude, tune temperature offset, and reset baseline).
+* **WS2812 RGB LED Control Center:** Full settings menu (`LED CONTROL`) with toggle, color presets (Red, Green, Blue, Amber, Cyan, Purple, White), brightness levels (10% to 100%), and animation effects (Solid, Pulse, Rainbow, Strobe, Tactical Beacon).
+* **Live Weather Data Binding:** Real-time HTTPS OpenWeatherMap fetching seamlessly integrated with local BME280 telemetry fallback when offline.
+* **Factory Reset Protection:** `SETTINGS -> SYSTEM -> RESET SETTINGS` provides a dedicated confirmation dialog with `[OK] CONFIRM` and `[CANCEL] ABORT` to safely reset configuration to defaults without data corruption.
+
+### Milestone 10: Power Optimization, Instant Screen-Off & Raise-to-Wake Gesture
+* **Instant Screen-Off:** Short press of the dedicated `CANCEL` button on the `HOME` screen immediately turns off display power (`displayManager.setPowerSave(true)`).
+* **10-Second Deep Sleep Auto-Timeout:** If the screen is toggled off on the `HOME` screen, the watch automatically transitions into ESP32 deep sleep after 10 seconds of inactivity to maximize battery life.
+* **Dual Deep Sleep Wakeup:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (`BTN_CANCEL`) and **GPIO 8** (`MPU_INT` motion interrupt).
+* **Raise-to-Wake Gesture Detection:** Pre-sleep wrist orientation tracking via calibrated MPU-6500 (`pitch 15°..65°`, `|roll| <= 35°`) with configurable setting toggle under `SETTINGS -> POWER -> RAISE TO WAKE`.
+* **Wake Audio Chime:** Pleasant dual-tone wake sound upon resuming from sleep.
+
+### Milestone 11: Comprehensive Watch & Timekeeping Suite
+* **4 Switchable Watch Faces:**
+    * **Digital Face:** Clean modern layout with large digital time, seconds, date, battery percentage, weather widget (temperature), pedometer steps widget, and status icons (Wi-Fi `W`, Alarms `A`, Hourly Chime `C`).
+    * **Analog Face:** 12-hour tick dial with accentuated quarter markers (12, 3, 6, 9), hardware FPU trigonometric hands (`cosf()`/`sinf()`), center disc hub, and flanking telemetry widgets (battery %, date window, weather, steps).
+    * **Retro Casio LCD Face:** Vintage double-frame border with top Day-of-Week selector pills (`SU MO TU WE TH FR SA`) highlighting the active day with an inverted box, `CHI`/`ALM` status tags, bracketed seconds box, and bottom telemetry.
+    * **Tactical / Mission Face:** Military tactical HUD with live compass heading (`HDG 000M`), barometric altitude (`ALT 000m`), 24-hour military time, step progress bar against target goal, battery telemetry, and mission/stopwatch active status.
+    * **On-the-Fly Face Cycling:** Quick `[UP]` / `[DN]` buttons on the `HOME` screen cycle watch faces instantly with persistent LittleFS saving.
+* **Unified Clock Suite App (`MAIN_MENU -> CLOCK`):**
+    * **Watch Face Selector:** Interactive visual picker across all 4 watch face styles.
+    * **Face Widgets Options:** Toggle individual face widgets (Date, Battery, Weather, Steps, Status Icons).
+    * **Tactical Stopwatch (Chronograph):** Millisecond precision (`MM:SS.hh`), split lap recording up to 8 laps, `[OK]` for Start/Lap, `[UP]` for Pause/Resume, `[DN]` for Reset.
+    * **Countdown Timer:** Duration presets (1m, 3m, 5m, 10m, 15m, 30m, 60m), countdown tick loop, audible alert on expiration via `soundManager.playAlert()`.
+    * **Multi-Alarms:** 3 independent configurable daily alarms stored in `/config/alarms`, audible ringing sequence, snooze (+5 min), dismiss, and interactive Hour/Minute editor.
+    * **Hourly Chime:** Configurable audio chime on each hour (`:00:00`) with dual high-frequency tone.
+    * **World Clock:** 12 major world cities (Kolkata, UTC, London, Berlin, New York, Chicago, Denver, Los Angeles, Dubai, Singapore, Tokyo, Sydney) with precise quarter-hour timezone offset calculations and relative day indicator (`+1 DAY`, `SAME DAY`, `-1 DAY`).
+    * **Pedometer & Step Goal:** Real-time MPU-6500 accelerometer magnitude step detector with threshold hysteresis and debouncing, estimated distance (`km`), calories (`kcal`), step goal adjustment (+/- 1,000 steps), and step counter reset.
 
 ## Hardware Architecture & Pinout
 
