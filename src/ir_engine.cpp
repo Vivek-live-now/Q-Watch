@@ -101,7 +101,7 @@ decode_type_t IREngine::strToDecodeType(const String& proto) {
     if (p == "SIRC" || p == "SIRC15" || p == "SIRC20") return SONY;
     if (p == "RC5X") return RC5;
 
-    return IRutils::strToDecodeType(p.c_str());
+    return ::strToDecodeType(p.c_str());
 }
 
 String IREngine::decodeTypeToStr(decode_type_t type, uint16_t nbits) {
