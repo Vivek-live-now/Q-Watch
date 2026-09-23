@@ -236,7 +236,9 @@ void WifiPortal::handleRoot() {
 }
 
 void WifiPortal::handleStatusJson() {
-    String json = "{";
+    String json;
+    json.reserve(256);
+    json = "{";
     json += "\"wifi\": \"" + String(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected") + "\",";
     json += "\"ip\": \"" + WiFi.localIP().toString() + "\",";
     json += "\"rssi\": " + String(WiFi.RSSI()) + ",";
@@ -268,7 +270,9 @@ void WifiPortal::handleScanResults() {
     if (scan_in_progress) {
         server.send(200, "application/json", "{\"status\":\"running\"}");
     } else {
-        String json = "{\"status\":\"complete\",\"networks\":[";
+        String json;
+        json.reserve(scanned_count * 64 + 64);
+        json = "{\"status\":\"complete\",\"networks\":[";
         for (int i = 0; i < scanned_count; ++i) {
             if (i > 0) json += ",";
             json += "{\"ssid\":\"" + scanned_networks[i].ssid + "\",\"rssi\":" + String(scanned_networks[i].rssi) + ",\"enc\":" + String(scanned_networks[i].encrypted ? 1 : 0) + "}";
@@ -307,7 +311,9 @@ void WifiPortal::handleSave() {
 
 String WifiPortal::getHtml() {
     AppConfig& cfg = configManager.get();
-    String html = "<!DOCTYPE html>\n";
+    String html;
+    html.reserve(4096);
+    html = "<!DOCTYPE html>\n";
     html += "<html>\n";
     html += "<head>\n";
     html += "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
@@ -455,12 +461,46 @@ int WifiPortal::getTotalFileCount() {
     return countFilesRecursive("/");
 }
 
+static const char FILE_MANAGER_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Q-Watch File Manager</title><style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#121212;color:#eee;margin:0;padding:20px;}
+.container{max-width:700px;margin:auto;background:#1e1e1e;padding:20px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}
+h1{color:#00bcd4;margin-top:0;border-bottom:1px solid #333;padding-bottom:10px;}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #2a2a2a;}
+button{background:#00bcd4;color:#fff;border:none;padding:8px 12px;border-radius:4px;cursor:pointer;margin-left:5px;}
+button.del{background:#f44336;} input[type=file]{color:#aaa;}
+</style><script>
+let curPath='/';
+function loadFiles(path){curPath=path;fetch('/file_list?path='+encodeURIComponent(path)).then(r=>r.json()).then(data=>{
+let list=document.getElementById('list');list.innerHTML='';
+document.getElementById('path').innerText=data.path;
+data.entries.forEach(item=>{
+let d=document.createElement('div');d.className='row';
+let name=item.isDir?'📁 '+item.name+'/':'📄 '+item.name;
+let size=item.isDir?'':(item.size+' B');
+let btns=item.isDir?"<button onclick=\"loadFiles('"+(path=='/'?'':path)+"/"+item.name+"')\">Open</button>":"<button onclick=\"location.href='/file_download?path="+encodeURIComponent((path=='/'?'':path)+'/'+item.name)+"'\">Download</button>";
+btns+="<button class='del' onclick=\"delFile('"+(path=='/'?'':path)+"/"+item.name+"')\">Delete</button>";
+d.innerHTML="<span>"+name+"</span><span>"+size+" "+btns+"</span>";
+list.appendChild(d);});
+});}
+function delFile(p){if(confirm('Delete '+p+'?')){fetch('/file_delete?path='+encodeURIComponent(p),{method:'POST'}).then(()=>loadFiles(curPath));}}
+function uploadFile(){let f=document.getElementById('f').files[0];if(!f)return;
+let formData=new FormData();formData.append('data',f,curPath=='/'?'/'+f.name:curPath+'/'+f.name);
+fetch('/file_upload',{method:'POST',body:formData}).then(()=>loadFiles(curPath));}
+function mkDir(){let n=prompt('New Folder Name:');if(n){fetch('/file_mkdir?path='+encodeURIComponent((curPath=='/'?'':curPath)+'/'+n),{method:'POST'}).then(()=>loadFiles(curPath));}}
+window.onload=()=>loadFiles('/');
+</script></head><body><div class='container'><h1>Q-Watch File Manager</h1>
+<h3>Path: <span id='path'>/</span></h3>
+<div style='margin-bottom:15px;'><button onclick="loadFiles('/')">Root</button><button onclick="mkDir()">New Folder</button></div>
+<div id='list'></div>
+<div style='margin-top:20px;border-top:1px solid #333;padding-top:15px;'><input type='file' id='f'><button onclick='uploadFile()'>Upload File</button></div>
+</div></body></html>)rawliteral";
+
 void WifiPortal::handleFileManagerGui() {
     if (!settingsManager.get().fileserver_enabled) {
         server.send(403, "text/plain", "File Server Disabled in Settings");
         return;
     }
-    server.send(200, "text/html", getFileManagerHtml());
+    server.send_P(200, "text/html", FILE_MANAGER_HTML);
 }
 
 void WifiPortal::handleFileList() {
@@ -472,7 +512,9 @@ void WifiPortal::handleFileList() {
     FileInfo entries[32];
     size_t num = fileManager.listDir(path, entries, 32);
 
-    String json = "{\"path\":\"" + path + "\",\"entries\":[";
+    String json;
+    json.reserve(num * 64 + 64);
+    json = "{\"path\":\"" + path + "\",\"entries\":[";
     for (size_t i = 0; i < num; i++) {
         if (i > 0) json += ",";
         json += "{\"name\":\"" + entries[i].name + "\",\"size\":" + String(entries[i].size) + ",\"isDir\":" + String(entries[i].isDir ? "true" : "false") + "}";
@@ -564,38 +606,5 @@ void WifiPortal::handleFileUpload() {
 }
 
 String WifiPortal::getFileManagerHtml() {
-    String html = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Q-Watch File Manager</title><style>";
-    html += "body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#121212;color:#eee;margin:0;padding:20px;}";
-    html += ".container{max-width:700px;margin:auto;background:#1e1e1e;padding:20px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}";
-    html += "h1{color:#00bcd4;margin-top:0;border-bottom:1px solid #333;padding-bottom:10px;}";
-    html += ".row{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #2a2a2a;}";
-    html += "button{background:#00bcd4;color:#fff;border:none;padding:8px 12px;border-radius:4px;cursor:pointer;margin-left:5px;}";
-    html += "button.del{background:#f44336;} input[type=file]{color:#aaa;}";
-    html += "</style><script>";
-    html += "let curPath='/';";
-    html += "function loadFiles(path){curPath=path;fetch('/file_list?path='+encodeURIComponent(path)).then(r=>r.json()).then(data=>{";
-    html += "let list=document.getElementById('list');list.innerHTML='';";
-    html += "document.getElementById('path').innerText=data.path;";
-    html += "data.entries.forEach(item=>{";
-    html += "let d=document.createElement('div');d.className='row';";
-    html += "let name=item.isDir?'📁 '+item.name+'/':'📄 '+item.name;";
-    html += "let size=item.isDir?'':(item.size+' B');";
-    html += "let btns=item.isDir?\"<button onclick=\\\"loadFiles('\"+(path=='/'?'':path)+\"/\"+item.name+\"')\\\">Open</button>\":\"<button onclick=\\\"location.href='/file_download?path=\"+encodeURIComponent((path=='/'?'':path)+'/'+item.name)+\"'\\\">Download</button>\";";
-    html += "btns+=\"<button class='del' onclick=\\\"delFile('\"+(path=='/'?'':path)+\"/\"+item.name+\"')\\\">Delete</button>\";";
-    html += "d.innerHTML=\"<span>\"+name+\"</span><span>\"+size+\" \"+btns+\"</span>\";";
-    html += "list.appendChild(d);});";
-    html += "});}";
-    html += "function delFile(p){if(confirm('Delete '+p+'?')){fetch('/file_delete?path='+encodeURIComponent(p),{method:'POST'}).then(()=>loadFiles(curPath));}}";
-    html += "function uploadFile(){let f=document.getElementById('f').files[0];if(!f)return;";
-    html += "let formData=new FormData();formData.append('data',f,curPath=='/'?'/'+f.name:curPath+'/'+f.name);";
-    html += "fetch('/file_upload',{method:'POST',body:formData}).then(()=>loadFiles(curPath));}";
-    html += "function mkDir(){let n=prompt('New Folder Name:');if(n){fetch('/file_mkdir?path='+encodeURIComponent((curPath=='/'?'':curPath)+'/'+n),{method:'POST'}).then(()=>loadFiles(curPath));}}";
-    html += "window.onload=()=>loadFiles('/');";
-    html += "</script></head><body><div class='container'><h1>Q-Watch File Manager</h1>";
-    html += "<h3>Path: <span id='path'>/</span></h3>";
-    html += "<div style='margin-bottom:15px;'><button onclick=\"loadFiles('/')\">Root</button><button onclick=\"mkDir()\">New Folder</button></div>";
-    html += "<div id='list'></div>";
-    html += "<div style='margin-top:20px;border-top:1px solid #333;padding-top:15px;'><input type='file' id='f'><button onclick='uploadFile()'>Upload File</button></div>";
-    html += "</div></body></html>";
-    return html;
+    return String(reinterpret_cast<const __FlashStringHelper*>(FILE_MANAGER_HTML));
 }

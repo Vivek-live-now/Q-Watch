@@ -99,7 +99,7 @@ void DisplayManager::drawAppSettings() {
     SettingsData& s = settingsManager.get();
 
     if (sub == SettingsSubmenu::MAIN) {
-        drawMenu("SETTINGS", ui.settings_main_items, UICore::SETTINGS_MAIN_ITEM_COUNT);
+        drawStandardMenu("SETTINGS", ui.settings_main_items, UICore::SETTINGS_MAIN_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::CONNECTIVITY) {
         String vals[3] = {
             s.wifi_enabled ? "ON" : "OFF",
@@ -175,7 +175,16 @@ void DisplayManager::drawWifiDetailsScreen() {
     oled.drawStr(2, 58, ipStr.c_str());
 }
 
-void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** items, const String* values, int item_count, int selection, int offset) {
+void DisplayManager::drawScrollBar(int offset, int item_count) {
+    if (item_count > 3) {
+        int scroll_h = 30;
+        int scroll_y = 15 + ((float)offset / (item_count - 3)) * (scroll_h - 10);
+        oled.drawFrame(123, 15, 3, 30);
+        oled.drawBox(123, scroll_y, 3, 10);
+    }
+}
+
+void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const String* values) {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(2, 7, title);
     oled.drawLine(0, 9, 128, 9);
@@ -203,12 +212,11 @@ void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** 
         y_pos += 12;
     }
 
-    if (item_count > 3) {
-        int scroll_h = 30;
-        int scroll_y = 15 + ((float)offset / (item_count - 3)) * (scroll_h - 10);
-        oled.drawFrame(123, 15, 3, 30);
-        oled.drawBox(123, scroll_y, 3, 10);
-    }
+    drawScrollBar(offset, item_count);
+}
+
+void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** items, const String* values, int item_count, int selection, int offset) {
+    drawStandardMenu(title, items, item_count, selection, offset, values);
 }
 
 void DisplayManager::drawResetConfirm() {
@@ -353,14 +361,14 @@ void DisplayManager::drawAppCompass() {
     oled.setFont(u8g2_font_ncenB12_tr);
 
     const char* dirStr = "N";
-    if (heading >= 337.5 || heading < 22.5) dirStr = "N";
-    else if (heading >= 22.5 && heading < 67.5) dirStr = "NE";
-    else if (heading >= 67.5 && heading < 112.5) dirStr = "E";
-    else if (heading >= 112.5 && heading < 157.5) dirStr = "SE";
-    else if (heading >= 157.5 && heading < 202.5) dirStr = "S";
-    else if (heading >= 202.5 && heading < 247.5) dirStr = "SW";
-    else if (heading >= 247.5 && heading < 292.5) dirStr = "W";
-    else if (heading >= 292.5 && heading < 337.5) dirStr = "NW";
+    if (heading >= 337.5f || heading < 22.5f) dirStr = "N";
+    else if (heading >= 22.5f && heading < 67.5f) dirStr = "NE";
+    else if (heading >= 67.5f && heading < 112.5f) dirStr = "E";
+    else if (heading >= 112.5f && heading < 157.5f) dirStr = "SE";
+    else if (heading >= 157.5f && heading < 202.5f) dirStr = "S";
+    else if (heading >= 202.5f && heading < 247.5f) dirStr = "SW";
+    else if (heading >= 247.5f && heading < 292.5f) dirStr = "W";
+    else if (heading >= 292.5f && heading < 337.5f) dirStr = "NW";
 
     String fullHdg = hdgStr + " " + String(dirStr);
     int w = oled.getStrWidth(fullHdg.c_str());
@@ -394,7 +402,7 @@ void DisplayManager::drawAppCompassMetrics() {
 
     oled.drawFrame(graph_x, graph_y - graph_h, graph_w, graph_h + 1);
 
-    float max_val = 1.0;
+    float max_val = 1.0f;
     for (int i = 0; i < 64; i++) {
         if (mag_history[i] > max_val) max_val = mag_history[i];
     }
@@ -603,25 +611,7 @@ void DisplayManager::drawHealthPage2History() {
 
 
 void DisplayManager::drawAppMotionMenu() {
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, "IMU6500");
-    oled.drawLine(0, 9, 128, 9);
-    oled.setFont(u8g2_font_6x10_tr);
-
-    int sel = ui.getImuSubAppSelection();
-    int y_pos = 26;
-
-    for (int i = 0; i < UICore::IMU_SUBAPP_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 11);
-            oled.setDrawColor(0);
-            oled.drawStr(6, y_pos, ui.imu_subapp_items[i]);
-            oled.setDrawColor(1);
-        } else {
-            oled.drawStr(6, y_pos, ui.imu_subapp_items[i]);
-        }
-        y_pos += 16;
-    }
+    drawStandardMenu("IMU6500", ui.imu_subapp_items, UICore::IMU_SUBAPP_COUNT, ui.getImuSubAppSelection(), 0);
 }
 
 void DisplayManager::drawAppAirMouse() {
@@ -886,7 +876,7 @@ void DisplayManager::drawAppIR() {
 
     switch (sub) {
         case IrSubmenu::MAIN: {
-            drawMenu("IR REMOTE", ui.ir_main_items, UICore::IR_MAIN_ITEM_COUNT);
+            drawStandardMenu("IR REMOTE", ui.ir_main_items, UICore::IR_MAIN_ITEM_COUNT, ui.getIrSelection(), ui.getIrScrollOffset());
             break;
         }
         case IrSubmenu::TV_B_GONE: {
@@ -914,7 +904,7 @@ void DisplayManager::drawAppIR() {
             break;
         }
         case IrSubmenu::CUSTOM_IR: {
-            drawMenu("CUSTOM IR", ui.ir_custom_items, UICore::IR_CUSTOM_ITEM_COUNT);
+            drawStandardMenu("CUSTOM IR", ui.ir_custom_items, UICore::IR_CUSTOM_ITEM_COUNT, ui.getIrSelection(), ui.getIrScrollOffset());
             break;
         }
         case IrSubmenu::REMOTE_VIEW: {
@@ -1120,7 +1110,7 @@ void DisplayManager::drawAppIR() {
             break;
         }
         case IrSubmenu::IR_LAB: {
-            drawMenu("IR SIGNAL LAB", ui.ir_lab_items, UICore::IR_LAB_ITEM_COUNT);
+            drawStandardMenu("IR SIGNAL LAB", ui.ir_lab_items, UICore::IR_LAB_ITEM_COUNT, ui.getIrSelection(), ui.getIrScrollOffset());
             if (irEngine.isCarrierTestActive()) {
                 oled.setFont(u8g2_font_4x6_tr);
                 char buf[32];
@@ -1158,40 +1148,18 @@ void DisplayManager::drawAppBattery() {
 
 void DisplayManager::drawAppLED() {
     drawTopStatusBar();
-    oled.setFont(u8g2_font_6x10_tr);
+    String vals[UICore::LED_MENU_ITEM_COUNT];
+    vals[0] = ledManager.isMasterSwitchOn() ? "ON" : "OFF";
+    LedMode m = ledManager.getMode();
+    if (m == LedMode::OFF) vals[1] = "OFF";
+    else if (m == LedMode::SOLID) vals[1] = "SOLID";
+    else if (m == LedMode::BREATHING) vals[1] = "BREATH";
+    else if (m == LedMode::RAINBOW) vals[1] = "RNBW";
+    else if (m == LedMode::COMPASS_SYNC) vals[1] = "SYNC";
+    else vals[1] = "SYS";
+    vals[2] = String(ledManager.getBrightness());
 
-    int sel = ui.getLedMenuSelection();
-    int offset = ui.getLedMenuOffset();
-
-    int y_pos = 22;
-    for (int i = offset; i < offset + 3 && i < UICore::LED_MENU_ITEM_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-        }
-
-        String label = ui.led_menu_items[i];
-        if (i == 0) label += ledManager.isMasterSwitchOn() ? " [ON]" : " [OFF]";
-        else if (i == 1) {
-            LedMode m = ledManager.getMode();
-            if (m == LedMode::OFF) label += " [OFF]";
-            else if (m == LedMode::SOLID) label += " [SOLID]";
-            else if (m == LedMode::BREATHING) label += " [BREATH]";
-            else if (m == LedMode::RAINBOW) label += " [RNBW]";
-            else if (m == LedMode::COMPASS_SYNC) label += " [SYNC]";
-            else label += " [SYS]";
-        }
-        else if (i == 2) label += " [" + String(ledManager.getBrightness()) + "]";
-
-        oled.drawStr(4, y_pos, label.c_str());
-        oled.setDrawColor(1);
-        y_pos += 12;
-    }
-
-    int scroll_h = 30;
-    int scroll_y = 15 + ((float)offset / (UICore::LED_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
-    oled.drawFrame(123, 15, 3, 30);
-    oled.drawBox(123, scroll_y, 3, 10);
+    drawStandardMenu("LED CONTROL", ui.led_menu_items, UICore::LED_MENU_ITEM_COUNT, ui.getLedMenuSelection(), ui.getLedMenuOffset(), vals);
 }
 
 
@@ -1284,31 +1252,7 @@ void DisplayManager::drawStorageInfo() {
 }
 
 void DisplayManager::drawMenu(const char* title, const char** items, int item_count) {
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, title);
-    oled.drawLine(0, 9, 128, 9);
-    oled.setFont(u8g2_font_6x10_tr);
-    int start_idx = ui.getMenuScrollOffset();
-    int y_pos = 22;
-
-    for (int i = start_idx; i < start_idx + 3 && i < item_count; i++) {
-        if (i == ui.getMenuSelection()) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-            oled.drawStr(4, y_pos, items[i]);
-            oled.setDrawColor(1);
-        } else {
-            oled.drawStr(4, y_pos, items[i]);
-        }
-        y_pos += 12;
-    }
-
-    if (item_count > 3) {
-        int scroll_h = 30;
-        int scroll_y = 15 + ((float)start_idx / (item_count - 3)) * (scroll_h - 10);
-        oled.drawFrame(123, 15, 3, 30);
-        oled.drawBox(123, scroll_y, 3, 10);
-    }
+    drawStandardMenu(title, items, item_count, ui.getMenuSelection(), ui.getMenuScrollOffset(), nullptr);
 }
 
 void DisplayManager::drawValueEdit(const char* title) {
@@ -1328,37 +1272,12 @@ void DisplayManager::drawValueEdit(const char* title) {
 }
 
 void DisplayManager::drawAppCompassCalMenu() {
-    oled.setFont(u8g2_font_6x10_tr);
-    int sel = ui.getCompassMenuSelection();
-    int offset = ui.getCompassMenuOffset();
-    int y_pos = 22;
+    String vals[UICore::COMPASS_MENU_ITEM_COUNT];
+    int o = sensors.getMagCalibration().orientation_mode;
+    vals[1] = o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
+    vals[2] = sensors.getMagCalibration().invert_z ? " [ON]" : " [OFF]";
 
-    for (int i = offset; i < offset + 3 && i < UICore::COMPASS_MENU_ITEM_COUNT; i++) {
-        if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
-            oled.setDrawColor(0);
-
-            String label = String(ui.compass_menu_items[i]);
-            if (i == 1) {
-                int o = sensors.getMagCalibration().orientation_mode;
-                label += o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
-            } else if (i == 2) {
-                label += sensors.getMagCalibration().invert_z ? " [ON]" : " [OFF]";
-            }
-
-            oled.drawStr(4, y_pos, label.c_str());
-            oled.setDrawColor(1);
-        } else {
-            String label = String(ui.compass_menu_items[i]);
-            oled.drawStr(4, y_pos, label.c_str());
-        }
-        y_pos += 12;
-    }
-
-    int scroll_h = 30;
-    int scroll_y = 15 + ((float)offset / (UICore::COMPASS_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
-    oled.drawFrame(123, 15, 3, 30);
-    oled.drawBox(123, scroll_y, 3, 10);
+    drawStandardMenu("COMPASS CAL", ui.compass_menu_items, UICore::COMPASS_MENU_ITEM_COUNT, ui.getCompassMenuSelection(), ui.getCompassMenuOffset(), vals);
 }
 
 void DisplayManager::drawAppCompassCalSweep() {
@@ -1515,12 +1434,7 @@ void DisplayManager::drawWifiScanScreen() {
         y_pos += 12;
     }
 
-    if (count > 3) {
-        int scroll_h = 30;
-        int scroll_y = 15 + ((float)offset / (count - 3)) * (scroll_h - 10);
-        oled.drawFrame(123, 15, 3, 30);
-        oled.drawBox(123, scroll_y, 3, 10);
-    }
+    drawScrollBar(offset, count);
 }
 
 
@@ -1802,12 +1716,11 @@ void DisplayManager::drawBmePage5Info() {
 
 
 void DisplayManager::drawAppAudio() {
-    drawTopStatusBar();
     oled.setFont(u8g2_font_6x10_tr);
     SoundSubmenu sub = ui.getSoundSubmenu();
 
     if (sub == SoundSubmenu::MAIN) {
-        drawMenu("SOUND SYSTEM", ui.sound_main_items, UICore::SOUND_MAIN_ITEM_COUNT);
+        drawStandardMenu("SOUND SYSTEM", ui.sound_main_items, UICore::SOUND_MAIN_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset());
     } else if (sub == SoundSubmenu::SETTINGS) {
         String vals[5];
         vals[0] = soundManager.isMasterSwitchOn() ? "ON" : "OFF";
@@ -1815,9 +1728,9 @@ void DisplayManager::drawAppAudio() {
         vals[2] = soundManager.isButtonSoundsEnabled() ? "ON" : "OFF";
         vals[3] = soundManager.isNotificationsEnabled() ? "ON" : "OFF";
         vals[4] = SOUND_STYLE_OPTIONS[(int)soundManager.getStyle()];
-        drawSettingsMenuWithValues("SOUND SETTINGS", ui.sound_settings_items, vals, UICore::SOUND_SETTINGS_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset());
+        drawStandardMenu("SOUND SETTINGS", ui.sound_settings_items, UICore::SOUND_SETTINGS_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset(), vals);
     } else if (sub == SoundSubmenu::EFFECTS) {
-        drawMenu("SOUND EFFECTS", ui.sound_effects_items, UICore::SOUND_EFFECTS_ITEM_COUNT);
+        drawStandardMenu("SOUND EFFECTS", ui.sound_effects_items, UICore::SOUND_EFFECTS_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset());
     } else if (sub == SoundSubmenu::CREATOR_LIST) {
         FileInfo entries[16];
         size_t count = fileManager.listDir("/sounds", entries, 16);
@@ -1826,7 +1739,7 @@ void DisplayManager::drawAppAudio() {
         for (size_t i = 0; i < count; i++) {
             items[i + 1] = entries[i].name.c_str();
         }
-        drawMenu("MELODY CREATOR", items, count + 1);
+        drawStandardMenu("MELODY CREATOR", items, count + 1, ui.getSoundSelection(), ui.getSoundScrollOffset());
     } else if (sub == SoundSubmenu::CREATOR_EDIT) {
         oled.setFont(u8g2_font_5x7_tf);
         String title = "MELODY: " + ui.getActiveMelodyName();
@@ -1874,7 +1787,7 @@ void DisplayManager::drawAppAudio() {
         oled.setFont(u8g2_font_4x6_tr);
         oled.drawStr(4, 62, "OK:ADD L-OK:PLAY&SAVE");
     } else if (sub == SoundSubmenu::LAB) {
-        drawMenu("SOUND LAB", ui.sound_lab_items, UICore::SOUND_LAB_ITEM_COUNT);
+        drawStandardMenu("SOUND LAB", ui.sound_lab_items, UICore::SOUND_LAB_ITEM_COUNT, ui.getSoundSelection(), ui.getSoundScrollOffset());
     } else if (sub == SoundSubmenu::METRONOME) {
         oled.setFont(u8g2_font_6x10_tf);
         oled.drawStr(25, 12, "METRONOME");

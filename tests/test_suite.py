@@ -62,7 +62,29 @@ def test_raw_serialization():
     assert "duty_cycle:" not in out_b
     print("  [PASS] Raw with unknown freq & duty cycle omits unmeasured values.")
 
+def test_menu_scrollbar_geometry():
+    print("\n--- 3. Menu Window & Scrollbar Geometry Test ---")
+    # For any item_count > 3 and valid offset, test bounds
+    test_cases = [
+        (4, 0), (4, 1),
+        (6, 0), (6, 2), (6, 3),
+        (14, 0), (14, 5), (14, 11),
+    ]
+    for count, offset in test_cases:
+        items = list(range(offset, min(offset + 3, count)))
+        assert len(items) <= 3
+        assert items[0] == offset
+        assert items[-1] < count
+
+        # Scrollbar thumb position formula:
+        scroll_h = 30
+        scroll_y = 15 + ((offset / (count - 3)) * (scroll_h - 10))
+        assert 15 <= scroll_y <= 35, f"Scrollbar thumb out of range: {scroll_y}"
+
+    print("  [PASS] All menu window slices and scrollbar thumb ranges verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
+    test_menu_scrollbar_geometry()
     print("\nAll self-test verifications PASSED!")
