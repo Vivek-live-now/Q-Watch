@@ -14,6 +14,7 @@
 #include "file_manager.h"
 #include "settings_data.h"
 #include "ir_engine.h"
+#include "timekeeping.h"
 
 int last_drawn_sec = -1;
 uint32_t last_portal_draw = 0;
@@ -35,6 +36,7 @@ void setup() {
   ledManager.begin();
   soundManager.begin();
   irEngine.begin();
+  timekeeping.begin();
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
@@ -58,14 +60,16 @@ void loop() {
   ledManager.loop();
   soundManager.loop();
   irEngine.loop();
+  timekeeping.loop();
 
   // Energy Efficiency & UI Updates
   int current_sec = qclock.getSecond();
   bool time_changed = (current_sec != last_drawn_sec);
   bool portal_update_due = (wifiPortal.getState() == WifiState::PORTAL && millis() - last_portal_draw >= 1000);
 
-  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR)
-                            && millis() - last_ui_draw >= 100);
+  bool clock_active = (ui.getState() == UIState::APP_CLOCK && (timekeeping.stopwatch.isRunning() || timekeeping.timer.isRunning() || timekeeping.alarmManager.isRinging()));
+  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || clock_active)
+                            && millis() - last_ui_draw >= 50);
 
   if (time_changed || portal_update_due || ui.needsRedraw() || active_app_update) {
       displayManager.update();

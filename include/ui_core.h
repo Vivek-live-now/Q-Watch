@@ -76,6 +76,18 @@ enum class SoundSubmenu {
     MORSE
 };
 
+enum class ClockSubmenu {
+    MAIN,
+    FACE_SELECT,
+    FACE_WIDGETS,
+    STOPWATCH,
+    TIMER,
+    ALARMS,
+    ALARM_EDIT,
+    WORLD_CLOCK,
+    PEDOMETER
+};
+
 enum class UIState {
     APP_HOME,
     MAIN_MENU,
@@ -122,6 +134,17 @@ public:
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
     int getSettingsScrollOffset() const { return settings_scroll_offset; }
+
+    // Clock Submenu getters & state
+    ClockSubmenu getClockSubmenu() const { return clock_submenu; }
+    void setClockSubmenu(ClockSubmenu sub) { clock_submenu = sub; needs_redraw = true; }
+    int getClockSelection() const { return clock_selection; }
+    int getClockScrollOffset() const { return clock_scroll_offset; }
+    int getAlarmEditIdx() const { return alarm_edit_idx; }
+    int getAlarmEditField() const { return alarm_edit_field; }
+    int getTimerPresetIdx() const { return timer_preset_idx; }
+    int getWidgetsSelection() const { return widgets_selection; }
+    int getWidgetsScrollOffset() const { return widgets_scroll_offset; }
 
     // IR Submenu getters & state
     IrSubmenu getIrSubmenu() const { return ir_submenu; }
@@ -206,6 +229,21 @@ public:
     static const int IMU_SUBAPP_COUNT = 2;
     const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
         "ALTIMETER", "AIR MOUSE"
+    };
+
+    static const int CLOCK_MENU_ITEM_COUNT = 8;
+    const char* clock_menu_items[CLOCK_MENU_ITEM_COUNT] = {
+        "WATCH FACE", "FACE WIDGETS", "STOPWATCH", "TIMER", "ALARMS", "HOURLY CHIME", "WORLD CLOCK", "PEDOMETER"
+    };
+
+    static const int WIDGETS_ITEM_COUNT = 5;
+    const char* widgets_items[WIDGETS_ITEM_COUNT] = {
+        "SHOW DATE", "SHOW BATTERY", "WEATHER WIDGET", "STEPS WIDGET", "STATUS ICONS"
+    };
+
+    static const int WATCH_FACE_COUNT = 4;
+    const char* watch_face_items[WATCH_FACE_COUNT] = {
+        "DIGITAL", "ANALOG", "RETRO LCD", "MISSION"
     };
 
     bool needsRedraw() const { return needs_redraw; }
@@ -325,6 +363,16 @@ private:
     int led_menu_selection;
     int led_menu_offset;
 
+    // Clock sub-app state
+    ClockSubmenu clock_submenu;
+    int clock_selection;
+    int clock_scroll_offset;
+    int alarm_edit_idx;
+    int alarm_edit_field;
+    int timer_preset_idx;
+    int widgets_selection;
+    int widgets_scroll_offset;
+
     // Sound sub-app state
     SoundSubmenu sound_submenu;
     int sound_selection;
@@ -390,6 +438,16 @@ public:
     void handleWeatherInput();
     void handleHomeInput();
     void handleMainMenuInput();
+    void handleClockInput();
+    void handleClockMenuInput();
+    void handleFaceSelectInput();
+    void handleFaceWidgetsInput();
+    void handleStopwatchInput();
+    void handleTimerInput();
+    void handleAlarmsInput();
+    void handleAlarmEditInput();
+    void handleWorldClockInput();
+    void handlePedometerInput();
     void handleIRInput();
     void handleIrMainInput();
     void handleTvBGoneInput();

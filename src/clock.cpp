@@ -128,6 +128,22 @@ int Clock::getSecond() const {
     return time_set ? timeinfo.tm_sec : -1;
 }
 
+String Clock::getDayOfWeekStr() const {
+    if (!time_set) return "---";
+    const char* days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+    int d = getDayOfWeek();
+    if (d >= 0 && d < 7) return days[d];
+    return "---";
+}
+
+String Clock::getMonthStr() const {
+    if (!time_set) return "---";
+    const char* months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    int m = getMonth() - 1;
+    if (m >= 0 && m < 12) return months[m];
+    return "---";
+}
+
 String Clock::getDateStr() {
     if (!time_set) return "Syncing...";
     char buffer[12];

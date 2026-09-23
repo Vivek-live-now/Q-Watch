@@ -13,6 +13,7 @@
 #include "clock.h"
 #include "ir_engine.h"
 #include "driver/rtc_io.h"
+#include "timekeeping.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -35,6 +36,14 @@ UICore::UICore() :
     edit_value(5),
     led_menu_selection(0),
     led_menu_offset(0),
+    clock_submenu(ClockSubmenu::MAIN),
+    clock_selection(0),
+    clock_scroll_offset(0),
+    alarm_edit_idx(0),
+    alarm_edit_field(0),
+    timer_preset_idx(2),
+    widgets_selection(0),
+    widgets_scroll_offset(0),
     sound_submenu(SoundSubmenu::MAIN),
     sound_selection(0),
     sound_scroll_offset(0),
@@ -328,9 +337,15 @@ void UICore::loop() {
             return;
         } else if (current_state == UIState::APP_CLOCK) {
             soundManager.playNavBack();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 1;
-            menu_scroll_offset = 0;
+            if (clock_submenu == ClockSubmenu::MAIN) {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 1;
+                menu_scroll_offset = 0;
+            } else {
+                clock_submenu = ClockSubmenu::MAIN;
+                clock_selection = 0;
+                clock_scroll_offset = 0;
+            }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_ABOUT) {
@@ -360,6 +375,11 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_AUDIO) {
             soundManager.stop();
             current_state = UIState::MAIN_MENU;
+        } else if (current_state == UIState::APP_CLOCK) {
+            clock_submenu = ClockSubmenu::MAIN;
+            clock_selection = 0;
+            clock_scroll_offset = 0;
+            current_state = UIState::APP_HOME;
         } else {
             current_state = UIState::APP_HOME;
         }
@@ -370,6 +390,7 @@ void UICore::loop() {
     switch (current_state) {
         case UIState::APP_HOME: handleHomeInput(); break;
         case UIState::MAIN_MENU: handleMainMenuInput(); break;
+        case UIState::APP_CLOCK: handleClockInput(); break;
         case UIState::APP_WEATHER: handleWeatherInput(); break;
         case UIState::APP_SETTINGS: handleSettingsMenuInput(); break;
         case UIState::APP_IR: handleIRInput(); break;
@@ -769,13 +790,451 @@ void UICore::processNavDown() {
 }
 
 void UICore::handleHomeInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        SettingsData& s = settingsManager.get();
+        s.watch_face_style = (s.watch_face_style + WATCH_FACE_COUNT - 1) % WATCH_FACE_COUNT;
+        settingsManager.save();
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        SettingsData& s = settingsManager.get();
+        s.watch_face_style = (s.watch_face_style + 1) % WATCH_FACE_COUNT;
+        settingsManager.save();
+        needs_redraw = true;
+        return;
+    }
+
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         current_state = UIState::MAIN_MENU;
         menu_selection = 0;
         menu_scroll_offset = 0;
         needs_redraw = true;
+    }
+}
+
+void UICore::handleClockInput() {
+    switch (clock_submenu) {
+        case ClockSubmenu::MAIN:         handleClockMenuInput(); break;
+        case ClockSubmenu::FACE_SELECT:  handleFaceSelectInput(); break;
+        case ClockSubmenu::FACE_WIDGETS: handleFaceWidgetsInput(); break;
+        case ClockSubmenu::STOPWATCH:    handleStopwatchInput(); break;
+        case ClockSubmenu::TIMER:        handleTimerInput(); break;
+        case ClockSubmenu::ALARMS:       handleAlarmsInput(); break;
+        case ClockSubmenu::ALARM_EDIT:   handleAlarmEditInput(); break;
+        case ClockSubmenu::WORLD_CLOCK:  handleWorldClockInput(); break;
+        case ClockSubmenu::PEDOMETER:    handlePedometerInput(); break;
+    }
+}
+
+void UICore::handleClockMenuInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (clock_selection > 0) {
+            clock_selection--;
+            if (clock_selection < clock_scroll_offset) clock_scroll_offset = clock_selection;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (clock_selection < CLOCK_MENU_ITEM_COUNT - 1) {
+            clock_selection++;
+            if (clock_selection >= clock_scroll_offset + 3) clock_scroll_offset = clock_selection - 2;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        switch (clock_selection) {
+            case 0: // WATCH FACE
+                clock_submenu = ClockSubmenu::FACE_SELECT;
+                clock_selection = settingsManager.get().watch_face_style;
+                clock_scroll_offset = 0;
+                break;
+            case 1: // FACE WIDGETS
+                clock_submenu = ClockSubmenu::FACE_WIDGETS;
+                widgets_selection = 0;
+                widgets_scroll_offset = 0;
+                break;
+            case 2: // STOPWATCH
+                clock_submenu = ClockSubmenu::STOPWATCH;
+                break;
+            case 3: // TIMER
+                clock_submenu = ClockSubmenu::TIMER;
+                break;
+            case 4: // ALARMS
+                clock_submenu = ClockSubmenu::ALARMS;
+                alarm_edit_idx = 0;
+                break;
+            case 5: // HOURLY CHIME
+                {
+                    SettingsData& s = settingsManager.get();
+                    s.hourly_chime_enabled = !s.hourly_chime_enabled;
+                    settingsManager.save();
+                }
+                break;
+            case 6: // WORLD CLOCK
+                clock_submenu = ClockSubmenu::WORLD_CLOCK;
+                break;
+            case 7: // PEDOMETER
+                clock_submenu = ClockSubmenu::PEDOMETER;
+                break;
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleFaceSelectInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (clock_selection > 0) {
+            clock_selection--;
+            if (clock_selection < clock_scroll_offset) clock_scroll_offset = clock_selection;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (clock_selection < WATCH_FACE_COUNT - 1) {
+            clock_selection++;
+            if (clock_selection >= clock_scroll_offset + 3) clock_scroll_offset = clock_selection - 2;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        settingsManager.get().watch_face_style = clock_selection;
+        settingsManager.save();
+        clock_submenu = ClockSubmenu::MAIN;
+        clock_selection = 0;
+        clock_scroll_offset = 0;
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleFaceWidgetsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (widgets_selection > 0) {
+            widgets_selection--;
+            if (widgets_selection < widgets_scroll_offset) widgets_scroll_offset = widgets_selection;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (widgets_selection < WIDGETS_ITEM_COUNT - 1) {
+            widgets_selection++;
+            if (widgets_selection >= widgets_scroll_offset + 3) widgets_scroll_offset = widgets_selection - 2;
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        SettingsData& s = settingsManager.get();
+        switch (widgets_selection) {
+            case 0: s.show_date = !s.show_date; break;
+            case 1: s.show_battery = !s.show_battery; break;
+            case 2: s.show_weather_widget = !s.show_weather_widget; break;
+            case 3: s.show_steps_widget = !s.show_steps_widget; break;
+            case 4: s.show_status_icons = !s.show_status_icons; break;
+        }
+        settingsManager.save();
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleStopwatchInput() {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (!timekeeping.stopwatch.isRunning()) {
+            timekeeping.stopwatch.start();
+        } else {
+            timekeeping.stopwatch.lap();
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (timekeeping.stopwatch.isRunning()) {
+            timekeeping.stopwatch.pause();
+        } else if (timekeeping.stopwatch.isPaused()) {
+            timekeeping.stopwatch.resume();
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (timekeeping.stopwatch.isPaused() || !timekeeping.stopwatch.isRunning()) {
+            timekeeping.stopwatch.reset();
+        } else {
+            timekeeping.stopwatch.pause();
+        }
+        needs_redraw = true;
+        return;
+    }
+}
+
+void UICore::handleTimerInput() {
+    static const uint32_t PRESET_SECS[] = {60, 180, 300, 600, 900, 1800, 3600};
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    if (timekeeping.timer.isExpired()) {
+        if (ok_evt != BTN_EVT_NONE || up_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE) {
+            timekeeping.timer.clearExpired();
+            timekeeping.timer.reset();
+            soundManager.playNavSelect();
+            needs_redraw = true;
+            return;
+        }
+    }
+
+    if (!timekeeping.timer.isRunning() && !timekeeping.timer.isPaused()) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            soundManager.playNavMove();
+            if (timer_preset_idx > 0) {
+                timer_preset_idx--;
+                timekeeping.timer.setDuration(PRESET_SECS[timer_preset_idx]);
+                needs_redraw = true;
+            }
+            return;
+        }
+        if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            soundManager.playNavMove();
+            if (timer_preset_idx < 6) {
+                timer_preset_idx++;
+                timekeeping.timer.setDuration(PRESET_SECS[timer_preset_idx]);
+                needs_redraw = true;
+            }
+            return;
+        }
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            timekeeping.timer.setDuration(PRESET_SECS[timer_preset_idx]);
+            timekeeping.timer.start();
+            needs_redraw = true;
+            return;
+        }
+    } else if (timekeeping.timer.isRunning()) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            timekeeping.timer.pause();
+            needs_redraw = true;
+            return;
+        }
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            timekeeping.timer.reset();
+            needs_redraw = true;
+            return;
+        }
+    } else if (timekeeping.timer.isPaused()) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            timekeeping.timer.resume();
+            needs_redraw = true;
+            return;
+        }
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            timekeeping.timer.reset();
+            needs_redraw = true;
+            return;
+        }
+    }
+}
+
+void UICore::handleAlarmsInput() {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    if (timekeeping.alarmManager.isRinging()) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            timekeeping.alarmManager.snooze(timekeeping.alarmManager.getRingingIdx());
+            soundManager.playNavSelect();
+            needs_redraw = true;
+            return;
+        }
+        if (dn_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_SHORT_PRESS) {
+            timekeeping.alarmManager.dismiss(timekeeping.alarmManager.getRingingIdx());
+            soundManager.playNavBack();
+            needs_redraw = true;
+            return;
+        }
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        alarm_edit_idx = (alarm_edit_idx + 2) % 3;
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        alarm_edit_idx = (alarm_edit_idx + 1) % 3;
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        timekeeping.alarmManager.toggleAlarm(alarm_edit_idx);
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavSelect();
+        clock_submenu = ClockSubmenu::ALARM_EDIT;
+        alarm_edit_field = 0;
+        needs_redraw = true;
+        return;
+    }
+}
+
+void UICore::handleAlarmEditInput() {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+
+    AlarmEntry& a = timekeeping.alarmManager.getAlarm(alarm_edit_idx);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (alarm_edit_field == 0) {
+            a.hour = (a.hour + 1) % 24;
+        } else {
+            a.minute = (a.minute + 1) % 60;
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (alarm_edit_field == 0) {
+            a.hour = (a.hour + 23) % 24;
+        } else {
+            a.minute = (a.minute + 59) % 60;
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (alarm_edit_field == 0) {
+            alarm_edit_field = 1;
+        } else {
+            a.enabled = true;
+            timekeeping.alarmManager.save();
+            clock_submenu = ClockSubmenu::ALARMS;
+        }
+        needs_redraw = true;
+        return;
+    }
+}
+
+void UICore::handleWorldClockInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    SettingsData& s = settingsManager.get();
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        s.world_clock_tz_idx = (s.world_clock_tz_idx + 11) % 12;
+        settingsManager.save();
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        s.world_clock_tz_idx = (s.world_clock_tz_idx + 1) % 12;
+        settingsManager.save();
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        s.world_clock_tz_idx = (s.world_clock_tz_idx + 1) % 12;
+        settingsManager.save();
+        needs_redraw = true;
+        return;
+    }
+}
+
+void UICore::handlePedometerInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    SettingsData& s = settingsManager.get();
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (s.step_goal <= 49000) {
+            s.step_goal += 1000;
+            settingsManager.save();
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        if (s.step_goal >= 2000) {
+            s.step_goal -= 1000;
+            settingsManager.save();
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        timekeeping.pedometer.reset();
+        needs_redraw = true;
+        return;
     }
 }
 
@@ -791,7 +1250,12 @@ void UICore::handleMainMenuInput() {
         soundManager.playNavSelect();
         switch(menu_selection) {
             case 0: current_state = UIState::APP_HOME; break;
-            case 1: current_state = UIState::APP_CLOCK; break;
+            case 1:
+                current_state = UIState::APP_CLOCK;
+                clock_submenu = ClockSubmenu::MAIN;
+                clock_selection = 0;
+                clock_scroll_offset = 0;
+                break;
             case 2: current_state = UIState::APP_WEATHER; weather_page = 0; break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;

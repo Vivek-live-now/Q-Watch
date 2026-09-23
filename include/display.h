@@ -17,7 +17,22 @@ public:
 
 private:
     void drawAppHome();
+    void drawHomeDigital();
+    void drawHomeAnalog();
+    void drawHomeRetro();
+    void drawHomeMission();
+
     void drawAppClock();
+    void drawClockMenu();
+    void drawClockFaceSelect();
+    void drawClockFaceWidgets();
+    void drawClockStopwatch();
+    void drawClockTimer();
+    void drawClockAlarms();
+    void drawClockAlarmEdit();
+    void drawClockWorldClock();
+    void drawClockPedometer();
+
     void drawAppWeather();
     void drawWeatherPage1Local();
     void drawWeatherPage2Owm();

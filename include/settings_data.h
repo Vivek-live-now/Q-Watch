@@ -39,9 +39,22 @@ struct SettingsData {
     bool button_sounds_on = true;
     bool notifications_on = true;
     int sound_style_idx = 1;      // 0: SILENT, 1: MODERN, 2: TACTICAL, 3: RETRO
+
+    // TIMEKEEPING & WATCH SUITE
+    int watch_face_style = 0;     // 0: DIGITAL, 1: ANALOG, 2: RETRO, 3: MISSION
+    bool show_date = true;
+    bool show_battery = true;
+    bool show_weather_widget = true;
+    bool show_steps_widget = true;
+    bool show_status_icons = true;
+    bool hourly_chime_enabled = false;
+    int world_clock_tz_idx = 1;   // Default: UTC (1)
+    uint32_t step_goal = 10000;
 };
 
 // Option labels lists
+static const char* const WATCH_FACE_OPTIONS[] = {"DIGITAL", "ANALOG", "RETRO LCD", "MISSION"};
+static const int WATCH_FACE_COUNT = 4;
 static const char* const DISPLAY_TIMEOUT_OPTIONS[] = {"10 sec", "30 sec", "1 min", "5 min", "NEVER"};
 static const int DISPLAY_TIMEOUT_COUNT = 5;
 

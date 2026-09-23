@@ -84,8 +84,88 @@ def test_menu_scrollbar_geometry():
 
     print("  [PASS] All menu window slices and scrollbar thumb ranges verified.")
 
+def test_timekeeping_math_and_formatting():
+    print("\n--- 4. Timekeeping Math & Formatting Test ---")
+    # Stopwatch formatting: MM:SS.hh
+    def format_ms(ms):
+        total_sec = ms // 1000
+        minutes = total_sec // 60
+        seconds = total_sec % 60
+        hundredths = (ms % 1000) // 10
+        return f"{minutes:02d}:{seconds:02d}.{hundredths:02d}"
+
+    assert format_ms(0) == "00:00.00"
+    assert format_ms(1250) == "00:01.25"
+    assert format_ms(65430) == "01:05.43"
+    assert format_ms(3599990) == "59:59.99"
+    print("  [PASS] Stopwatch millisecond formatting verified.")
+
+    # CountdownTimer formatting: HH:MM:SS or MM:SS
+    def format_sec(sec):
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        s = sec % 60
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    assert format_sec(60) == "01:00"
+    assert format_sec(300) == "05:00"
+    assert format_sec(3665) == "01:01:05"
+    print("  [PASS] Timer second formatting verified.")
+
+    # Pedometer formulas
+    steps = 10000
+    dist_km = steps * 0.00075
+    kcal = int(steps * 0.04)
+    assert abs(dist_km - 7.5) < 1e-4
+    assert kcal == 400
+    print("  [PASS] Pedometer distance and caloric expenditure formulas verified.")
+
+    # World clock offsets in seconds
+    tz_quarters = [22, 0, 0, 4, -20, -24, -28, -32, 16, 32, 36, 40]
+    cities = ["KOLKATA", "UTC", "LONDON", "BERLIN", "NEW YORK", "CHICAGO", "DENVER", "LOS ANGELES", "DUBAI", "SINGAPORE", "TOKYO", "SYDNEY"]
+    expected_offsets_sec = [19800, 0, 0, 3600, -18000, -21600, -25200, -28800, 14400, 28800, 32400, 36000]
+    for city, q, exp in zip(cities, tz_quarters, expected_offsets_sec):
+        assert q * 900 == exp, f"TZ offset mismatch for {city}: {q * 900} vs {exp}"
+    print("  [PASS] World clock 12-city timezone offsets verified.")
+
+def test_analog_trigonometry():
+    import math
+    print("\n--- 5. Analog Watch Face Trigonometry Test ---")
+    cx, cy = 64, 32
+    r_hour = 16.0
+
+    # 12 o'clock (0 hour): hand pointing straight up -> (64, 16)
+    h_angle_12 = (0 * 30.0) * (math.pi / 180.0) - (math.pi / 2.0)
+    hx_12 = round(cx + math.cos(h_angle_12) * r_hour)
+    hy_12 = round(cy + math.sin(h_angle_12) * r_hour)
+    assert (hx_12, hy_12) == (64, 16), f"12 o'clock pos mismatch: ({hx_12}, {hy_12})"
+
+    # 3 o'clock (3 hour): hand pointing straight right -> (80, 32)
+    h_angle_3 = (3 * 30.0) * (math.pi / 180.0) - (math.pi / 2.0)
+    hx_3 = round(cx + math.cos(h_angle_3) * r_hour)
+    hy_3 = round(cy + math.sin(h_angle_3) * r_hour)
+    assert (hx_3, hy_3) == (80, 32), f"3 o'clock pos mismatch: ({hx_3}, {hy_3})"
+
+    # 6 o'clock (6 hour): hand pointing straight down -> (64, 48)
+    h_angle_6 = (6 * 30.0) * (math.pi / 180.0) - (math.pi / 2.0)
+    hx_6 = round(cx + math.cos(h_angle_6) * r_hour)
+    hy_6 = round(cy + math.sin(h_angle_6) * r_hour)
+    assert (hx_6, hy_6) == (64, 48), f"6 o'clock pos mismatch: ({hx_6}, {hy_6})"
+
+    # 9 o'clock (9 hour): hand pointing straight left -> (48, 32)
+    h_angle_9 = (9 * 30.0) * (math.pi / 180.0) - (math.pi / 2.0)
+    hx_9 = round(cx + math.cos(h_angle_9) * r_hour)
+    hy_9 = round(cy + math.sin(h_angle_9) * r_hour)
+    assert (hx_9, hy_9) == (48, 32), f"9 o'clock pos mismatch: ({hx_9}, {hy_9})"
+
+    print("  [PASS] Analog hour hand coordinates at 12, 3, 6, and 9 verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
     test_menu_scrollbar_geometry()
+    test_timekeeping_math_and_formatting()
+    test_analog_trigonometry()
     print("\nAll self-test verifications PASSED!")

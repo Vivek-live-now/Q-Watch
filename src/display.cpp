@@ -14,6 +14,7 @@
 #include "settings_data.h"
 #include "air_mouse.h"
 #include "keyboard.h"
+#include "timekeeping.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -266,24 +267,569 @@ void DisplayManager::drawPortalScreen() {
 }
 
 void DisplayManager::drawAppHome() {
-    drawTopStatusBar();
-    for (int i=20; i<108; i+=4) oled.drawPixel(i, 35);
+    SettingsData& s = settingsManager.get();
+    switch (s.watch_face_style) {
+        case 0: drawHomeDigital(); break;
+        case 1: drawHomeAnalog(); break;
+        case 2: drawHomeRetro(); break;
+        case 3: drawHomeMission(); break;
+        default: drawHomeDigital(); break;
+    }
+}
 
+void DisplayManager::drawHomeDigital() {
+    SettingsData& s = settingsManager.get();
+
+    // Top status line if enabled
+    if (s.show_status_icons) {
+        oled.setFont(u8g2_font_4x6_tr);
+        if (s.show_date) {
+            String dStr = qclock.getDayOfWeekStr() + " " + String(qclock.getDay()) + " " + qclock.getMonthStr();
+            oled.drawStr(2, 6, dStr.c_str());
+        }
+
+        int rx = 126;
+        if (s.show_battery) {
+            int pct = battery.readPercentage();
+            String bStr = String(pct) + "%";
+            int bw = oled.getStrWidth(bStr.c_str());
+            rx -= bw;
+            oled.drawStr(rx, 6, bStr.c_str());
+            rx -= 4;
+        }
+        if (s.hourly_chime_enabled) {
+            rx -= 6;
+            oled.drawStr(rx, 6, "C");
+        }
+        bool any_alm = false;
+        for (int i = 0; i < 3; i++) {
+            if (timekeeping.alarmManager.getAlarm(i).enabled) any_alm = true;
+        }
+        if (any_alm) {
+            rx -= 6;
+            oled.drawStr(rx, 6, "A");
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            rx -= 6;
+            oled.drawStr(rx, 6, "W");
+        }
+        oled.drawLine(0, 8, 128, 8);
+    }
+
+    // Main Time
     oled.setFont(u8g2_font_logisoso24_tn);
     String timeStr = qclock.getTimeStr();
     int w_time = oled.getStrWidth(timeStr.c_str());
-    oled.drawStr((128-w_time)/2, 42, timeStr.c_str());
+    int time_y = s.show_status_icons ? 40 : 36;
+    oled.drawStr((128 - w_time) / 2, time_y, timeStr.c_str());
+
+    // Seconds display
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(108, time_y - 2, qclock.getSecondsStr().c_str());
+
+    // Bottom Widgets
+    int bot_y = 58;
+    oled.setFont(u8g2_font_4x6_tr);
+
+    if (s.show_weather_widget) {
+        char w_buf[20];
+        if (sensors.isBmeOk()) {
+            snprintf(w_buf, sizeof(w_buf), "%.1fC", sensors.getEnvData().temperature);
+        } else if (weather.getData().valid) {
+            snprintf(w_buf, sizeof(w_buf), "%.1fC", weather.getData().temperature);
+        } else {
+            snprintf(w_buf, sizeof(w_buf), "--.- C");
+        }
+        oled.drawStr(4, bot_y, w_buf);
+    }
+
+    if (s.show_steps_widget) {
+        char s_buf[20];
+        snprintf(s_buf, sizeof(s_buf), "%lu stp", (unsigned long)timekeeping.pedometer.getSteps());
+        int sw = oled.getStrWidth(s_buf);
+        oled.drawStr(124 - sw, bot_y, s_buf);
+    }
+
+    if (!s.show_status_icons && s.show_date) {
+        String dStr = qclock.getDateStr();
+        int dw = oled.getStrWidth(dStr.c_str());
+        oled.drawStr((128 - dw) / 2, 50, dStr.c_str());
+    }
+}
+
+void DisplayManager::drawHomeAnalog() {
+    SettingsData& s = settingsManager.get();
+    int cx = 64;
+    int cy = 32;
+
+    // 12 hour ticks
+    for (int i = 0; i < 12; i++) {
+        float angle = i * 30.0f * (3.14159265f / 180.0f) - (3.14159265f / 2.0f);
+        float r_outer = 29.0f;
+        float r_inner = (i % 3 == 0) ? 23.0f : 26.0f;
+        int x1 = cx + (int)(cosf(angle) * r_outer);
+        int y1 = cy + (int)(sinf(angle) * r_outer);
+        int x2 = cx + (int)(cosf(angle) * r_inner);
+        int y2 = cy + (int)(sinf(angle) * r_inner);
+        oled.drawLine(x1, y1, x2, y2);
+    }
+
+    // Hour Hand
+    float h_val = (qclock.getHour() % 12) + (qclock.getMinute() / 60.0f);
+    float h_angle = h_val * 30.0f * (3.14159265f / 180.0f) - (3.14159265f / 2.0f);
+    int hx = cx + (int)(cosf(h_angle) * 16.0f);
+    int hy = cy + (int)(sinf(h_angle) * 16.0f);
+    oled.drawLine(cx, cy, hx, hy);
+    oled.drawLine(cx + 1, cy, hx + 1, hy);
+    oled.drawLine(cx, cy + 1, hx, hy + 1);
+
+    // Minute Hand
+    float m_val = qclock.getMinute() + (qclock.getSecond() / 60.0f);
+    float m_angle = m_val * 6.0f * (3.14159265f / 180.0f) - (3.14159265f / 2.0f);
+    int mx = cx + (int)(cosf(m_angle) * 23.0f);
+    int my = cy + (int)(sinf(m_angle) * 23.0f);
+    oled.drawLine(cx, cy, mx, my);
+
+    // Second Hand
+    float s_angle = qclock.getSecond() * 6.0f * (3.14159265f / 180.0f) - (3.14159265f / 2.0f);
+    int sx = cx + (int)(cosf(s_angle) * 26.0f);
+    int sy = cy + (int)(sinf(s_angle) * 26.0f);
+    oled.drawLine(cx, cy, sx, sy);
+
+    // Center hub
+    oled.drawDisc(cx, cy, 2);
+
+    // Flank widgets
+    oled.setFont(u8g2_font_4x6_tr);
+    if (s.show_battery) {
+        char b_buf[8];
+        snprintf(b_buf, sizeof(b_buf), "%d%%", battery.readPercentage());
+        oled.drawStr(2, 10, b_buf);
+    }
+    if (s.show_weather_widget) {
+        char w_buf[10];
+        float temp = sensors.isBmeOk() ? sensors.getEnvData().temperature : weather.getData().temperature;
+        snprintf(w_buf, sizeof(w_buf), "%.0fC", temp);
+        oled.drawStr(108, 10, w_buf);
+    }
+    if (s.show_date) {
+        oled.drawFrame(1, 26, 26, 12);
+        char d_buf[8];
+        snprintf(d_buf, sizeof(d_buf), "%d", qclock.getDay());
+        int dw = oled.getStrWidth(d_buf);
+        oled.drawStr(1 + (26 - dw) / 2, 35, d_buf);
+    }
+    if (s.show_steps_widget) {
+        uint32_t stp = timekeeping.pedometer.getSteps();
+        char s_buf[10];
+        if (stp >= 1000) {
+            snprintf(s_buf, sizeof(s_buf), "%.1fk", stp / 1000.0f);
+        } else {
+            snprintf(s_buf, sizeof(s_buf), "%lu", (unsigned long)stp);
+        }
+        int sw = oled.getStrWidth(s_buf);
+        oled.drawStr(127 - sw, 35, s_buf);
+    }
+}
+
+void DisplayManager::drawHomeRetro() {
+    SettingsData& s = settingsManager.get();
+
+    // Double frame
+    oled.drawFrame(0, 0, 128, 64);
+    oled.drawFrame(2, 2, 124, 60);
+
+    // Top DOW pills: SU MO TU WE TH FR SA
+    const char* const DOW_NAMES[] = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"};
+    int cur_dow = qclock.getDayOfWeek();
+    for (int i = 0; i < 7; i++) {
+        int bx = 6 + (i * 12);
+        if (i == cur_dow) {
+            oled.drawBox(bx - 1, 4, 11, 8);
+            oled.setDrawColor(0);
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(bx, 10, DOW_NAMES[i]);
+            oled.setDrawColor(1);
+        } else {
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(bx, 10, DOW_NAMES[i]);
+        }
+    }
+
+    // Top status tags
+    oled.setFont(u8g2_font_4x6_tr);
+    if (s.hourly_chime_enabled) oled.drawStr(92, 10, "CHI");
+    bool any_alm = false;
+    for (int i = 0; i < 3; i++) {
+        if (timekeeping.alarmManager.getAlarm(i).enabled) any_alm = true;
+    }
+    if (any_alm) oled.drawStr(108, 10, "ALM");
+
+    oled.drawLine(4, 13, 124, 13);
+
+    // Large Retro LCD Time
+    oled.setFont(u8g2_font_logisoso24_tn);
+    String timeStr = qclock.getTimeStr();
+    oled.drawStr(10, 40, timeStr.c_str());
+
+    // Seconds box
+    oled.drawFrame(98, 20, 24, 14);
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(104, 31, qclock.getSecondsStr().c_str());
+
+    oled.drawLine(4, 45, 124, 45);
+
+    // Bottom telemetry
+    oled.setFont(u8g2_font_4x6_tr);
+    if (s.show_date) {
+        char d_buf[16];
+        snprintf(d_buf, sizeof(d_buf), "%d-%02d", qclock.getMonth(), qclock.getDay());
+        oled.drawStr(6, 55, d_buf);
+    }
+    if (s.show_battery) {
+        char b_buf[16];
+        snprintf(b_buf, sizeof(b_buf), "BAT %d%%", battery.readPercentage());
+        oled.drawStr(48, 55, b_buf);
+    }
+    if (s.show_steps_widget) {
+        char s_buf[16];
+        snprintf(s_buf, sizeof(s_buf), "%lu STP", (unsigned long)timekeeping.pedometer.getSteps());
+        int sw = oled.getStrWidth(s_buf);
+        oled.drawStr(122 - sw, 55, s_buf);
+    }
+}
+
+void DisplayManager::drawHomeMission() {
+    SettingsData& s = settingsManager.get();
+
+    // Top Mission Bar
+    OrientationData o = sensors.getOrientation();
+    float heading = o.yaw;
+    int alt = sensors.isBmeOk() ? (int)sensors.getEnvData().altitude : 0;
+    char hud_top[32];
+    snprintf(hud_top, sizeof(hud_top), "HDG %03dM  ALT %dm", (int)heading, alt);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 7, hud_top);
+
+    if (s.show_battery) {
+        char b_buf[12];
+        snprintf(b_buf, sizeof(b_buf), "%d%%", battery.readPercentage());
+        int bw = oled.getStrWidth(b_buf);
+        oled.drawStr(124 - bw, 7, b_buf);
+    }
+    oled.drawLine(0, 9, 128, 9);
+
+    // Center Military Time
+    oled.setFont(u8g2_font_logisoso16_tr);
+    char mil_time[16];
+    snprintf(mil_time, sizeof(mil_time), "%02d:%02d:%02d", qclock.getHour(), qclock.getMinute(), qclock.getSecond());
+    int tw = oled.getStrWidth(mil_time);
+    oled.drawStr((128 - tw) / 2, 29, mil_time);
+
+    // Tactical Steps / Objective Bar
+    uint32_t stp = timekeeping.pedometer.getSteps();
+    uint32_t goal = s.step_goal;
+    char stp_buf[32];
+    snprintf(stp_buf, sizeof(stp_buf), "STP %lu/%lu", (unsigned long)stp, (unsigned long)goal);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 40, stp_buf);
+
+    oled.drawFrame(4, 43, 120, 5);
+    int bar_w = min(118, (int)((stp * 118) / (goal > 0 ? goal : 10000)));
+    if (bar_w > 0) oled.drawBox(5, 44, bar_w, 3);
+
+    // Tactical Status Footer
+    oled.drawLine(0, 51, 128, 51);
+    oled.setFont(u8g2_font_4x6_tr);
+    if (timekeeping.stopwatch.isRunning()) {
+        oled.drawStr(4, 60, "OP: SW RUNNING");
+    } else if (timekeeping.timer.isRunning()) {
+        char t_buf[24];
+        snprintf(t_buf, sizeof(t_buf), "OP: TMR %s", CountdownTimer::formatSec(timekeeping.timer.getRemaining()).c_str());
+        oled.drawStr(4, 60, t_buf);
+    } else {
+        oled.drawStr(4, 60, "OP: MISSION READY");
+    }
+
+    if (s.show_date) {
+        String dStr = qclock.getDateStr();
+        int dw = oled.getStrWidth(dStr.c_str());
+        oled.drawStr(124 - dw, 60, dStr.c_str());
+    }
 }
 
 void DisplayManager::drawAppClock() {
-    oled.setFont(u8g2_font_logisoso28_tn);
-    String timeStr = qclock.getTimeStr();
-    int w_time = oled.getStrWidth(timeStr.c_str());
-    oled.drawStr((128-w_time)/2, 45, timeStr.c_str());
+    switch (ui.getClockSubmenu()) {
+        case ClockSubmenu::MAIN:         drawClockMenu(); break;
+        case ClockSubmenu::FACE_SELECT:  drawClockFaceSelect(); break;
+        case ClockSubmenu::FACE_WIDGETS: drawClockFaceWidgets(); break;
+        case ClockSubmenu::STOPWATCH:    drawClockStopwatch(); break;
+        case ClockSubmenu::TIMER:        drawClockTimer(); break;
+        case ClockSubmenu::ALARMS:       drawClockAlarms(); break;
+        case ClockSubmenu::ALARM_EDIT:   drawClockAlarmEdit(); break;
+        case ClockSubmenu::WORLD_CLOCK:  drawClockWorldClock(); break;
+        case ClockSubmenu::PEDOMETER:    drawClockPedometer(); break;
+    }
+}
+
+void DisplayManager::drawClockMenu() {
+    SettingsData& s = settingsManager.get();
+    String vals[UICore::CLOCK_MENU_ITEM_COUNT];
+    vals[0] = String(ui.watch_face_items[s.watch_face_style]);
+    vals[1] = ">";
+    vals[2] = timekeeping.stopwatch.isRunning() ? "RUN" : (timekeeping.stopwatch.isPaused() ? "PAUS" : "");
+    vals[3] = timekeeping.timer.isRunning() ? "RUN" : (timekeeping.timer.isExpired() ? "DONE" : "");
+    int alm_active = 0;
+    for (int i = 0; i < 3; i++) {
+        if (timekeeping.alarmManager.getAlarm(i).enabled) alm_active++;
+    }
+    vals[4] = String(alm_active) + "/3";
+    vals[5] = s.hourly_chime_enabled ? "ON" : "OFF";
+    vals[6] = timekeeping.getWorldCityName(s.world_clock_tz_idx);
+    vals[7] = String(timekeeping.pedometer.getSteps());
+
+    drawStandardMenu("CLOCK SUITE", ui.clock_menu_items, UICore::CLOCK_MENU_ITEM_COUNT, ui.getClockSelection(), ui.getClockScrollOffset(), vals);
+}
+
+void DisplayManager::drawClockFaceSelect() {
+    SettingsData& s = settingsManager.get();
+    String vals[UICore::WATCH_FACE_COUNT];
+    for (int i = 0; i < UICore::WATCH_FACE_COUNT; i++) {
+        vals[i] = (s.watch_face_style == i) ? "[*]" : "[ ]";
+    }
+    drawStandardMenu("WATCH FACE", ui.watch_face_items, UICore::WATCH_FACE_COUNT, ui.getClockSelection(), ui.getClockScrollOffset(), vals);
+}
+
+void DisplayManager::drawClockFaceWidgets() {
+    SettingsData& s = settingsManager.get();
+    String vals[UICore::WIDGETS_ITEM_COUNT] = {
+        s.show_date ? "ON" : "OFF",
+        s.show_battery ? "ON" : "OFF",
+        s.show_weather_widget ? "ON" : "OFF",
+        s.show_steps_widget ? "ON" : "OFF",
+        s.show_status_icons ? "ON" : "OFF"
+    };
+    drawStandardMenu("FACE WIDGETS", ui.widgets_items, UICore::WIDGETS_ITEM_COUNT, ui.getWidgetsSelection(), ui.getWidgetsScrollOffset(), vals);
+}
+
+void DisplayManager::drawClockStopwatch() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "STOPWATCH");
+    if (timekeeping.stopwatch.isRunning()) {
+        oled.drawStr(100, 7, "RUN");
+    } else if (timekeeping.stopwatch.isPaused()) {
+        oled.drawStr(95, 7, "PAUSE");
+    } else {
+        oled.drawStr(95, 7, "READY");
+    }
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_logisoso16_tr);
+    String timeStr = Stopwatch::formatMs(timekeeping.stopwatch.getElapsedMs());
+    int w = oled.getStrWidth(timeStr.c_str());
+    oled.drawStr((128 - w) / 2, 29, timeStr.c_str());
+
+    oled.setFont(u8g2_font_4x6_tr);
+    int lap_count = timekeeping.stopwatch.getLapCount();
+    if (lap_count > 0) {
+        StopwatchLap last = timekeeping.stopwatch.getLap(lap_count - 1);
+        char lap_buf[36];
+        snprintf(lap_buf, sizeof(lap_buf), "LAP %d: %s (TOT %s)", lap_count, Stopwatch::formatMs(last.lap_ms).c_str(), Stopwatch::formatMs(last.total_ms).c_str());
+        oled.drawStr(4, 42, lap_buf);
+    } else {
+        oled.drawStr(4, 42, "LAPS: NONE RECORDED");
+    }
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.setFont(u8g2_font_4x6_tr);
+    if (timekeeping.stopwatch.isRunning()) {
+        oled.drawStr(2, 60, "[OK] LAP   [UP/DN] PAUSE");
+    } else if (timekeeping.stopwatch.isPaused()) {
+        oled.drawStr(2, 60, "[UP/OK] RESUME  [DN] RESET");
+    } else {
+        oled.drawStr(2, 60, "[OK] START  [BACK] EXIT");
+    }
+}
+
+void DisplayManager::drawClockTimer() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "COUNTDOWN TIMER");
+    oled.drawLine(0, 9, 128, 9);
+
+    if (timekeeping.timer.isExpired()) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(14, 25, "*** TIME UP! ***");
+        oled.drawStr(10, 42, "PRESS ANY KEY TO STOP");
+        oled.drawLine(0, 52, 128, 52);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(2, 60, "[ANY KEY] DISMISS ALERT");
+        return;
+    }
+
+    oled.setFont(u8g2_font_logisoso16_tr);
+    String remStr = CountdownTimer::formatSec(timekeeping.timer.getRemaining());
+    int w = oled.getStrWidth(remStr.c_str());
+    oled.drawStr((128 - w) / 2, 29, remStr.c_str());
+
+    oled.setFont(u8g2_font_4x6_tr);
+    if (!timekeeping.timer.isRunning() && !timekeeping.timer.isPaused()) {
+        const char* const PRESET_NAMES[] = {"1 MIN", "3 MIN", "5 MIN", "10 MIN", "15 MIN", "30 MIN", "60 MIN"};
+        char pbuf[32];
+        snprintf(pbuf, sizeof(pbuf), "PRESET: < %s >", PRESET_NAMES[ui.getTimerPresetIdx()]);
+        oled.drawStr(4, 42, pbuf);
+    } else if (timekeeping.timer.isRunning()) {
+        oled.drawStr(4, 42, "STATUS: COUNTING DOWN...");
+    } else {
+        oled.drawStr(4, 42, "STATUS: PAUSED");
+    }
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.setFont(u8g2_font_4x6_tr);
+    if (timekeeping.timer.isRunning()) {
+        oled.drawStr(2, 60, "[OK] PAUSE   [DN] RESET");
+    } else if (timekeeping.timer.isPaused()) {
+        oled.drawStr(2, 60, "[OK] RESUME  [DN] RESET");
+    } else {
+        oled.drawStr(2, 60, "[UP/DN] PRESET   [OK] START");
+    }
+}
+
+void DisplayManager::drawClockAlarms() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "DAILY ALARMS");
+    oled.drawLine(0, 9, 128, 9);
+
+    if (timekeeping.alarmManager.isRinging()) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawBox(0, 12, 128, 38);
+        oled.setDrawColor(0);
+        oled.drawStr(8, 26, "** ALARM RINGING! **");
+        oled.drawStr(12, 42, "[OK] SNOOZE 5 MIN");
+        oled.setDrawColor(1);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(2, 60, "[CANCEL] DISMISS ALARM");
+        return;
+    }
+
+    int sel = ui.getAlarmEditIdx();
+    oled.setFont(u8g2_font_6x10_tr);
+    int y = 22;
+    for (int i = 0; i < 3; i++) {
+        const AlarmEntry& a = timekeeping.alarmManager.getAlarm(i);
+        char buf[28];
+        snprintf(buf, sizeof(buf), "ALM %d:  %02d:%02d   [%s]", i + 1, a.hour, a.minute, a.enabled ? "ON" : "OFF");
+        if (i == sel) {
+            oled.drawBox(2, y - 8, 124, 11);
+            oled.setDrawColor(0);
+            oled.drawStr(4, y, buf);
+            oled.setDrawColor(1);
+        } else {
+            oled.drawStr(4, y, buf);
+        }
+        y += 12;
+    }
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(2, 60, "[OK] TOGGLE  [UP/DN] NAV  HOLD[OK] EDIT");
+}
+
+void DisplayManager::drawClockAlarmEdit() {
+    int idx = ui.getAlarmEditIdx();
+    const AlarmEntry& a = timekeeping.alarmManager.getAlarm(idx);
+    int field = ui.getAlarmEditField(); // 0: hour, 1: minute
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(110, 62, "[  ]");
-    oled.drawStr(113, 62, qclock.getSecondsStr().c_str());
+    char title[24];
+    snprintf(title, sizeof(title), "EDIT ALARM %d", idx + 1);
+    oled.drawStr(2, 7, title);
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_logisoso24_tn);
+    char h_str[6], m_str[6];
+    snprintf(h_str, sizeof(h_str), "%02d", a.hour);
+    snprintf(m_str, sizeof(m_str), "%02d", a.minute);
+
+    int colon_x = 61;
+    oled.drawStr(colon_x, 38, ":");
+
+    int h_w = oled.getStrWidth(h_str);
+    int h_x = colon_x - h_w - 4;
+    oled.drawStr(h_x, 38, h_str);
+
+    int m_x = colon_x + 10;
+    oled.drawStr(m_x, 38, m_str);
+
+    if (field == 0) {
+        oled.drawFrame(h_x - 2, 16, h_w + 4, 25);
+    } else {
+        int m_w = oled.getStrWidth(m_str);
+        oled.drawFrame(m_x - 2, 16, m_w + 4, 25);
+    }
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(16, 48, field == 0 ? "ADJUSTING: HOUR" : "ADJUSTING: MINUTE");
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.drawStr(2, 60, "[UP/DN] SET   [OK] NEXT/SAVE");
+}
+
+void DisplayManager::drawClockWorldClock() {
+    int tz_idx = settingsManager.get().world_clock_tz_idx;
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "WORLD CLOCK");
+    oled.drawLine(0, 9, 128, 9);
+
+    oled.setFont(u8g2_font_6x10_tr);
+    String city = timekeeping.getWorldCityName(tz_idx);
+    String offset = timekeeping.getWorldDateOffsetStr(tz_idx);
+    oled.drawStr(4, 20, city.c_str());
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(80, 20, offset.c_str());
+
+    oled.setFont(u8g2_font_logisoso16_tr);
+    String timeStr = timekeeping.getWorldTimeStr(tz_idx);
+    int w = oled.getStrWidth(timeStr.c_str());
+    oled.drawStr((128 - w) / 2, 39, timeStr.c_str());
+
+    oled.setFont(u8g2_font_4x6_tr);
+    String locTime = "LOCAL: " + qclock.getTimeStr();
+    oled.drawStr(4, 49, locTime.c_str());
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.drawStr(2, 60, "[UP/DN] PREV/NEXT CITY");
+}
+
+void DisplayManager::drawClockPedometer() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "PEDOMETER / STEPS");
+    oled.drawLine(0, 9, 128, 9);
+
+    uint32_t steps = timekeeping.pedometer.getSteps();
+    uint32_t goal = settingsManager.get().step_goal;
+
+    oled.setFont(u8g2_font_6x10_tr);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "STEPS: %lu", (unsigned long)steps);
+    oled.drawStr(4, 20, buf);
+
+    oled.drawFrame(4, 24, 120, 6);
+    int bar_w = min(118, (int)((steps * 118) / (goal > 0 ? goal : 10000)));
+    if (bar_w > 0) oled.drawBox(5, 25, bar_w, 4);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    float dist = timekeeping.pedometer.getDistanceKm();
+    uint32_t cal = timekeeping.pedometer.getCaloriesKcal();
+    int pct = goal > 0 ? (int)((steps * 100) / goal) : 0;
+    snprintf(buf, sizeof(buf), "DIST: %.2f km  CAL: %lu kcal", dist, (unsigned long)cal);
+    oled.drawStr(4, 38, buf);
+
+    snprintf(buf, sizeof(buf), "GOAL: %lu (%d%%)", (unsigned long)goal, pct);
+    oled.drawStr(4, 47, buf);
+
+    oled.drawLine(0, 52, 128, 52);
+    oled.drawStr(2, 60, "[UP/DN] GOAL  [OK] RESET STEPS");
 }
 
 void DisplayManager::drawAppWeather() {
