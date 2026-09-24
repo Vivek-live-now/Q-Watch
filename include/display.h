@@ -75,6 +75,13 @@ private:
     void drawAppApps();
     void drawAppAnimList();
     void drawAppAnimPlayer();
+    void drawAppWireless();
+    void drawReconMainMenu();
+    void drawBleList();
+    void drawBleRadar();
+    void drawWifiSpectrum();
+    void drawDeauthDetect();
+    void drawPacketMonitor();
     void drawStorageInfo();
 
     // Settings Screens Rendering

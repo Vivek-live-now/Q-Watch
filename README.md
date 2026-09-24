@@ -148,6 +148,15 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Custom Boot Animation & Instant Skip:** On cold boot or reset, plays `/boot/boot.anim` or `/boot/boot.bmp` if installed, or falls back to the MI6 tactical radar sweep sequence. Any button press immediately skips boot animation to launch straight into the watch face.
 * **Animation Tooling (`tools/anim_packer.py`):** Standalone CLI tool to pack frame sequences, inspect metadata, and generate procedural animations (`radar.anim`, `gunbarrel.anim`).
 
+### Milestone 14: Tactical Wireless Recon Suite (Wi-Fi & Bluetooth Tools)
+* **Dedicated Recon Suite Shell (`SYS MENU -> WIRELESS`):** Integrated tactical wireless suite featuring 4 dedicated sub-applications on the 128x64 OLED display:
+    * **BLE Radar (`BLE RADAR`):** Proximity tracking HUD featuring real-time log-distance path loss distance estimation ($d \approx 10^{(A - \text{RSSI})/(10n)}$ with calibrated $A = -59\text{ dBm}, n = 2.4$), rotating 52px tactical reticle with sweep line, directional target lock brackets, live RSSI signal strength gauge, target cycling, and acoustic Geiger counter tick rate scaling (tick intervals shortening from 1200ms at long range to 60ms at point-blank range).
+    * **Wi-Fi Channel Spectrum Analyzer (`CH SPECTRUM`):** 2.4GHz spectrum analyzer scanning across channels 1 through 13. Computes AP density histogram, highlights non-overlapping channels (1, 6, 11), recommends cleanest channel (`REC: CH X`), and supports on-demand rescan via `[OK]`.
+    * **802.11 Deauth / Disassociation Attack Detector (`DEAUTH DETECT`):** Promiscuous 802.11 IDS sentry that detects and logs frame control deauthentication (`0x00C0`) and disassociation (`0x00A0`) floods. Computes flood rates (deauths/sec), identifies attacking transmitter MAC and target victim MAC, extracts 802.11 reason codes, and triggers flashing visual alerts and acoustic alarm chimes. Supports channel cycling via `[UP]`/`[DN]` and stats reset via `[OK]`.
+    * **Promiscuous Packet Monitor (`PKT MONITOR`):** Non-blocking 802.11 air traffic sniffer displaying live packets/second rate, a 64-sample scrolling histogram rate graph, cumulative packet tally, and real-time percentage breakdown and multi-segment bar for Management, Control, and Data frames.
+* **Zero SRAM Allocation & Fast UI Dispatch:** Fully non-blocking promiscuous frame parsing operating directly on incoming packet buffers. Integrated with high-framerate (20-50 FPS) UI render loop for smooth radar rotation and live packet graph rendering.
+* **Automated Verification:** Comprehensive host test suite (`tests/test_wireless_recon.cpp`) verifying 802.11 frame control parsing, deauth attack detection logic, logarithmic BLE proximity distance math, Wi-Fi channel tallying, and packet type distribution.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

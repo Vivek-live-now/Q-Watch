@@ -16,6 +16,7 @@
 #include "timekeeping.h"
 #include "qapp_loader.h"
 #include "anim_engine.h"
+#include "wireless_recon.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -75,7 +76,14 @@ UICore::UICore() :
     anim_scroll_offset(0),
     anim_hud_visible(false),
     anim_hud_timer(0),
-    anim_return_state(UIState::APP_ANIM_LIST) {
+    anim_return_state(UIState::APP_ANIM_LIST),
+    recon_submenu(ReconSubmenu::MAIN),
+    recon_selection(0),
+    recon_scroll_offset(0),
+    ble_list_selection(0),
+    ble_list_scroll_offset(0),
+    last_radar_tick_time(0),
+    radar_sweep_angle(0.0f) {
     toast_msg[0] = '\0';
 }
 
@@ -195,6 +203,32 @@ void UICore::loop() {
             anim_hud_visible = false;
             needs_redraw = true;
         }
+    }
+
+    if (current_state == UIState::APP_WIRELESS) {
+        wirelessRecon.loop();
+        radar_sweep_angle += 0.12f;
+        if (radar_sweep_angle >= 6.2831853f) radar_sweep_angle -= 6.2831853f;
+
+        if (recon_submenu == ReconSubmenu::BLE_RADAR && wirelessRecon.hasTargetLock()) {
+            const BleTarget* tgt = wirelessRecon.getLockedTarget();
+            if (tgt) {
+                uint16_t interval = wirelessRecon.getGeigerTickInterval(tgt->rssi);
+                if (interval > 0 && (millis() - last_radar_tick_time >= interval)) {
+                    last_radar_tick_time = millis();
+                    soundManager.playTone(2800, 12);
+                }
+            }
+        } else if (recon_submenu == ReconSubmenu::DEAUTH_DETECT) {
+            if (wirelessRecon.isAttackDetected()) {
+                static uint32_t last_alarm = 0;
+                if (millis() - last_alarm > 600) {
+                    last_alarm = millis();
+                    soundManager.playTone(3200, 40);
+                }
+            }
+        }
+        needs_redraw = true;
     }
 
     if (current_state == UIState::APP_IR && (ir_submenu == IrSubmenu::IR_READ_WAIT || ir_submenu == IrSubmenu::QUICK_REMOTE_WAIT)) {
@@ -320,8 +354,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (settings_submenu == SettingsSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 14;
-                menu_scroll_offset = 12;
+                menu_selection = 15;
+                menu_scroll_offset = 13;
             } else {
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
@@ -388,8 +422,8 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ABOUT) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 15;
-            menu_scroll_offset = 13;
+            menu_selection = 16;
+            menu_scroll_offset = 14;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_ANIM_LIST) {
@@ -403,6 +437,26 @@ void UICore::loop() {
             animEngine.close();
             soundManager.playNavBack();
             current_state = anim_return_state;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_WIRELESS) {
+            soundManager.playNavBack();
+            if (recon_submenu == ReconSubmenu::MAIN) {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 14;
+                menu_scroll_offset = 12;
+            } else if (recon_submenu == ReconSubmenu::BLE_RADAR) {
+                recon_submenu = ReconSubmenu::BLE_LIST;
+            } else {
+                if (recon_submenu == ReconSubmenu::BLE_LIST) {
+                    wirelessRecon.stopBleScan();
+                } else if (recon_submenu == ReconSubmenu::DEAUTH_DETECT) {
+                    wirelessRecon.stopDeauthMonitor();
+                } else if (recon_submenu == ReconSubmenu::PKT_MONITOR) {
+                    wirelessRecon.stopPacketMonitor();
+                }
+                recon_submenu = ReconSubmenu::MAIN;
+            }
             needs_redraw = true;
             return;
         } else {
@@ -435,6 +489,12 @@ void UICore::loop() {
             current_state = UIState::MAIN_MENU;
         } else if (current_state == UIState::APP_ANIM_LIST) {
             current_state = UIState::MAIN_MENU;
+        } else if (current_state == UIState::APP_WIRELESS) {
+            wirelessRecon.stopBleScan();
+            wirelessRecon.stopDeauthMonitor();
+            wirelessRecon.stopPacketMonitor();
+            recon_submenu = ReconSubmenu::MAIN;
+            current_state = UIState::MAIN_MENU;
         } else {
             current_state = UIState::APP_HOME;
         }
@@ -457,6 +517,7 @@ void UICore::loop() {
         case UIState::APP_RUNNING: handleAppRunningInput(); break;
         case UIState::APP_ANIM_LIST: handleAnimListInput(); break;
         case UIState::APP_ANIM_PLAYER: handleAnimPlayerInput(); break;
+        case UIState::APP_WIRELESS: handleWirelessInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
         case UIState::VALUE_EDIT: handleValueEditInput(); break;
@@ -1328,12 +1389,18 @@ void UICore::handleMainMenuInput() {
             case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
             case 13: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
             case 14:
+                current_state = UIState::APP_WIRELESS;
+                recon_submenu = ReconSubmenu::MAIN;
+                recon_selection = 0;
+                recon_scroll_offset = 0;
+                break;
+            case 15:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 15: current_state = UIState::APP_ABOUT; break;
+            case 16: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -2643,6 +2710,194 @@ void UICore::handleFileServerDetailsInput() {
         SettingsData& s = settingsManager.get();
         s.fileserver_enabled = !s.fileserver_enabled;
         settingsManager.save();
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleWirelessInput() {
+    switch (recon_submenu) {
+        case ReconSubmenu::MAIN: handleReconMainInput(); break;
+        case ReconSubmenu::BLE_LIST: handleBleListInput(); break;
+        case ReconSubmenu::BLE_RADAR: handleBleRadarInput(); break;
+        case ReconSubmenu::WIFI_SPECTRUM: handleWifiSpectrumInput(); break;
+        case ReconSubmenu::DEAUTH_DETECT: handleDeauthDetectInput(); break;
+        case ReconSubmenu::PKT_MONITOR: handlePacketMonitorInput(); break;
+    }
+}
+
+void UICore::handleReconMainInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (recon_selection > 0) {
+            recon_selection--;
+            if (recon_selection < recon_scroll_offset) recon_scroll_offset = recon_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (recon_selection < RECON_MAIN_ITEM_COUNT - 1) {
+            recon_selection++;
+            if (recon_selection >= recon_scroll_offset + 3) recon_scroll_offset = recon_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        switch (recon_selection) {
+            case 0:
+                recon_submenu = ReconSubmenu::BLE_LIST;
+                ble_list_selection = 0;
+                ble_list_scroll_offset = 0;
+                wirelessRecon.startBleScan();
+                break;
+            case 1:
+                recon_submenu = ReconSubmenu::WIFI_SPECTRUM;
+                wirelessRecon.startChannelScan();
+                break;
+            case 2:
+                recon_submenu = ReconSubmenu::DEAUTH_DETECT;
+                wirelessRecon.startDeauthMonitor(1);
+                break;
+            case 3:
+                recon_submenu = ReconSubmenu::PKT_MONITOR;
+                wirelessRecon.startPacketMonitor(1);
+                break;
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleBleListInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    int count = wirelessRecon.getBleTargetCount();
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (ble_list_selection > 0) {
+            ble_list_selection--;
+            if (ble_list_selection < ble_list_scroll_offset) ble_list_scroll_offset = ble_list_selection;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (ble_list_selection < count - 1) {
+            ble_list_selection++;
+            if (ble_list_selection >= ble_list_scroll_offset + 3) ble_list_scroll_offset = ble_list_selection - 2;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (count > 0) {
+            wirelessRecon.lockTarget(ble_list_selection);
+            recon_submenu = ReconSubmenu::BLE_RADAR;
+            showToast("[TARGET LOCKED]", 1000);
+        } else {
+            wirelessRecon.startBleScan();
+            showToast("[SCANNING BLE]", 1000);
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleBleRadarInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    int count = wirelessRecon.getBleTargetCount();
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (count > 1) {
+            int next_idx = (wirelessRecon.getLockedTargetIdx() + 1) % count;
+            wirelessRecon.lockTarget(next_idx);
+            ble_list_selection = next_idx;
+            showToast("[TARGET CYCLED]", 800);
+        } else {
+            showToast("[TARGET LOCKED]", 800);
+        }
+        needs_redraw = true;
+    } else if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (count > 1) {
+            int prev_idx = (wirelessRecon.getLockedTargetIdx() + count - 1) % count;
+            wirelessRecon.lockTarget(prev_idx);
+            ble_list_selection = prev_idx;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (count > 1) {
+            int next_idx = (wirelessRecon.getLockedTargetIdx() + 1) % count;
+            wirelessRecon.lockTarget(next_idx);
+            ble_list_selection = next_idx;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    }
+}
+
+void UICore::handleWifiSpectrumInput() {
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        wirelessRecon.startChannelScan();
+        showToast("[SCANNING...]", 1000);
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleDeauthDetectInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        wirelessRecon.resetDeauthStats();
+        showToast("[ALERTS RESET]", 1000);
+        needs_redraw = true;
+    } else if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        wirelessRecon.cycleChannel();
+        soundManager.playNavMove();
+        char buf[20];
+        snprintf(buf, sizeof(buf), "[CH %u MON]", wirelessRecon.getActiveChannel());
+        showToast(buf, 800);
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        wirelessRecon.cycleChannel();
+        soundManager.playNavMove();
+        char buf[20];
+        snprintf(buf, sizeof(buf), "[CH %u MON]", wirelessRecon.getActiveChannel());
+        showToast(buf, 800);
+        needs_redraw = true;
+    }
+}
+
+void UICore::handlePacketMonitorInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        wirelessRecon.cycleChannel();
+        soundManager.playNavSelect();
+        char buf[20];
+        snprintf(buf, sizeof(buf), "[CH %u LOCKED]", wirelessRecon.getActiveChannel());
+        showToast(buf, 800);
+        needs_redraw = true;
+    } else if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        wirelessRecon.cycleChannel();
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        wirelessRecon.cycleChannel();
+        soundManager.playNavMove();
         needs_redraw = true;
     }
 }

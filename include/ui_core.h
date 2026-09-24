@@ -108,10 +108,20 @@ enum class UIState {
     APP_RUNNING,
     APP_ANIM_LIST,
     APP_ANIM_PLAYER,
+    APP_WIRELESS,
     APP_STORAGE_INFO,
     APP_KEYBOARD,
     VALUE_EDIT,
     SLEEPING
+};
+
+enum class ReconSubmenu {
+    MAIN,
+    BLE_LIST,
+    BLE_RADAR,
+    WIFI_SPECTRUM,
+    DEAUTH_DETECT,
+    PKT_MONITOR
 };
 
 class UICore {
@@ -254,10 +264,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 16;
+    static const int MAIN_MENU_ITEM_COUNT = 17;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "WIRELESS", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;
@@ -571,6 +581,34 @@ public:
         return 0;
     }
     bool isAnimHudVisible() const { return anim_hud_visible; }
+
+    static const int RECON_MAIN_ITEM_COUNT = 4;
+    const char* recon_main_items[RECON_MAIN_ITEM_COUNT] = {
+        "BLE RADAR", "CH SPECTRUM", "DEAUTH DETECT", "PKT MONITOR"
+    };
+
+    ReconSubmenu recon_submenu;
+    int recon_selection;
+    int recon_scroll_offset;
+    int ble_list_selection;
+    int ble_list_scroll_offset;
+    uint32_t last_radar_tick_time;
+    float radar_sweep_angle;
+
+    void handleWirelessInput();
+    void handleReconMainInput();
+    void handleBleListInput();
+    void handleBleRadarInput();
+    void handleWifiSpectrumInput();
+    void handleDeauthDetectInput();
+    void handlePacketMonitorInput();
+
+    ReconSubmenu getReconSubmenu() const { return recon_submenu; }
+    int getReconSelection() const { return recon_selection; }
+    int getReconScrollOffset() const { return recon_scroll_offset; }
+    int getBleListSelection() const { return ble_list_selection; }
+    int getBleListScrollOffset() const { return ble_list_scroll_offset; }
+    float getRadarSweepAngle() const { return radar_sweep_angle; }
 
     void processNavUp();
     void processNavDown();

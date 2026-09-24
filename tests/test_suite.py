@@ -261,6 +261,27 @@ def test_animation_engine():
 
     print("  [PASS] AnimHeader spec, multi-frame .anim playback, 1-bit BMP bit reversal, and boot config verified.")
 
+def test_wireless_recon():
+    print("\n--- 8. Tactical Wireless Recon Suite Test ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    bin_path = os.path.join(os.path.dirname(__file__), "test_wireless_recon_bin")
+
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude",
+        "tests/test_wireless_recon.cpp", "src/wireless_recon.cpp",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_wireless_recon_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_wireless_recon_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
+    assert "ALL WIRELESS RECON TESTS PASSED!" in run_res.stdout, "Wireless recon tests verification string missing"
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
+
+    print("  [PASS] 802.11 parsing, deauth flood detection, BLE radar log-distance proximity, and packet monitor verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -269,4 +290,5 @@ if __name__ == "__main__":
     test_analog_trigonometry()
     test_qapp_abi_and_system()
     test_animation_engine()
+    test_wireless_recon()
     print("\nAll self-test verifications PASSED!")

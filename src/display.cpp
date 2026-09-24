@@ -17,6 +17,7 @@
 #include "timekeeping.h"
 #include "qapp_loader.h"
 #include "anim_engine.h"
+#include "wireless_recon.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -58,6 +59,7 @@ void DisplayManager::update() {
             case UIState::APP_RUNNING: qappLoader.render(); break;
             case UIState::APP_ANIM_LIST: drawAppAnimList(); break;
             case UIState::APP_ANIM_PLAYER: drawAppAnimPlayer(); break;
+            case UIState::APP_WIRELESS: drawAppWireless(); break;
             case UIState::APP_STORAGE_INFO: drawStorageInfo(); break;
 
             case UIState::MAIN_MENU:
@@ -2590,4 +2592,316 @@ void DisplayManager::drawAppAudio() {
 
     drawTopStatusBar();
     drawToastOverlay();
+}
+
+void DisplayManager::drawAppWireless() {
+    switch (ui.getReconSubmenu()) {
+        case ReconSubmenu::MAIN:
+            drawReconMainMenu();
+            break;
+        case ReconSubmenu::BLE_LIST:
+            drawBleList();
+            break;
+        case ReconSubmenu::BLE_RADAR:
+            drawBleRadar();
+            break;
+        case ReconSubmenu::WIFI_SPECTRUM:
+            drawWifiSpectrum();
+            break;
+        case ReconSubmenu::DEAUTH_DETECT:
+            drawDeauthDetect();
+            break;
+        case ReconSubmenu::PKT_MONITOR:
+            drawPacketMonitor();
+            break;
+    }
+}
+
+void DisplayManager::drawReconMainMenu() {
+    drawStandardMenu("TACTICAL RECON", ui.recon_main_items, UICore::RECON_MAIN_ITEM_COUNT, ui.getReconSelection(), ui.getReconScrollOffset());
+    drawTopStatusBar();
+}
+
+void DisplayManager::drawBleList() {
+    drawTopStatusBar();
+
+    oled.setFont(u8g2_font_5x7_tf);
+    int count = wirelessRecon.getBleTargetCount();
+    char header[32];
+    snprintf(header, sizeof(header), "BLE SCAN (%d)", count);
+    oled.drawStr(0, 18, header);
+    oled.drawHLine(0, 21, 128);
+
+    if (count == 0) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(12, 38, "NO TARGETS FOUND");
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(12, 52, "[OK]: START SCAN");
+        return;
+    }
+
+    int sel = ui.getBleListSelection();
+    int offset = ui.getBleListScrollOffset();
+
+    for (int i = 0; i < 3; i++) {
+        int idx = offset + i;
+        if (idx >= count) break;
+
+        const BleTarget* tgt = wirelessRecon.getBleTarget(idx);
+        if (!tgt) continue;
+
+        int y = 34 + (i * 12);
+
+        if (idx == sel) {
+            oled.drawBox(0, y - 9, 120, 11);
+            oled.setDrawColor(0);
+            oled.setFont(u8g2_font_6x10_tf);
+            oled.drawStr(2, y, tgt->name[0] ? tgt->name : tgt->mac);
+
+            char rssi_str[12];
+            snprintf(rssi_str, sizeof(rssi_str), "%ddB", tgt->rssi);
+            int rw = oled.getStrWidth(rssi_str);
+            oled.drawStr(118 - rw, y, rssi_str);
+            oled.setDrawColor(1);
+        } else {
+            oled.setFont(u8g2_font_6x10_tf);
+            oled.drawStr(2, y, tgt->name[0] ? tgt->name : tgt->mac);
+
+            char rssi_str[12];
+            snprintf(rssi_str, sizeof(rssi_str), "%ddB", tgt->rssi);
+            int rw = oled.getStrWidth(rssi_str);
+            oled.drawStr(118 - rw, y, rssi_str);
+        }
+    }
+
+    drawScrollBar(offset, count);
+}
+
+void DisplayManager::drawBleRadar() {
+    int cx = 30;
+    int cy = 34;
+
+    // Draw tactical radar reticle
+    oled.drawCircle(cx, cy, 26);
+    oled.drawCircle(cx, cy, 17);
+    oled.drawCircle(cx, cy, 8);
+    oled.drawHLine(cx - 26, cy, 53);
+    oled.drawVLine(cx, cy - 26, 53);
+
+    // Rotating sweep line
+    float sweep = ui.getRadarSweepAngle();
+    int sx = cx + (int)(26.0f * cosf(sweep));
+    int sy = cy + (int)(26.0f * sinf(sweep));
+    oled.drawLine(cx, cy, sx, sy);
+
+    // Target blip and lock brackets
+    if (wirelessRecon.hasTargetLock()) {
+        const BleTarget* tgt = wirelessRecon.getLockedTarget();
+        if (tgt) {
+            float dist = wirelessRecon.getTargetEstimatedDistance(tgt->rssi);
+            float norm = (dist > 12.0f ? 12.0f : dist) / 12.0f;
+            int blip_r = (int)(norm * 20.0f) + 4;
+
+            int hash = ((uint8_t)tgt->mac[15] * 13 + (uint8_t)tgt->mac[16] * 7) % 360;
+            float bearing = hash * 0.0174532925f;
+            int bx = cx + (int)(blip_r * cosf(bearing));
+            int by = cy + (int)(blip_r * sinf(bearing));
+
+            oled.drawDisc(bx, by, 2);
+            oled.drawFrame(bx - 3, by - 3, 7, 7);
+        }
+    }
+
+    // Right side: Target HUD info
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(62, 13, "RADAR LOCK");
+    oled.drawHLine(60, 15, 68);
+
+    if (wirelessRecon.hasTargetLock()) {
+        const BleTarget* tgt = wirelessRecon.getLockedTarget();
+        if (tgt) {
+            char name_buf[14];
+            if (tgt->name[0]) {
+                strncpy(name_buf, tgt->name, 11);
+                name_buf[11] = '\0';
+            } else {
+                strncpy(name_buf, tgt->mac + 9, 8);
+                name_buf[8] = '\0';
+            }
+            oled.drawStr(62, 25, name_buf);
+
+            float dist = wirelessRecon.getTargetEstimatedDistance(tgt->rssi);
+            char d_buf[16];
+            if (dist < 10.0f) {
+                snprintf(d_buf, sizeof(d_buf), "D: %.1fm", dist);
+            } else {
+                snprintf(d_buf, sizeof(d_buf), "D: >10m");
+            }
+            oled.drawStr(62, 35, d_buf);
+
+            char rssi_buf[16];
+            snprintf(rssi_buf, sizeof(rssi_buf), "SIG: %ddB", tgt->rssi);
+            oled.drawStr(62, 45, rssi_buf);
+
+            oled.drawFrame(62, 49, 62, 6);
+            int bar_w = (tgt->rssi + 100) * 58 / 65;
+            if (bar_w < 0) bar_w = 0;
+            if (bar_w > 58) bar_w = 58;
+            if (bar_w > 0) oled.drawBox(64, 51, bar_w, 2);
+
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(62, 62, "OK: CYCLE TGT");
+        }
+    } else {
+        oled.drawStr(62, 28, "NO TARGET");
+        oled.drawStr(62, 40, "LOCKED");
+    }
+}
+
+void DisplayManager::drawWifiSpectrum() {
+    oled.setFont(u8g2_font_5x7_tf);
+    char hdr[32];
+    snprintf(hdr, sizeof(hdr), "2.4G SPECTRUM APs:%u", wirelessRecon.getTotalApsFound());
+    oled.drawStr(2, 11, hdr);
+
+    uint8_t best_ch = wirelessRecon.getBestChannel();
+    char rec_buf[18];
+    snprintf(rec_buf, sizeof(rec_buf), "REC: CH%u", best_ch);
+    int rw = oled.getStrWidth(rec_buf);
+    oled.drawStr(126 - rw, 11, rec_buf);
+    oled.drawHLine(0, 13, 128);
+
+    const WifiChannelStat* stats = wirelessRecon.getChannelStats();
+    int start_x = 4;
+    int bar_w = 7;
+    int spacing = 2;
+
+    for (int i = 0; i < 13; i++) {
+        uint8_t ch = i + 1;
+        int x = start_x + i * (bar_w + spacing);
+        uint16_t ap_count = stats[i].ap_count;
+        int bar_h = ap_count * 5;
+        if (bar_h > 32) bar_h = 32;
+        if (bar_h < 1 && ap_count > 0) bar_h = 1;
+
+        if (bar_h > 0) oled.drawBox(x, 49 - bar_h, bar_w, bar_h);
+
+        if (ch == best_ch) {
+            oled.drawPixel(x + 3, 49 - bar_h - 3);
+            oled.drawPixel(x + 2, 49 - bar_h - 2);
+            oled.drawPixel(x + 4, 49 - bar_h - 2);
+        }
+    }
+
+    oled.drawHLine(0, 50, 128);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(start_x + 0 * 9 + 2, 58, "1");
+    oled.drawStr(start_x + 5 * 9 + 2, 58, "6");
+    oled.drawStr(start_x + 10 * 9, 58, "11");
+
+    for (int i = 0; i < 13; i++) {
+        int x = start_x + i * 9 + 3;
+        oled.drawVLine(x, 51, 2);
+    }
+
+    oled.drawStr(2, 64, "[OK]: RESCAN CHANNELS");
+}
+
+void DisplayManager::drawDeauthDetect() {
+    if (wirelessRecon.isAttackDetected()) {
+        oled.drawBox(0, 0, 128, 13);
+        oled.setDrawColor(0);
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(8, 10, "! DEAUTH ATTACK !");
+        oled.setDrawColor(1);
+
+        oled.setFont(u8g2_font_5x7_tf);
+        const DeauthAttackEvent& evt = wirelessRecon.getLastAttackEvent();
+        char buf[36];
+        snprintf(buf, sizeof(buf), "RATE: %u/s  TOT: %u", wirelessRecon.getDeauthRatePerSec(), wirelessRecon.getDeauthCount());
+        oled.drawStr(2, 23, buf);
+
+        char src_str[18], tgt_str[18];
+        WirelessRecon::formatMac(evt.source_mac.bytes, src_str, sizeof(src_str));
+        WirelessRecon::formatMac(evt.target_mac.bytes, tgt_str, sizeof(tgt_str));
+
+        snprintf(buf, sizeof(buf), "ATK: %s", src_str);
+        oled.drawStr(2, 34, buf);
+        snprintf(buf, sizeof(buf), "VIC: %s", tgt_str);
+        oled.drawStr(2, 45, buf);
+        snprintf(buf, sizeof(buf), "SIG: %ddB  RC: 0x%02X", evt.rssi, evt.reason_code);
+        oled.drawStr(2, 56, buf);
+
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(2, 64, "UP/DN: CH   OK: RESET");
+    } else {
+        drawTopStatusBar();
+
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(0, 18, "802.11 IDS SENTRY");
+        oled.drawHLine(0, 21, 128);
+
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(4, 33, "STATUS: ALL CLEAR");
+
+        oled.setFont(u8g2_font_5x7_tf);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "CH: %u (PROMISCUOUS)", wirelessRecon.getActiveChannel());
+        oled.drawStr(4, 44, buf);
+        snprintf(buf, sizeof(buf), "LOGGED DEAUTHS: %u", wirelessRecon.getDeauthCount());
+        oled.drawStr(4, 54, buf);
+
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 63, "UP/DN: CH   OK: RESET");
+    }
+}
+
+void DisplayManager::drawPacketMonitor() {
+    oled.setFont(u8g2_font_5x7_tf);
+    char hdr[32];
+    snprintf(hdr, sizeof(hdr), "PKT MON CH%u", wirelessRecon.getActiveChannel());
+    oled.drawStr(2, 9, hdr);
+
+    char rate_str[24];
+    snprintf(rate_str, sizeof(rate_str), "%u pkts/s", wirelessRecon.getCurrentPacketRate());
+    int rw = oled.getStrWidth(rate_str);
+    oled.drawStr(126 - rw, 9, rate_str);
+    oled.drawHLine(0, 11, 128);
+
+    const uint8_t* history = wirelessRecon.getPacketRateHistory();
+    for (int i = 0; i < 64; i++) {
+        uint8_t val = history[i];
+        int h = (val > 30 ? 30 : val);
+        if (h > 0) {
+            oled.drawVLine(i * 2, 44 - h, h);
+            oled.drawVLine(i * 2 + 1, 44 - h, h);
+        }
+    }
+    oled.drawHLine(0, 45, 128);
+
+    uint8_t mgmt, ctrl, data;
+    wirelessRecon.getPacketTypePercentages(mgmt, ctrl, data);
+    char brk[36];
+    snprintf(brk, sizeof(brk), "M:%u%% C:%u%% D:%u%%", mgmt, ctrl, data);
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(2, 54, brk);
+
+    char tot[20];
+    snprintf(tot, sizeof(tot), "N:%u", wirelessRecon.getTotalPackets());
+    int tw = oled.getStrWidth(tot);
+    oled.drawStr(126 - tw, 54, tot);
+
+    oled.drawFrame(2, 57, 124, 6);
+    int mgmt_w = (mgmt * 120) / 100;
+    int ctrl_w = (ctrl * 120) / 100;
+    int data_w = 120 - mgmt_w - ctrl_w;
+    if (mgmt_w > 0) oled.drawBox(4, 59, mgmt_w, 2);
+    if (ctrl_w > 0) {
+        for (int x = 4 + mgmt_w; x < 4 + mgmt_w + ctrl_w; x += 2) {
+            oled.drawPixel(x, 59);
+            oled.drawPixel(x, 60);
+        }
+    }
+    if (data_w > 0) oled.drawBox(4 + mgmt_w + ctrl_w, 59, data_w, 2);
 }
