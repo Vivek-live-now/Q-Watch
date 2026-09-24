@@ -15,6 +15,7 @@ val TacticalCyanDim = Color(0x3300E5FF)
 val TacticalGreen = Color(0xFF00FF66)
 val TacticalGreenDim = Color(0x3300FF66)
 val TacticalRed = Color(0xFFFF3366)
+val TacticalRedDim = Color(0x33FF3366)
 
 val TextPrimary = Color(0xFFEEEEEE)
 val TextSecondary = Color(0xFF888E9E)
