@@ -499,8 +499,7 @@ void WirelessRecon::loop() {
             attack_alert_timer = now;
 #ifdef ARDUINO
             soundManager.playAlert();
-            ledManager.setMode(LEDMode::STROBE);
-            ledManager.setColor(255, 0, 0); // Red alert
+            ledManager.triggerPulse(CRGB::Red, 3, 60);
 #endif
         } else if (attack_in_progress && now - attack_alert_timer > 3000) {
             attack_in_progress = false;
