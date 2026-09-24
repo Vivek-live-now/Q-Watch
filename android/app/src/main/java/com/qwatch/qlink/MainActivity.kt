@@ -1,6 +1,7 @@
 package com.qwatch.qlink
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -18,22 +19,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.qwatch.qlink.model.ConnectionState
 import com.qwatch.qlink.protocol.QLinkClient
+import com.qwatch.qlink.protocol.QLinkConstants
 import com.qwatch.qlink.ui.screens.*
 import com.qwatch.qlink.ui.theme.*
+import kotlinx.coroutines.launch
 
 enum class Screen(val title: String, val icon: ImageVector) {
-    DASHBOARD("DASHBOARD", Icons.Default.Dashboard),
-    MIRROR("OLED MIRROR", Icons.Default.Tv),
+    DASHBOARD("HOME", Icons.Default.Dashboard),
+    MIRROR("MIRROR", Icons.Default.Tv),
     SENSORS("SENSORS", Icons.Default.Speed),
     FILES("FILES", Icons.Default.Folder),
     APPS("APPS", Icons.Default.Apps),
     NOTIFICATIONS("ALERTS", Icons.Default.Notifications),
-    SETTINGS("SETTINGS", Icons.Default.Settings)
+    SETTINGS("CONFIG", Icons.Default.Settings)
 }
 
 class MainActivity : ComponentActivity() {
@@ -45,6 +50,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestRequiredPermissions()
+
+        val prefs = getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+        val savedHost = prefs.getString("wifi_host", QLinkConstants.DEFAULT_HOTSPOT_IP) ?: QLinkConstants.DEFAULT_HOTSPOT_IP
+
+        // Auto-connect to saved Q-Watch target in background
+        lifecycleScope.launch {
+            QLinkClient.instance.connectWifi(savedHost)
+        }
 
         setContent {
             QLinkTheme {
@@ -151,11 +164,15 @@ fun MainAppScaffold() {
                         label = {
                             Text(
                                 text = screen.title,
-                                fontSize = 8.sp,
+                                fontSize = 7.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
                                 fontFamily = FontFamily.Monospace,
                                 color = if (isSelected) TacticalCyan else TextMuted
                             )
                         },
+                        alwaysShowLabel = true,
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = TacticalCyanDim
                         )

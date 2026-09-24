@@ -27,8 +27,13 @@ class QLinkWifiTransport(
         .build()
 
     private var hostAddress: String = QLinkConstants.DEFAULT_HOTSPOT_IP
+    fun getHost(): String = hostAddress
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: Flow<ConnectionState> = _connectionState.asStateFlow()
+
+    private val _lastError = MutableStateFlow<String?>(null)
+    val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
     private val _telemetryFlow = MutableSharedFlow<TelemetrySnapshot>(extraBufferCapacity = 8)
     override val telemetryFlow: Flow<TelemetrySnapshot> = _telemetryFlow.asSharedFlow()
@@ -49,6 +54,7 @@ class QLinkWifiTransport(
     override suspend fun connect(target: String): Result<Boolean> = withContext(Dispatchers.IO) {
         hostAddress = if (target.isNotBlank()) target.trim() else QLinkConstants.DEFAULT_HOTSPOT_IP
         _connectionState.value = ConnectionState.CONNECTING
+        _lastError.value = null
 
         try {
             val req = Request.Builder()
@@ -58,14 +64,19 @@ class QLinkWifiTransport(
             client.newCall(req).execute().use { response ->
                 if (response.isSuccessful) {
                     _connectionState.value = ConnectionState.CONNECTED_WIFI
+                    _lastError.value = null
                     startTelemetryPolling()
                     Result.success(true)
                 } else {
+                    val msg = "HTTP ${response.code} from Q-Watch ($hostAddress)"
+                    _lastError.value = msg
                     _connectionState.value = ConnectionState.ERROR
-                    Result.failure(IOException("HTTP ${response.code} connecting to Q-Watch"))
+                    Result.failure(IOException(msg))
                 }
             }
         } catch (e: Exception) {
+            val msg = "Cannot reach $hostAddress (${e.message ?: "Unreachable"})"
+            _lastError.value = msg
             _connectionState.value = ConnectionState.ERROR
             Result.failure(e)
         }
@@ -77,6 +88,7 @@ class QLinkWifiTransport(
         telemetryPollJob?.cancel()
         telemetryPollJob = null
         _connectionState.value = ConnectionState.DISCONNECTED
+        _lastError.value = null
     }
 
     override fun isConnected(): Boolean {

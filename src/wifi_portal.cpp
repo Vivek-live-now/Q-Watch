@@ -232,6 +232,9 @@ String WifiPortal::getIP() {
     if (state == WifiState::CONNECTED) {
         return WiFi.localIP().toString();
     }
+    if (state == WifiState::PORTAL) {
+        return WiFi.softAPIP().toString();
+    }
     return "-";
 }
 

@@ -83,6 +83,13 @@ class QLinkClient private constructor() {
         return currentTransport?.isConnected() == true
     }
 
+    fun getTargetHost(): String {
+        return wifiTransport?.getHost() ?: QLinkConstants.DEFAULT_HOTSPOT_IP
+    }
+
+    val lastError: StateFlow<String?>
+        get() = wifiTransport?.lastError ?: MutableStateFlow(null)
+
     suspend fun getDeviceInfo(): Result<DeviceInfo> {
         return currentTransport?.getDeviceInfo() ?: Result.failure(IllegalStateException("Not connected"))
     }

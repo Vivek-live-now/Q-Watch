@@ -141,10 +141,11 @@ String QLinkEngine::generateDeviceInfoJson() {
     json.reserve(512);
 #ifdef ARDUINO
     json = "{\"device\":\"Q-Watch\",\"model\":\"ESP32-S3-SuperMini\",";
-    json += "\"firmware_version\":\"1.4.0\",";
+    json += "\"firmware_version\":\"1.5.0\",";
     json += "\"protocol_version\":\"" QLINK_PROTOCOL_VERSION "\",";
     json += "\"mac\":\"" + WiFi.macAddress() + "\",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    String current_ip = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+    json += "\"ip\":\"" + current_ip + "\",";
     json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
     json += "\"battery\":{\"percent\":" + String(battery.readPercentage()) + ",";
     json += "\"voltage_mv\":" + String((int)(battery.readVoltage() * 1000.0f)) + "},";
@@ -153,7 +154,7 @@ String QLinkEngine::generateDeviceInfoJson() {
     json += "\"fs_used_bytes\":" + String(LittleFS.usedBytes()) + "},";
     json += "\"uptime_sec\":" + String(millis() / 1000) + "}";
 #else
-    json = "{\"device\":\"Q-Watch\",\"firmware_version\":\"1.4.0\",\"protocol_version\":\"" QLINK_PROTOCOL_VERSION "\"}";
+    json = "{\"device\":\"Q-Watch\",\"firmware_version\":\"1.5.0\",\"protocol_version\":\"" QLINK_PROTOCOL_VERSION "\"}";
 #endif
     return json;
 }
