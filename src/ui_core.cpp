@@ -15,6 +15,7 @@
 #include "driver/rtc_io.h"
 #include "timekeeping.h"
 #include "qapp_loader.h"
+#include "anim_engine.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -68,7 +69,13 @@ UICore::UICore() :
     fm_entries(nullptr),
     app_count(0),
     app_selection(0),
-    app_scroll_offset(0) {
+    app_scroll_offset(0),
+    anim_count(0),
+    anim_selection(0),
+    anim_scroll_offset(0),
+    anim_hud_visible(false),
+    anim_hud_timer(0),
+    anim_return_state(UIState::APP_ANIM_LIST) {
     toast_msg[0] = '\0';
 }
 
@@ -176,6 +183,16 @@ void UICore::loop() {
             if (dt < 0.001f) dt = 0.001f;
             last_app_tick = now;
             qappLoader.update(dt);
+            needs_redraw = true;
+        }
+    }
+
+    if (current_state == UIState::APP_ANIM_PLAYER) {
+        if (animEngine.update()) {
+            needs_redraw = true;
+        }
+        if (anim_hud_visible && millis() - anim_hud_timer > 2000) {
+            anim_hud_visible = false;
             needs_redraw = true;
         }
     }
@@ -303,8 +320,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (settings_submenu == SettingsSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 12;
-                menu_scroll_offset = 10;
+                menu_selection = 14;
+                menu_scroll_offset = 12;
             } else {
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
@@ -371,8 +388,21 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ABOUT) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
+            menu_selection = 15;
+            menu_scroll_offset = 13;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_ANIM_LIST) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
             menu_selection = 13;
             menu_scroll_offset = 11;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_ANIM_PLAYER) {
+            animEngine.close();
+            soundManager.playNavBack();
+            current_state = anim_return_state;
             needs_redraw = true;
             return;
         } else {
@@ -385,7 +415,7 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-    } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME)) {
+    } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER)) {
         soundManager.playNavBack();
         if (current_state == UIState::APP_IR) {
             if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
@@ -400,6 +430,11 @@ void UICore::loop() {
             clock_selection = 0;
             clock_scroll_offset = 0;
             current_state = UIState::APP_HOME;
+        } else if (current_state == UIState::APP_ANIM_PLAYER) {
+            animEngine.close();
+            current_state = UIState::MAIN_MENU;
+        } else if (current_state == UIState::APP_ANIM_LIST) {
+            current_state = UIState::MAIN_MENU;
         } else {
             current_state = UIState::APP_HOME;
         }
@@ -420,6 +455,8 @@ void UICore::loop() {
         case UIState::APP_FILE_MANAGER: handleFileManagerInput(); break;
         case UIState::APP_APPS: handleAppsInput(); break;
         case UIState::APP_RUNNING: handleAppRunningInput(); break;
+        case UIState::APP_ANIM_LIST: handleAnimListInput(); break;
+        case UIState::APP_ANIM_PLAYER: handleAnimPlayerInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
         case UIState::VALUE_EDIT: handleValueEditInput(); break;
@@ -1289,13 +1326,14 @@ void UICore::handleMainMenuInput() {
             case 10: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
             case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
             case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
-            case 13:
+            case 13: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
+            case 14:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 14: current_state = UIState::APP_ABOUT; break;
+            case 15: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -1957,12 +1995,32 @@ void UICore::handleFileManagerInput() {
                 loadDirectory(fm_current_path);
             } else {
                 String filename = fm_entries[fm_selection].name;
-                if (filename.endsWith(".ir")) {
+                String lower = filename;
+                lower.toLowerCase();
+                if (lower.endsWith(".ir")) {
                     String fullPath = fm_current_path;
                     if (!fullPath.endsWith("/")) fullPath += "/";
                     fullPath += filename;
                     current_state = UIState::APP_IR;
                     setIrActiveRemotePath(fullPath);
+                } else if (lower.endsWith(".qapp")) {
+                    String fullPath = fm_current_path;
+                    if (!fullPath.endsWith("/")) fullPath += "/";
+                    fullPath += filename;
+                    soundManager.playNavSelect();
+                    QAppErrorCode err = qappLoader.loadApp(fullPath.c_str());
+                    if (err == QAPP_OK) {
+                        current_state = UIState::APP_RUNNING;
+                    } else {
+                        soundManager.playAlert();
+                        showToast("LOAD FAILED", 1500);
+                    }
+                } else if (lower.endsWith(".anim") || lower.endsWith(".bmp")) {
+                    String fullPath = fm_current_path;
+                    if (!fullPath.endsWith("/")) fullPath += "/";
+                    fullPath += filename;
+                    soundManager.playNavSelect();
+                    openAnimationPlayer(fullPath.c_str(), UIState::APP_FILE_MANAGER);
                 }
             }
         }
@@ -2099,6 +2157,181 @@ void UICore::handleAppRunningInput() {
 
             qappLoader.handleButton(qbtn, qevt);
         }
+    }
+}
+
+void UICore::loadAnimList() {
+    anim_count = 0;
+    anim_selection = 0;
+    anim_scroll_offset = 0;
+
+    if (!LittleFS.exists("/anim")) {
+        LittleFS.mkdir("/anim");
+    }
+
+    auto scanDir = [&](const char* dirpath) {
+        if (!LittleFS.exists(dirpath)) return;
+        File dir = LittleFS.open(dirpath);
+        if (!dir || !dir.isDirectory()) return;
+
+        File file = dir.openNextFile();
+        while (file && anim_count < MAX_ANIM_ENTRIES) {
+            String fname = file.name();
+            if (fname.startsWith(dirpath)) {
+                fname = fname.substring(strlen(dirpath));
+                if (fname.startsWith("/")) fname = fname.substring(1);
+            } else if (fname.startsWith("/")) {
+                fname = fname.substring(1);
+            }
+
+            String lower = fname;
+            lower.toLowerCase();
+            if (lower.endsWith(".anim") || lower.endsWith(".bmp")) {
+                AnimEntry& entry = anim_entries[anim_count];
+                entry.filename = fname;
+                String fp = String(dirpath);
+                if (!fp.endsWith("/")) fp += "/";
+                fp += fname;
+                entry.fullPath = fp;
+                entry.isBmp = lower.endsWith(".bmp");
+                entry.frameCount = 1;
+                entry.delayMs = 1000;
+
+                if (!entry.isBmp) {
+                    AnimHeader hdr;
+                    if (file.read((uint8_t*)&hdr, sizeof(hdr)) == sizeof(hdr)) {
+                        if (hdr.magic == ANIM_MAGIC) {
+                            entry.frameCount = hdr.frame_count;
+                            entry.delayMs = hdr.frame_delay_ms;
+                        }
+                    }
+                }
+                anim_count++;
+            }
+            file = dir.openNextFile();
+        }
+    };
+
+    scanDir("/anim");
+    if (anim_count < MAX_ANIM_ENTRIES) {
+        scanDir("/boot");
+    }
+}
+
+void UICore::openAnimationPlayer(const char* filepath, UIState return_state) {
+    if (!filepath || strlen(filepath) == 0) return;
+    anim_return_state = return_state;
+    if (animEngine.open(filepath)) {
+        current_state = UIState::APP_ANIM_PLAYER;
+        anim_hud_visible = true;
+        anim_hud_timer = millis();
+        needs_redraw = true;
+    } else {
+        soundManager.playAlert();
+        showToast("OPEN FAILED", 1500);
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleAnimListInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (anim_selection > 0) {
+            anim_selection--;
+            if (anim_selection < anim_scroll_offset) {
+                anim_scroll_offset = anim_selection;
+            }
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (anim_selection < anim_count - 1) {
+            anim_selection++;
+            if (anim_selection >= anim_scroll_offset + 3) {
+                anim_scroll_offset = anim_selection - 2;
+            }
+            soundManager.playNavMove();
+            needs_redraw = true;
+        }
+    }
+
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (anim_count > 0 && anim_selection < anim_count) {
+            soundManager.playNavSelect();
+            openAnimationPlayer(anim_entries[anim_selection].fullPath.c_str(), UIState::APP_ANIM_LIST);
+        }
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        if (anim_count > 0 && anim_selection < anim_count) {
+            if (animEngine.setAsBootAnimation(anim_entries[anim_selection].fullPath.c_str())) {
+                soundManager.playNavSelect();
+                showToast("SET AS BOOT", 1500);
+            } else {
+                soundManager.playAlert();
+                showToast("SET BOOT FAILED", 1500);
+            }
+            needs_redraw = true;
+        }
+    }
+}
+
+void UICore::handleAnimPlayerInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE || ok_evt != BTN_EVT_NONE) {
+        anim_hud_visible = true;
+        anim_hud_timer = millis();
+    }
+
+    if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        animEngine.togglePlayPause();
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_LONG_PRESS) {
+        if (animEngine.setAsBootAnimation(animEngine.getFilePath())) {
+            soundManager.playNavSelect();
+            showToast("SET AS BOOT", 1500);
+        } else {
+            soundManager.playAlert();
+            showToast("SET BOOT FAILED", 1500);
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (animEngine.isPaused()) {
+            animEngine.stepForward();
+        } else {
+            animEngine.cycleSpeed();
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (animEngine.isPaused()) {
+            animEngine.stepBackward();
+        } else {
+            animEngine.setLoop(!animEngine.isLooping());
+            if (animEngine.isLooping()) {
+                showToast("LOOP: ON", 1000);
+            } else {
+                showToast("LOOP: OFF", 1000);
+            }
+        }
+        needs_redraw = true;
+        return;
     }
 }
 

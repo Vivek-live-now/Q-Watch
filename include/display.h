@@ -73,6 +73,8 @@ private:
     void drawAppAbout();
     void drawFileManager();
     void drawAppApps();
+    void drawAppAnimList();
+    void drawAppAnimPlayer();
     void drawStorageInfo();
 
     // Settings Screens Rendering

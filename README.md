@@ -134,6 +134,20 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     * **Compass HUD (`apps/compass_hud.qapp`):** QMC5883P 3D magnetometer tactical HUD, rotating North-seeking needle, 8-point cardinal telemetry, waypoint bearing lock, course deviation indicator, and declination adjustment.
 * **Automated Verification:** Comprehensive test harness (`tests/test_qapp_system.cpp`) with ESP32-S3 IRAM/PSRAM POC execution, fault injection (corrupt magic, ABI mismatch, OOB entry, invalid relocations), and 100-cycle zero-leak stress tests.
 
+### Milestone 13: Tactical Animation Engine, Custom Boot Splash & Player
+* **Compact Binary Animation Format (`.anim`):** 16-byte packed header (`magic: 0x4D4E4151` / `"QANM"`, `version: 1`, `width: 128`, `height: 64`, `frame_count`, `frame_delay_ms`, `flags`) with direct sequential 1024-byte 1-bit XBM frames for fast streaming off LittleFS without RAM buffering.
+* **Native 1-Bit BMP Compatibility:** Auto-detects and decodes standard 1-bit Windows monochrome BMP files (`.bmp`), converting bottom-up MSB-first scanlines to display-native LSB-first XBM bitmaps on-the-fly with hardware bit-reversal.
+* **On-Device Animation Browser (`SYS MENU -> ANIMATIONS`):** Lists installed `.anim` and `.bmp` files in `/anim` and `/boot`, displaying filename, frame count (`XF`), or `BMP` badge with 3-item scrolling viewport and scrollbar.
+* **Tactical Animation Player (`APP_ANIM_PLAYER`):**
+    * Full 128x64 display rendering with tactical auto-hiding HUD overlay (playback status `PLAY`/`PAUSE`, frame position `X/Y`, speed multiplier, timeline progress bar).
+    * `[OK]` Short Press: Toggle Play / Pause.
+    * `[OK]` Long Press: Set current animation as system boot animation (`/boot/boot.anim` or `/boot/boot.bmp`).
+    * `[UP]` Short Press: Speed cycle (`1.0x` -> `1.5x` -> `2.0x` -> `0.5x` -> `1.0x`) when playing, or Step Forward 1 frame when paused.
+    * `[DN]` Short Press: Toggle Loop (`LOOP: ON` / `LOOP: OFF`) when playing, or Step Backward 1 frame when paused.
+    * `[CANCEL]` Short / Long Press: Exit player and return to browser or file manager.
+* **Custom Boot Animation & Instant Skip:** On cold boot or reset, plays `/boot/boot.anim` or `/boot/boot.bmp` if installed, or falls back to the MI6 tactical radar sweep sequence. Any button press immediately skips boot animation to launch straight into the watch face.
+* **Animation Tooling (`tools/anim_packer.py`):** Standalone CLI tool to pack frame sequences, inspect metadata, and generate procedural animations (`radar.anim`, `gunbarrel.anim`).
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

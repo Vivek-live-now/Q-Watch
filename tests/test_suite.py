@@ -1,3 +1,7 @@
+import os
+import subprocess
+import math
+
 def parse_flipper_hex(hex_str):
     toks = hex_str.strip().split()
     return sum(int(tok, 16) << (i * 8) for i, tok in enumerate(toks))
@@ -70,6 +74,7 @@ def test_menu_scrollbar_geometry():
         (5, 0), (5, 1), (5, 2),
         (6, 0), (6, 2), (6, 3),
         (14, 0), (14, 5), (14, 11),
+        (16, 0), (16, 6), (16, 13),
     ]
     for count, offset in test_cases:
         items = list(range(offset, min(offset + 3, count)))
@@ -231,7 +236,30 @@ def test_qapp_abi_and_system():
     run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
     assert run_res.returncode == 0, f"test_qapp_system_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
     assert "ALL RELOCATABLE LOADER & POC TESTS PASSED" in run_res.stdout, "POC & Relocatable test verification string missing"
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
     print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, Tilt Ball & Compass HUD stress tests verified.")
+
+def test_animation_engine():
+    print("\n--- 7. Tactical Animation Engine & Player Test ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    bin_path = os.path.join(os.path.dirname(__file__), "test_anim_bin")
+
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude",
+        "tests/test_anim_system.cpp", "src/anim_engine.cpp",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_anim_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_anim_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
+    assert "ALL ANIMATION ENGINE TESTS PASSED!" in run_res.stdout, "Animation tests verification string missing"
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
+
+    print("  [PASS] AnimHeader spec, multi-frame .anim playback, 1-bit BMP bit reversal, and boot config verified.")
 
 if __name__ == "__main__":
     test_protocol_variants()
@@ -240,4 +268,5 @@ if __name__ == "__main__":
     test_timekeeping_math_and_formatting()
     test_analog_trigonometry()
     test_qapp_abi_and_system()
+    test_animation_engine()
     print("\nAll self-test verifications PASSED!")

@@ -106,6 +106,8 @@ enum class UIState {
     APP_FILE_MANAGER,
     APP_APPS,
     APP_RUNNING,
+    APP_ANIM_LIST,
+    APP_ANIM_PLAYER,
     APP_STORAGE_INFO,
     APP_KEYBOARD,
     VALUE_EDIT,
@@ -252,10 +254,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 15;
+    static const int MAIN_MENU_ITEM_COUNT = 16;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;
@@ -531,6 +533,44 @@ public:
         if (idx >= 0 && idx < app_count) return &app_entries[idx];
         return nullptr;
     }
+
+    struct AnimEntry {
+        String filename;
+        String fullPath;
+        uint16_t frameCount;
+        uint16_t delayMs;
+        bool isBmp;
+    };
+    static const int MAX_ANIM_ENTRIES = 16;
+    AnimEntry anim_entries[MAX_ANIM_ENTRIES];
+    int anim_count;
+    int anim_selection;
+    int anim_scroll_offset;
+    bool anim_hud_visible;
+    uint32_t anim_hud_timer;
+    UIState anim_return_state;
+
+    void loadAnimList();
+    void handleAnimListInput();
+    void handleAnimPlayerInput();
+    void openAnimationPlayer(const char* filepath, UIState return_state = UIState::APP_ANIM_LIST);
+
+    int getAnimCount() const { return anim_count; }
+    int getAnimSelection() const { return anim_selection; }
+    int getAnimScrollOffset() const { return anim_scroll_offset; }
+    const char* getAnimName(int idx) const {
+        if (idx >= 0 && idx < anim_count) return anim_entries[idx].filename.c_str();
+        return "";
+    }
+    bool isAnimBmp(int idx) const {
+        if (idx >= 0 && idx < anim_count) return anim_entries[idx].isBmp;
+        return false;
+    }
+    uint16_t getAnimFrameCount(int idx) const {
+        if (idx >= 0 && idx < anim_count) return anim_entries[idx].frameCount;
+        return 0;
+    }
+    bool isAnimHudVisible() const { return anim_hud_visible; }
 
     void processNavUp();
     void processNavDown();

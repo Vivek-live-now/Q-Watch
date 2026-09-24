@@ -16,6 +16,7 @@
 #include "keyboard.h"
 #include "timekeeping.h"
 #include "qapp_loader.h"
+#include "anim_engine.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -55,6 +56,8 @@ void DisplayManager::update() {
             case UIState::APP_FILE_MANAGER: drawFileManager(); break;
             case UIState::APP_APPS: drawAppApps(); break;
             case UIState::APP_RUNNING: qappLoader.render(); break;
+            case UIState::APP_ANIM_LIST: drawAppAnimList(); break;
+            case UIState::APP_ANIM_PLAYER: drawAppAnimPlayer(); break;
             case UIState::APP_STORAGE_INFO: drawStorageInfo(); break;
 
             case UIState::MAIN_MENU:
@@ -63,7 +66,7 @@ void DisplayManager::update() {
             case UIState::APP_SETTINGS:
                 drawAppSettings();
                 break;
-                                                            case UIState::APP_KEYBOARD: drawKeyboardScreen(); break;
+            case UIState::APP_KEYBOARD: drawKeyboardScreen(); break;
             case UIState::VALUE_EDIT:
                 drawValueEdit("ADJUST");
                 break;
@@ -71,7 +74,9 @@ void DisplayManager::update() {
                 break;
         }
 
-        drawTacticalOverlay();
+        if (ui.getState() != UIState::APP_ANIM_PLAYER) {
+            drawTacticalOverlay();
+        }
         drawToastOverlay();
     }
 
@@ -1906,6 +1911,91 @@ void DisplayManager::drawAppApps() {
     }
 
     drawScrollBar(offset, count);
+}
+
+void DisplayManager::drawAppAnimList() {
+    drawTopStatusBar();
+
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(0, 18, "ANIMATIONS");
+    oled.drawHLine(0, 21, 128);
+
+    int count = ui.getAnimCount();
+    if (count == 0) {
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(10, 36, "NO ANIMATIONS");
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(10, 48, "Drop .anim / .bmp");
+        oled.drawStr(10, 58, "to /anim/ or /boot/");
+        return;
+    }
+
+    int sel = ui.getAnimSelection();
+    int offset = ui.getAnimScrollOffset();
+
+    for (int i = 0; i < 3; i++) {
+        int idx = offset + i;
+        if (idx >= count) break;
+
+        int y = 35 + (i * 12);
+
+        if (idx == sel) {
+            oled.setFont(u8g2_font_5x7_tf);
+            oled.drawStr(0, y, ">");
+        }
+
+        oled.setFont(u8g2_font_6x10_tf);
+        oled.drawStr(8, y, ui.getAnimName(idx));
+
+        oled.setFont(u8g2_font_4x6_tr);
+        char tag[16];
+        if (ui.isAnimBmp(idx)) {
+            snprintf(tag, sizeof(tag), "BMP");
+        } else {
+            snprintf(tag, sizeof(tag), "%uF", (unsigned int)ui.getAnimFrameCount(idx));
+        }
+        int sw = oled.getStrWidth(tag);
+        oled.drawStr(128 - sw - 4, y, tag);
+    }
+
+    drawScrollBar(offset, count);
+}
+
+void DisplayManager::drawAppAnimPlayer() {
+    animEngine.drawFrame(0, 0);
+
+    if (ui.isAnimHudVisible()) {
+        oled.setDrawColor(0);
+        oled.drawBox(0, 0, 128, 12);
+        oled.setDrawColor(1);
+        oled.drawHLine(0, 12, 128);
+
+        oled.setFont(u8g2_font_5x7_tf);
+        if (animEngine.isPaused()) {
+            oled.drawStr(2, 9, "|| PAUSE");
+        } else {
+            oled.drawStr(2, 9, "> PLAY");
+        }
+
+        char spd[10];
+        snprintf(spd, sizeof(spd), "%.1fx", animEngine.getSpeedMultiplier());
+        oled.drawStr(54, 9, spd);
+
+        char fnum[16];
+        snprintf(fnum, sizeof(fnum), "%u/%u", (unsigned int)(animEngine.getCurrentFrame() + 1), (unsigned int)animEngine.getTotalFrames());
+        int sw = oled.getStrWidth(fnum);
+        oled.drawStr(128 - sw - 2, 9, fnum);
+
+        oled.setDrawColor(0);
+        oled.drawBox(0, 57, 128, 7);
+        oled.setDrawColor(1);
+        oled.drawHLine(0, 56, 128);
+        if (animEngine.getTotalFrames() > 1) {
+            int prog = ((int)animEngine.getCurrentFrame() * 122) / (animEngine.getTotalFrames() - 1);
+            if (prog > 122) prog = 122;
+            oled.drawBox(3, 59, prog, 3);
+        }
+    }
 }
 
 void DisplayManager::drawStorageInfo() {

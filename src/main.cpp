@@ -15,6 +15,7 @@
 #include "settings_data.h"
 #include "ir_engine.h"
 #include "timekeeping.h"
+#include "anim_engine.h"
 
 int last_drawn_sec = -1;
 uint32_t last_portal_draw = 0;
@@ -37,11 +38,13 @@ void setup() {
   soundManager.begin();
   irEngine.begin();
   timekeeping.begin();
+  animEngine.begin();
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
   } else {
     soundManager.playBoot();
+    animEngine.playBootAnimation();
   }
 
   wifiPortal.begin();
@@ -68,8 +71,9 @@ void loop() {
   bool portal_update_due = (wifiPortal.getState() == WifiState::PORTAL && millis() - last_portal_draw >= 1000);
 
   bool clock_active = (ui.getState() == UIState::APP_CLOCK && (timekeeping.stopwatch.isRunning() || timekeeping.timer.isRunning() || timekeeping.alarmManager.isRinging()));
-  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || clock_active)
-                            && millis() - last_ui_draw >= 50);
+  bool anim_active = (ui.getState() == UIState::APP_ANIM_PLAYER && animEngine.isPlaying());
+  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || clock_active || anim_active)
+                            && millis() - last_ui_draw >= 20);
 
   if (time_changed || portal_update_due || ui.needsRedraw() || active_app_update) {
       displayManager.update();
