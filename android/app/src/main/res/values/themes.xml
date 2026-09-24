@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.QLink" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#FF000000</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:windowBackground">#FF08080A</item>
+    </style>
+</resources>

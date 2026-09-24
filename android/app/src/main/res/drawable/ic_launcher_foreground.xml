@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Tactical Reticle & Q Symbol -->
+    <path
+        android:strokeColor="#FF00E5FF"
+        android:strokeWidth="3"
+        android:pathData="M54,24 A30,30 0 1,0 74,74 L84,84" />
+    <path
+        android:strokeColor="#FFFFB000"
+        android:strokeWidth="2"
+        android:pathData="M54,14 L54,22 M54,86 L54,94 M14,54 L22,54 M86,54 L94,54" />
+</vector>

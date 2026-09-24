@@ -117,3 +117,10 @@ uint32_t Weather::getLastUpdateTime() const {
 bool Weather::isUpdateInProgress() const {
     return in_progress;
 }
+
+void Weather::setManualWeather(const WeatherData& wd) {
+    data = wd;
+    data.valid = true;
+    last_update_time = millis();
+}
+

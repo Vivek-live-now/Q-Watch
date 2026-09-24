@@ -1,0 +1,9 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="tactical_bg">#FF08080A</color>
+    <color name="tactical_surface">#FF121216</color>
+    <color name="tactical_amber">#FFFFB000</color>
+    <color name="tactical_cyan">#FF00E5FF</color>
+    <color name="tactical_green">#FF00FF66</color>
+</resources>

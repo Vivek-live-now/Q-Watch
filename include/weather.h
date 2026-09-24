@@ -17,6 +17,7 @@ public:
     Weather();
     void loop();
     void forceUpdate();
+    void setManualWeather(const WeatherData& wd);
     const WeatherData& getData() const;
     uint32_t getLastUpdateTime() const;
     bool isUpdateInProgress() const;

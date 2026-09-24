@@ -139,3 +139,10 @@ ComboEvent ButtonManager::getComboEvent() {
     pending_combo = COMBO_EVT_NONE;
     return evt;
 }
+
+void ButtonManager::injectEvent(ButtonID id, ButtonEvent evt) {
+    if (id < BTN_COUNT) {
+        buttons[id].pending_event = evt;
+    }
+}
+

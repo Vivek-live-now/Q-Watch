@@ -35,6 +35,7 @@ public:
 
     ButtonEvent getEvent(ButtonID id);
     ComboEvent getComboEvent();
+    void injectEvent(ButtonID id, ButtonEvent evt);
     bool isWokenFromSleep() const { return woken_from_sleep; }
 
 private:

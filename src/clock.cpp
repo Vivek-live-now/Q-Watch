@@ -59,6 +59,14 @@ void Clock::setTimezoneIdx(int idx) {
     }
 }
 
+void Clock::setEpoch(uint32_t epoch) {
+    struct timeval tv = { (time_t)epoch, 0 };
+    settimeofday(&tv, nullptr);
+    time_set = true;
+    last_sync_time = millis();
+    sync_status = NtpSyncStatus::SUCCESS;
+}
+
 void Clock::syncNtp() {
     if (WiFi.status() != WL_CONNECTED) {
         sync_status = NtpSyncStatus::FAILED;

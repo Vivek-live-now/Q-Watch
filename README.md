@@ -157,6 +157,20 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Zero SRAM Allocation & Fast UI Dispatch:** Fully non-blocking promiscuous frame parsing operating directly on incoming packet buffers. Integrated with high-framerate (20-50 FPS) UI render loop for smooth radar rotation and live packet graph rendering.
 * **Automated Verification:** Comprehensive host test suite (`tests/test_wireless_recon.cpp`) verifying 802.11 frame control parsing, deauth attack detection logic, logarithmic BLE proximity distance math, Wi-Fi channel tallying, and packet type distribution.
 
+### Milestone 15: Q-Link Android Companion Suite & Hardware-Agnostic Protocol v1.0.0
+* **Clean Layered Architecture:** Completely decoupled communication model ensuring the Android app never relies on undocumented firmware internals:
+  $$\text{Q-Link:Android} \longrightarrow \text{Q-Link Protocol v1.0.0} \longrightarrow \text{Q-Watch API / Services} \longrightarrow \text{Hardware}$$
+* **Authoritative Protocol Specification (`docs/qlink_spec.md`):** Complete contract defining 128-bit BLE GATT services (`0xFE50`), 32-byte compact binary telemetry packets, and high-speed Wi-Fi REST & continuous stream endpoints (`/api/v1/...`).
+* **Native Android App (`android/`):** Full-fledged Kotlin + Jetpack Compose companion app styled in a cyberpunk/007 tactical OLED theme:
+    * **Live 128x64 OLED Simulation (`MIRROR`):** Real-time canvas rendering of the watch's display buffer with configurable phosphor glow (Cyan, Amber, Green, White), on/off stream toggling, screenshot export, and an interactive virtual D-Pad (`UP`, `OK`, `DOWN`, `BACK`) controlling the watch remotely.
+    * **Telemetry Cockpit (`SENSORS`):** Real-time BME280 atmospheric station, MPU-6500 artificial horizon with live pitch/roll angles, QMC5883P rotating compass rose, and MAX30102 biometrics (heart rate, SpO2, and finger detection).
+    * **LittleFS File Manager (`FILES`):** Visual file explorer supporting directory traversal (`/apps`, `/sounds`, `/anim`, `/boot`, `/config`), file deletion, and uploads.
+    * **Micro-ELF App Store (`APPS`):** Curated catalog of relocatable `.qapp` binaries (Tilt Ball, Compass HUD, Space Invaders, Dice Roller) with 1-tap installation directly to `/apps/` on the watch.
+    * **Phone Notification Forwarding (`ALERTS`):** Native Android `NotificationListenerService` forwarding SMS, WhatsApp, and call alerts with custom buzzer chimes and RGB LED flashes.
+    * **Device Synchronization (`SETTINGS`):** 1-tap atomic time sync from phone RTC and hyper-local GPS weather relaying without requiring an API key on the watch.
+* **Firmware Q-Link Engine (`include/qlink.h`, `src/qlink.cpp`):** Zero-copy framebuffer streaming, synthetic button event injection into `ButtonManager`, and phone notification alert dispatch.
+* **Automated Verification & CI:** Host test suite (`tests/test_qlink.cpp`) verifying 32-byte telemetry packet alignment, magic header validation, and button parsing; automated GitHub Actions workflow (`.github/workflows/android.yml`) building the Android debug APK artifact on push.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

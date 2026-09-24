@@ -4,6 +4,7 @@
 #include "weather.h"
 #include "clock.h"
 #include "settings_data.h"
+#include "qlink.h"
 #include <ESPmDNS.h>
 
 WifiPortal wifiPortal;
@@ -104,6 +105,9 @@ void WifiPortal::setupRoutes() {
     server.on("/file_upload", HTTP_POST, [this]() {
         server.send(200, "text/plain", "Upload Successful");
     }, std::bind(&WifiPortal::handleFileUpload, this));
+
+    // Register Q-Link Protocol API Routes
+    qlink.registerHttpRoutes(server);
 
     server.onNotFound([this]() {
         server.sendHeader("Location", "http://192.168.4.1/", true);

@@ -14,6 +14,8 @@ public:
     void update();
     void applyDisplaySettings();
     void setPowerSave(bool enable);
+    const uint8_t* getBufferPtr() const;
+    size_t getBufferSize() const { return 1024; }
 
 private:
     void drawAppHome();

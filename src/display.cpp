@@ -35,6 +35,10 @@ void DisplayManager::begin() {
     oled.sendBuffer();
 }
 
+const uint8_t* DisplayManager::getBufferPtr() const {
+    return oled.getBufferPtr();
+}
+
 void DisplayManager::update() {
     oled.clearBuffer();
 

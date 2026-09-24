@@ -282,6 +282,27 @@ def test_wireless_recon():
 
     print("  [PASS] 802.11 parsing, deauth flood detection, BLE radar log-distance proximity, and packet monitor verified.")
 
+def test_qlink_protocol():
+    print("\n--- 9. Q-Link Protocol & Firmware Interface Test ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    bin_path = os.path.join(os.path.dirname(__file__), "test_qlink_bin")
+
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude",
+        "tests/test_qlink.cpp", "src/qlink.cpp",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_qlink_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_qlink_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
+    assert "ALL Q-LINK PROTOCOL TESTS PASSED!" in run_res.stdout, "Q-Link tests verification string missing"
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
+
+    print("  [PASS] Q-Link Compact Telemetry (32B), Magic, button injection, and sync interfaces verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -291,4 +312,5 @@ if __name__ == "__main__":
     test_qapp_abi_and_system()
     test_animation_engine()
     test_wireless_recon()
+    test_qlink_protocol()
     print("\nAll self-test verifications PASSED!")
