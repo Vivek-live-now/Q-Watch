@@ -66,7 +66,7 @@ void QLinkEngine::fillCompactTelemetry(QLinkCompactTelemetry& out) {
     OrientationData ori = sensors.getOrientation();
     out.pitch_deg_x10 = (int16_t)(ori.pitch * 10.0f);
     out.roll_deg_x10 = (int16_t)(ori.roll * 10.0f);
-    out.heading_deg_x10 = (uint16_t)(ori.heading * 10.0f);
+    out.heading_deg_x10 = (uint16_t)(ori.yaw * 10.0f);
 
     HealthMetrics hm = max30102Manager.getMetrics();
     out.heart_rate_bpm = (uint8_t)constrain(hm.bpm, 0, 255);
@@ -115,7 +115,7 @@ String QLinkEngine::generateTelemetryJson() {
     json += "\"imu\":{";
     json += "\"pitch_deg\":" + String(ori.pitch, 1) + ",";
     json += "\"roll_deg\":" + String(ori.roll, 1) + ",";
-    json += "\"heading_deg\":" + String(ori.heading, 1) + "},";
+    json += "\"heading_deg\":" + String(ori.yaw, 1) + "},";
 
     json += "\"health\":{";
     json += "\"heart_rate_bpm\":" + String(hm.bpm) + ",";
