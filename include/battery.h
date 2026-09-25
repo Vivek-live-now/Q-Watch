@@ -14,6 +14,9 @@ public:
     int readPercentage();
 
 private:
+    float cached_voltage = 0.0f;
+    uint32_t last_read_time = 0;
+
     // This value is calibrated by comparing the reported voltage to a physical multimeter measurement
     // Multiplier = Multimeter_Reading / Reported_Voltage_Without_Calibration
     // Currently set to 1.0. The user must manually determine this on their hardware.

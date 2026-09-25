@@ -41,6 +41,7 @@ void Clock::begin(const String& timezone) {
     sync_status = NtpSyncStatus::IDLE;
     sync_start_time = 0;
     last_sync_time = 0;
+    last_time_poll = 0;
     current_tz = timezone;
 
     sntp_set_time_sync_notification_cb(Clock::onSntpSync);
@@ -87,8 +88,12 @@ void Clock::syncNtp() {
 static uint32_t last_auto_sync_check = 0;
 
 void Clock::loop() {
-    if (getLocalTime(&timeinfo, 0)) {
-        time_set = true;
+    uint32_t now = millis();
+    if (now - last_time_poll >= 50) {
+        last_time_poll = now;
+        if (getLocalTime(&timeinfo, 0)) {
+            time_set = true;
+        }
     }
 
     if (sync_status == NtpSyncStatus::SYNCING) {
@@ -113,22 +118,38 @@ bool Clock::isTimeSet() {
     return time_set;
 }
 
-String Clock::getTimeStr() {
-    if (!time_set) return "--:--";
-    char buffer[12];
+void Clock::getTimeStr(char* buf, size_t maxLen) const {
+    if (!buf || maxLen == 0) return;
+    if (!time_set) {
+        snprintf(buf, maxLen, "--:--");
+        return;
+    }
     bool format_24 = settingsManager.get().format_24hr;
     if (format_24) {
-        strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
+        strftime(buf, maxLen, "%H:%M", &timeinfo);
     } else {
-        strftime(buffer, sizeof(buffer), "%I:%M%p", &timeinfo);
+        strftime(buf, maxLen, "%I:%M%p", &timeinfo);
     }
+}
+
+String Clock::getTimeStr() {
+    char buffer[12];
+    getTimeStr(buffer, sizeof(buffer));
     return String(buffer);
 }
 
+void Clock::getSecondsStr(char* buf, size_t maxLen) const {
+    if (!buf || maxLen == 0) return;
+    if (!time_set) {
+        snprintf(buf, maxLen, "--");
+        return;
+    }
+    strftime(buf, maxLen, "%S", &timeinfo);
+}
+
 String Clock::getSecondsStr() {
-    if (!time_set) return "--";
-    char buffer[3];
-    strftime(buffer, sizeof(buffer), "%S", &timeinfo);
+    char buffer[4];
+    getSecondsStr(buffer, sizeof(buffer));
     return String(buffer);
 }
 
@@ -136,25 +157,41 @@ int Clock::getSecond() const {
     return time_set ? timeinfo.tm_sec : -1;
 }
 
-String Clock::getDayOfWeekStr() const {
+const char* Clock::getDayOfWeekCStr() const {
     if (!time_set) return "---";
-    const char* days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+    static const char* const days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
     int d = getDayOfWeek();
     if (d >= 0 && d < 7) return days[d];
     return "---";
 }
 
-String Clock::getMonthStr() const {
+String Clock::getDayOfWeekStr() const {
+    return String(getDayOfWeekCStr());
+}
+
+const char* Clock::getMonthCStr() const {
     if (!time_set) return "---";
-    const char* months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    static const char* const months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
     int m = getMonth() - 1;
     if (m >= 0 && m < 12) return months[m];
     return "---";
 }
 
+String Clock::getMonthStr() const {
+    return String(getMonthCStr());
+}
+
+void Clock::getDateStr(char* buf, size_t maxLen) const {
+    if (!buf || maxLen == 0) return;
+    if (!time_set) {
+        snprintf(buf, maxLen, "Syncing...");
+        return;
+    }
+    strftime(buf, maxLen, "%d %b %Y", &timeinfo);
+}
+
 String Clock::getDateStr() {
-    if (!time_set) return "Syncing...";
-    char buffer[12];
-    strftime(buffer, sizeof(buffer), "%d %b %Y", &timeinfo);
+    char buffer[16];
+    getDateStr(buffer, sizeof(buffer));
     return String(buffer);
 }

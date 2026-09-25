@@ -14,8 +14,14 @@ void BatteryMonitor::begin() {
 }
 
 float BatteryMonitor::readVoltage() {
+    uint32_t now = millis();
+    if (cached_voltage > 0.0f && (now - last_read_time < 2000)) {
+        return cached_voltage;
+    }
+    last_read_time = now;
+
     uint32_t mv_sum = 0;
-    const int NUM_SAMPLES = 20;
+    const int NUM_SAMPLES = 10;
 
     // Take multiple readings to average out ADC noise.
     // We use analogReadMilliVolts() which automatically applies the ESP32-S3's internal
@@ -23,8 +29,6 @@ float BatteryMonitor::readVoltage() {
     // instead of a raw mathematical multiplier.
     for (int i = 0; i < NUM_SAMPLES; i++) {
         mv_sum += analogReadMilliVolts(BATTERY_ADC);
-        // Removed the delay(2) to keep this function strictly non-blocking.
-        // 20 sequential ADC reads take microseconds.
     }
 
     uint32_t mv_avg = mv_sum / NUM_SAMPLES;
@@ -34,7 +38,8 @@ float BatteryMonitor::readVoltage() {
     float actual_voltage = (mv_avg * 2.0f) / 1000.0f;
 
     // Apply the user's manual multimeter calibration multiplier
-    return actual_voltage * CALIBRATION_MULTIPLIER;
+    cached_voltage = actual_voltage * CALIBRATION_MULTIPLIER;
+    return cached_voltage;
 }
 
 int BatteryMonitor::readPercentage() {

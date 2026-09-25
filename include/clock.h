@@ -27,7 +27,9 @@ public:
     void setEpoch(uint32_t epoch);
 
     String getTimeStr(); // HH:MM or HH:MM AM/PM based on settings
+    void getTimeStr(char* buf, size_t maxLen) const;
     String getSecondsStr(); // SS
+    void getSecondsStr(char* buf, size_t maxLen) const;
     int getSecond() const;
     int getHour() const { return time_set ? timeinfo.tm_hour : 0; }
     int getMinute() const { return time_set ? timeinfo.tm_min : 0; }
@@ -36,8 +38,11 @@ public:
     int getMonth() const { return time_set ? (timeinfo.tm_mon + 1) : 1; }
     int getYear() const { return time_set ? (timeinfo.tm_year + 1900) : 2026; }
     String getDayOfWeekStr() const;
+    const char* getDayOfWeekCStr() const;
     String getMonthStr() const;
+    const char* getMonthCStr() const;
     String getDateStr(); // DD MMM YYYY
+    void getDateStr(char* buf, size_t maxLen) const;
 
     static void onSntpSync(struct timeval *tv);
 
@@ -47,6 +52,7 @@ private:
     NtpSyncStatus sync_status;
     uint32_t sync_start_time;
     uint32_t last_sync_time;
+    uint32_t last_time_poll;
     String current_tz;
 };
 

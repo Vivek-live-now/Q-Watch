@@ -50,10 +50,10 @@ void SensorManager::writeRegister(uint8_t deviceAddr, uint8_t regAddr, uint8_t d
 
 
 void SensorManager::loadCalibration() {
+    prefs.begin("sensors", false);
+
     temp_offset = prefs.getFloat("bme_toff", 0.0f);
     reference_pressure = prefs.getFloat("bme_refp", 1013.25f);
-
-    prefs.begin("sensors", false);
 
     offsets.gyro_bias_x = prefs.getFloat("gb_x", 0.0f);
     offsets.gyro_bias_y = prefs.getFloat("gb_y", 0.0f);
@@ -577,10 +577,19 @@ void SensorManager::updateMadgwick(float dt) {
         _2bz = -_2q0mx * q2 + _2q0my * q1 + mz * q0q0 + _2q1mx * q3 - mz * q1q1 + _2q2 * my * q3 - mz * q2q2 + mz * q3q3;
         _4bx = 2.0f * _2bx; _4bz = 2.0f * _2bz;
 
-        s0 = -_2q2 * (2.0f * q1q3 - _2q0q2 - ax) + _2q1 * (2.0f * q0q1 + _2q2q3 - ay) - _2bz * q2 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q3 + _2bz * q1) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q2 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
-        s1 = _2q3 * (2.0f * q1q3 - _2q0q2 - ax) + _2q0 * (2.0f * q0q1 + _2q2q3 - ay) - 4.0f * q1 * (1.0f - 2.0f * q1q1 - 2.0f * q2q2 - az) + _2bz * q3 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q2 + _2bz * q0) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q3 - _4bz * q1) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
-        s2 = -_2q0 * (2.0f * q1q3 - _2q0q2 - ax) + _2q3 * (2.0f * q0q1 + _2q2q3 - ay) - 4.0f * q2 * (1.0f - 2.0f * q1q1 - 2.0f * q2q2 - az) + (-_4bx * q2 - _2bz * q0) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q1 + _2bz * q3) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q0 - _4bz * q2) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
-        s3 = _2q1 * (2.0f * q1q3 - _2q0q2 - ax) + _2q2 * (2.0f * q0q1 + _2q2q3 - ay) + (-_4bx * q3 + _2bz * q1) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q0 + _2bz * q2) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q1 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
+        // Performance Optimization: Precompute common subexpressions across gradient vectors s0..s3
+        float f_g_x = 2.0f * q1q3 - _2q0q2 - ax;
+        float f_g_y = 2.0f * q0q1 + _2q2q3 - ay;
+        float f_g_z = 1.0f - 2.0f * (q1q1 + q2q2) - az;
+
+        float f_b_x = _2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx;
+        float f_b_y = _2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my;
+        float f_b_z = _2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz;
+
+        s0 = -_2q2 * f_g_x + _2q1 * f_g_y - _2bz * q2 * f_b_x + (-_2bx * q3 + _2bz * q1) * f_b_y + _2bx * q2 * f_b_z;
+        s1 = _2q3 * f_g_x + _2q0 * f_g_y - 4.0f * q1 * f_g_z + _2bz * q3 * f_b_x + (_2bx * q2 + _2bz * q0) * f_b_y + (_2bx * q3 - _4bz * q1) * f_b_z;
+        s2 = -_2q0 * f_g_x + _2q3 * f_g_y - 4.0f * q2 * f_g_z + (-_4bx * q2 - _2bz * q0) * f_b_x + (_2bx * q1 + _2bz * q3) * f_b_y + (_2bx * q0 - _4bz * q2) * f_b_z;
+        s3 = _2q1 * f_g_x + _2q2 * f_g_y + (-_4bx * q3 + _2bz * q1) * f_b_x + (-_2bx * q0 + _2bz * q2) * f_b_y + _2bx * q1 * f_b_z;
 
         float norm_s = sqrtf(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
         if (norm_s > 1e-4f) {

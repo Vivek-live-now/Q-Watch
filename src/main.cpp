@@ -83,4 +83,11 @@ void loop() {
       last_ui_draw = millis();
       if (wifiPortal.getState() == WifiState::PORTAL) last_portal_draw = millis();
   }
+
+  // Yield to FreeRTOS scheduler to allow idle core power saving and avoid 100% spinlock
+  if (ui.isDisplayOff()) {
+      delay(10);
+  } else {
+      delay(1);
+  }
 }

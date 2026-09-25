@@ -30,6 +30,7 @@ const uint8_t battery_icon[] U8X8_PROGMEM = {
 void DisplayManager::begin() {
     SPI.begin(OLED_CLK, -1, OLED_MOSI, OLED_CS);
     oled.begin();
+    oled.setBusClock(8000000UL);
     applyDisplaySettings();
     oled.clearBuffer();
     oled.sendBuffer();
@@ -113,7 +114,7 @@ void DisplayManager::drawAppSettings() {
     if (sub == SettingsSubmenu::MAIN) {
         drawStandardMenu("SETTINGS", ui.settings_main_items, UICore::SETTINGS_MAIN_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::CONNECTIVITY) {
-        String vals[3] = {
+        const char* vals[3] = {
             s.wifi_enabled ? "ON" : "OFF",
             s.ble_enabled ? "ON" : "OFF",
             s.fileserver_enabled ? "ON" : "OFF"
@@ -128,7 +129,7 @@ void DisplayManager::drawAppSettings() {
     } else if (sub == SettingsSubmenu::TIME_SYNC_STATUS) {
         drawTimeSyncStatusScreen();
     } else if (sub == SettingsSubmenu::TIME) {
-        String vals[5] = {
+        const char* vals[5] = {
             "",
             "",
             s.auto_sync ? "ON" : "OFF",
@@ -137,7 +138,7 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("TIME", ui.time_items, vals, UICore::TIME_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::POWER) {
-        String vals[5] = {
+        const char* vals[5] = {
             DISPLAY_TIMEOUT_OPTIONS[s.display_timeout_idx],
             SLEEP_TIMEOUT_OPTIONS[s.sleep_time_idx],
             s.raise_to_wake ? "ON" : "OFF",
@@ -146,23 +147,23 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("POWER", ui.power_items, vals, UICore::POWER_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SUB_DISPLAY) {
-        String vals[3] = {
+        const char* vals[3] = {
             CONTRAST_OPTIONS[s.contrast_idx],
             s.invert_display ? "ON" : "OFF",
             UI_OPTIONS_LIST[s.ui_option_idx]
         };
         drawSettingsMenuWithValues("DISPLAY", ui.display_items, vals, UICore::DISPLAY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SENSORS) {
-        String vals[4] = {"", "", "", ""};
+        const char* vals[4] = {"", "", "", ""};
         drawSettingsMenuWithValues("SENSORS", ui.sensors_items, vals, UICore::SENSORS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::HEALTH_SETTINGS) {
-        String vals[2] = {
+        const char* vals[2] = {
             s.health_bg_enabled ? "ON" : "OFF",
             HEALTH_INTERVAL_OPTIONS[s.health_interval_idx]
         };
         drawSettingsMenuWithValues("MAX30102 SETTINGS", ui.health_settings_items, vals, UICore::HEALTH_SETTINGS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SYSTEM) {
-        String vals[2] = {"", ""};
+        const char* vals[2] = {"", ""};
         drawSettingsMenuWithValues("SYSTEM", ui.system_items, vals, UICore::SYSTEM_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::RESET_CONFIRM) {
         drawResetConfirm();
@@ -232,6 +233,41 @@ void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** 
     drawStandardMenu(title, items, item_count, selection, offset, values);
 }
 
+void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const char* const* values) {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, title);
+    oled.drawLine(0, 9, 128, 9);
+    oled.setFont(u8g2_font_6x10_tr);
+
+    int y_pos = 22;
+
+    for (int i = offset; i < offset + 3 && i < item_count; i++) {
+        if (i == selection) {
+            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.setDrawColor(0);
+            oled.drawStr(4, y_pos, items[i]);
+            if (values && values[i] && values[i][0] != '\0') {
+                int vw = oled.getStrWidth(values[i]);
+                oled.drawStr(118 - vw, y_pos, values[i]);
+            }
+            oled.setDrawColor(1);
+        } else {
+            oled.drawStr(4, y_pos, items[i]);
+            if (values && values[i] && values[i][0] != '\0') {
+                int vw = oled.getStrWidth(values[i]);
+                oled.drawStr(118 - vw, y_pos, values[i]);
+            }
+        }
+        y_pos += 12;
+    }
+
+    drawScrollBar(offset, item_count);
+}
+
+void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** items, const char* const* values, int item_count, int selection, int offset) {
+    drawStandardMenu(title, items, item_count, selection, offset, values);
+}
+
 void DisplayManager::drawResetConfirm() {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(2, 7, "FACTORY RESET");
@@ -254,8 +290,9 @@ void DisplayManager::drawTacticalOverlay() {
 void DisplayManager::drawTopStatusBar() {
     oled.setFont(u8g2_font_4x6_tr);
 
-    String t = qclock.getTimeStr();
-    oled.drawStr(56, 6, t.c_str());
+    char t[12];
+    qclock.getTimeStr(t, sizeof(t));
+    oled.drawStr(56, 6, t);
 
     if (WiFi.status() == WL_CONNECTED) {
         oled.drawStr(100, 6, "W");
@@ -264,8 +301,9 @@ void DisplayManager::drawTopStatusBar() {
     }
 
     int pct = battery.readPercentage();
-    String bStr = String(pct) + "%";
-    oled.drawStr(110, 6, bStr.c_str());
+    char bStr[8];
+    snprintf(bStr, sizeof(bStr), "%d%%", pct);
+    oled.drawStr(110, 6, bStr);
 
     oled.drawFrame(1, 1, 10, 6);
     oled.drawBox(11, 2, 2, 4);
@@ -298,17 +336,19 @@ void DisplayManager::drawHomeDigital() {
     if (s.show_status_icons) {
         oled.setFont(u8g2_font_4x6_tr);
         if (s.show_date) {
-            String dStr = qclock.getDayOfWeekStr() + " " + String(qclock.getDay()) + " " + qclock.getMonthStr();
-            oled.drawStr(2, 6, dStr.c_str());
+            char dStr[24];
+            snprintf(dStr, sizeof(dStr), "%s %d %s", qclock.getDayOfWeekCStr(), qclock.getDay(), qclock.getMonthCStr());
+            oled.drawStr(2, 6, dStr);
         }
 
         int rx = 126;
         if (s.show_battery) {
             int pct = battery.readPercentage();
-            String bStr = String(pct) + "%";
-            int bw = oled.getStrWidth(bStr.c_str());
+            char bStr[8];
+            snprintf(bStr, sizeof(bStr), "%d%%", pct);
+            int bw = oled.getStrWidth(bStr);
             rx -= bw;
-            oled.drawStr(rx, 6, bStr.c_str());
+            oled.drawStr(rx, 6, bStr);
             rx -= 4;
         }
         if (s.hourly_chime_enabled) {
@@ -332,14 +372,17 @@ void DisplayManager::drawHomeDigital() {
 
     // Main Time
     oled.setFont(u8g2_font_logisoso24_tn);
-    String timeStr = qclock.getTimeStr();
-    int w_time = oled.getStrWidth(timeStr.c_str());
+    char timeStr[12];
+    qclock.getTimeStr(timeStr, sizeof(timeStr));
+    int w_time = oled.getStrWidth(timeStr);
     int time_y = s.show_status_icons ? 40 : 36;
-    oled.drawStr((128 - w_time) / 2, time_y, timeStr.c_str());
+    oled.drawStr((128 - w_time) / 2, time_y, timeStr);
 
     // Seconds display
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(108, time_y - 2, qclock.getSecondsStr().c_str());
+    char secStr[4];
+    qclock.getSecondsStr(secStr, sizeof(secStr));
+    oled.drawStr(108, time_y - 2, secStr);
 
     // Bottom Widgets
     int bot_y = 58;
@@ -365,9 +408,10 @@ void DisplayManager::drawHomeDigital() {
     }
 
     if (!s.show_status_icons && s.show_date) {
-        String dStr = qclock.getDateStr();
-        int dw = oled.getStrWidth(dStr.c_str());
-        oled.drawStr((128 - dw) / 2, 50, dStr.c_str());
+        char dStr[16];
+        qclock.getDateStr(dStr, sizeof(dStr));
+        int dw = oled.getStrWidth(dStr);
+        oled.drawStr((128 - dw) / 2, 50, dStr);
     }
 }
 
@@ -483,13 +527,16 @@ void DisplayManager::drawHomeRetro() {
 
     // Large Retro LCD Time
     oled.setFont(u8g2_font_logisoso24_tn);
-    String timeStr = qclock.getTimeStr();
-    oled.drawStr(10, 40, timeStr.c_str());
+    char timeStr[12];
+    qclock.getTimeStr(timeStr, sizeof(timeStr));
+    oled.drawStr(10, 40, timeStr);
 
     // Seconds box
     oled.drawFrame(98, 20, 24, 14);
     oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(104, 31, qclock.getSecondsStr().c_str());
+    char secStr[4];
+    qclock.getSecondsStr(secStr, sizeof(secStr));
+    oled.drawStr(104, 31, secStr);
 
     oled.drawLine(4, 45, 124, 45);
 
@@ -566,9 +613,10 @@ void DisplayManager::drawHomeMission() {
     }
 
     if (s.show_date) {
-        String dStr = qclock.getDateStr();
-        int dw = oled.getStrWidth(dStr.c_str());
-        oled.drawStr(124 - dw, 60, dStr.c_str());
+        char dStr[16];
+        qclock.getDateStr(dStr, sizeof(dStr));
+        int dw = oled.getStrWidth(dStr);
+        oled.drawStr(124 - dw, 60, dStr);
     }
 }
 
@@ -588,8 +636,8 @@ void DisplayManager::drawAppClock() {
 
 void DisplayManager::drawClockMenu() {
     SettingsData& s = settingsManager.get();
-    String vals[UICore::CLOCK_MENU_ITEM_COUNT];
-    vals[0] = String(ui.watch_face_items[s.watch_face_style]);
+    const char* vals[UICore::CLOCK_MENU_ITEM_COUNT];
+    vals[0] = ui.watch_face_items[s.watch_face_style];
     vals[1] = ">";
     vals[2] = timekeeping.stopwatch.isRunning() ? "RUN" : (timekeeping.stopwatch.isPaused() ? "PAUS" : "");
     vals[3] = timekeeping.timer.isRunning() ? "RUN" : (timekeeping.timer.isExpired() ? "DONE" : "");
@@ -597,17 +645,21 @@ void DisplayManager::drawClockMenu() {
     for (int i = 0; i < 3; i++) {
         if (timekeeping.alarmManager.getAlarm(i).enabled) alm_active++;
     }
-    vals[4] = String(alm_active) + "/3";
+    char buf_alm[8];
+    snprintf(buf_alm, sizeof(buf_alm), "%d/3", alm_active);
+    vals[4] = buf_alm;
     vals[5] = s.hourly_chime_enabled ? "ON" : "OFF";
     vals[6] = timekeeping.getWorldCityName(s.world_clock_tz_idx);
-    vals[7] = String(timekeeping.pedometer.getSteps());
+    char buf_stp[16];
+    snprintf(buf_stp, sizeof(buf_stp), "%lu", (unsigned long)timekeeping.pedometer.getSteps());
+    vals[7] = buf_stp;
 
     drawStandardMenu("CLOCK SUITE", ui.clock_menu_items, UICore::CLOCK_MENU_ITEM_COUNT, ui.getClockSelection(), ui.getClockScrollOffset(), vals);
 }
 
 void DisplayManager::drawClockFaceSelect() {
     SettingsData& s = settingsManager.get();
-    String vals[UICore::WATCH_FACE_COUNT];
+    const char* vals[UICore::WATCH_FACE_COUNT];
     for (int i = 0; i < UICore::WATCH_FACE_COUNT; i++) {
         vals[i] = (s.watch_face_style == i) ? "[*]" : "[ ]";
     }
@@ -616,7 +668,7 @@ void DisplayManager::drawClockFaceSelect() {
 
 void DisplayManager::drawClockFaceWidgets() {
     SettingsData& s = settingsManager.get();
-    String vals[UICore::WIDGETS_ITEM_COUNT] = {
+    const char* vals[UICore::WIDGETS_ITEM_COUNT] = {
         s.show_date ? "ON" : "OFF",
         s.show_battery ? "ON" : "OFF",
         s.show_weather_widget ? "ON" : "OFF",

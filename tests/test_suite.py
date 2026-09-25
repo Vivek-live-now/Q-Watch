@@ -491,6 +491,116 @@ def test_sensor_calibration_and_robustness():
 
     print("  [PASS] Asin NaN protection, Madgwick division guard, accel gravity sign, raw hard-iron invariance, and circular yaw smoothing verified.")
 
+def test_firmware_optimization_and_equivalence():
+    print("\n--- 13. Firmware Optimization & Equivalence Test ---")
+
+    # 1. Algebraic equivalence test between unoptimized and CSE-optimized Madgwick gradients
+    test_cases = [
+        # q0, q1, q2, q3, ax, ay, az, mx, my, mz
+        (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.2, 0.0, 0.5),
+        (0.7071, 0.0, 0.7071, 0.0, 0.5, 0.2, 0.8, -0.3, 0.4, 0.1),
+        (0.5, 0.5, 0.5, 0.5, 0.1, -0.8, 0.5, 0.1, -0.2, 0.7),
+        (0.3535, -0.3535, 0.6123, -0.6123, -0.4, 0.7, 0.5, 0.5, -0.1, -0.3),
+    ]
+
+    for q0, q1, q2, q3, ax, ay, az, mx, my, mz in test_cases:
+        _2q0mx = 2.0 * q0 * mx
+        _2q0my = 2.0 * q0 * my
+        _2q0mz = 2.0 * q0 * mz
+        _2q1mx = 2.0 * q1 * mx
+        _2q0 = 2.0 * q0
+        _2q1 = 2.0 * q1
+        _2q2 = 2.0 * q2
+        _2q3 = 2.0 * q3
+        _2q0q2 = 2.0 * q0 * q2
+        _2q2q3 = 2.0 * q2 * q3
+        q0q0 = q0 * q0
+        q0q1 = q0 * q1
+        q0q2 = q0 * q2
+        q0q3 = q0 * q3
+        q1q1 = q1 * q1
+        q1q2 = q1 * q2
+        q1q3 = q1 * q3
+        q2q2 = q2 * q2
+        q2q3 = q2 * q3
+        q3q3 = q3 * q3
+
+        hx = mx * q0q0 - _2q0my * q3 + _2q0mz * q2 + mx * q1q1 + _2q1 * my * q2 + _2q1 * mz * q3 - mx * q2q2 - mx * q3q3
+        hy = _2q0mx * q3 + my * q0q0 - _2q0mz * q1 + _2q1mx * q2 - my * q1q1 + my * q2q2 + _2q2 * mz * q3 - my * q3q3
+        _2bx = math.sqrt(hx * hx + hy * hy)
+        _2bz = -_2q0mx * q2 + _2q0my * q1 + mz * q0q0 + _2q1mx * q3 - mz * q1q1 + _2q2 * my * q3 - mz * q2q2 + mz * q3q3
+        _4bx = 2.0 * _2bx
+        _4bz = 2.0 * _2bz
+
+        # Original unoptimized formulation
+        orig_s0 = -_2q2 * (2.0 * q1q3 - _2q0q2 - ax) + _2q1 * (2.0 * q0q1 + _2q2q3 - ay) - _2bz * q2 * (_2bx * (0.5 - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q3 + _2bz * q1) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q2 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5 - q1q1 - q2q2) - mz)
+        orig_s1 = _2q3 * (2.0 * q1q3 - _2q0q2 - ax) + _2q0 * (2.0 * q0q1 + _2q2q3 - ay) - 4.0 * q1 * (1.0 - 2.0 * q1q1 - 2.0 * q2q2 - az) + _2bz * q3 * (_2bx * (0.5 - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q2 + _2bz * q0) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q3 - _4bz * q1) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5 - q1q1 - q2q2) - mz)
+        orig_s2 = -_2q0 * (2.0 * q1q3 - _2q0q2 - ax) + _2q3 * (2.0 * q0q1 + _2q2q3 - ay) - 4.0 * q2 * (1.0 - 2.0 * q1q1 - 2.0 * q2q2 - az) + (-_4bx * q2 - _2bz * q0) * (_2bx * (0.5 - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q1 + _2bz * q3) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q0 - _4bz * q2) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5 - q1q1 - q2q2) - mz)
+        orig_s3 = _2q1 * (2.0 * q1q3 - _2q0q2 - ax) + _2q2 * (2.0 * q0q1 + _2q2q3 - ay) + (-_4bx * q3 + _2bz * q1) * (_2bx * (0.5 - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q0 + _2bz * q2) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q1 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5 - q1q1 - q2q2) - mz)
+
+        # CSE precomputed formulation
+        f_g_x = 2.0 * q1q3 - _2q0q2 - ax
+        f_g_y = 2.0 * q0q1 + _2q2q3 - ay
+        f_g_z = 1.0 - 2.0 * (q1q1 + q2q2) - az
+
+        f_b_x = _2bx * (0.5 - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx
+        f_b_y = _2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my
+        f_b_z = _2bx * (q0q2 + q1q3) + _2bz * (0.5 - q1q1 - q2q2) - mz
+
+        cse_s0 = -_2q2 * f_g_x + _2q1 * f_g_y - _2bz * q2 * f_b_x + (-_2bx * q3 + _2bz * q1) * f_b_y + _2bx * q2 * f_b_z
+        cse_s1 = _2q3 * f_g_x + _2q0 * f_g_y - 4.0 * q1 * f_g_z + _2bz * q3 * f_b_x + (_2bx * q2 + _2bz * q0) * f_b_y + (_2bx * q3 - _4bz * q1) * f_b_z
+        cse_s2 = -_2q0 * f_g_x + _2q3 * f_g_y - 4.0 * q2 * f_g_z + (-_4bx * q2 - _2bz * q0) * f_b_x + (_2bx * q1 + _2bz * q3) * f_b_y + (_2bx * q0 - _4bz * q2) * f_b_z
+        cse_s3 = _2q1 * f_g_x + _2q2 * f_g_y + (-_4bx * q3 + _2bz * q1) * f_b_x + (-_2bx * q0 + _2bz * q2) * f_b_y + _2bx * q1 * f_b_z
+
+        assert abs(orig_s0 - cse_s0) < 1e-12, f"s0 mismatch: {orig_s0} vs {cse_s0}"
+        assert abs(orig_s1 - cse_s1) < 1e-12, f"s1 mismatch: {orig_s1} vs {cse_s1}"
+        assert abs(orig_s2 - cse_s2) < 1e-12, f"s2 mismatch: {orig_s2} vs {cse_s2}"
+        assert abs(orig_s3 - cse_s3) < 1e-12, f"s3 mismatch: {orig_s3} vs {cse_s3}"
+
+    print("  [PASS] Madgwick CSE algebraic identity mathematically verified (< 1e-12).")
+
+    # 2. Battery Cache Window Verification
+    class MockBattery:
+        def __init__(self):
+            self.cached_voltage = 0.0
+            self.last_read_time = 0
+            self.adc_read_count = 0
+
+        def read_voltage(self, now_ms, raw_val):
+            if self.cached_voltage > 0.0 and (now_ms - self.last_read_time < 2000):
+                return self.cached_voltage
+            self.last_read_time = now_ms
+            self.adc_read_count += 1
+            self.cached_voltage = raw_val
+            return self.cached_voltage
+
+    bat = MockBattery()
+    for t in range(0, 500, 10):
+        bat.read_voltage(t, 4.15)
+    assert bat.adc_read_count == 1, f"Expected 1 ADC read during 500ms, got {bat.adc_read_count}"
+
+    bat.read_voltage(2050, 4.10)
+    assert bat.adc_read_count == 2, "Expected cache invalidation at 2050ms"
+    assert bat.cached_voltage == 4.10
+    print("  [PASS] Battery voltage 2-second ADC cache window verified.")
+
+    # 3. Clock Loop Polling Throttling
+    class MockClock:
+        def __init__(self):
+            self.last_poll = 0
+            self.posix_call_count = 0
+
+        def loop(self, now_ms):
+            if now_ms - self.last_poll >= 50:
+                self.last_poll = now_ms
+                self.posix_call_count += 1
+
+    clk = MockClock()
+    for t in range(100):
+        clk.loop(t)
+    assert clk.posix_call_count <= 2, f"Expected at most 2 POSIX calls in 100ms, got {clk.posix_call_count}"
+    print("  [PASS] Clock POSIX getLocalTime 20Hz throttling verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -504,4 +614,5 @@ if __name__ == "__main__":
     test_compass_3d_orientation()
     test_imu_3d_orientation()
     test_sensor_calibration_and_robustness()
+    test_firmware_optimization_and_equivalence()
     print("\nAll self-test verifications PASSED!")
