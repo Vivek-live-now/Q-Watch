@@ -37,13 +37,15 @@ enum class CompassState {
     CAL_SWEEP,
     CAL_RESULT,
     CAL_TELEMETRY,
-    CAL_DECLINATION
+    CAL_DECLINATION,
+    CAL_ORIENTATION_3D
 };
 
 enum class MotionState {
     PAGE_LEVEL,
     PAGE_DATA,
-    PAGE_SETTINGS
+    PAGE_SETTINGS,
+    PAGE_ORIENTATION_3D
 };
 
 enum class IrSubmenu {
@@ -209,11 +211,13 @@ public:
     void setCompassState(CompassState s) { compass_state = s; needs_redraw = true; }
     int getCompassMenuSelection() const { return compass_menu_selection; }
     int getCompassMenuOffset() const { return compass_menu_offset; }
+    int getCalOrientPreset() const { return cal_orient_preset; }
+    void setCalOrientPreset(int p) { cal_orient_preset = p; needs_redraw = true; }
 
     static const int COMPASS_MENU_ITEM_COUNT = 6;
     const char* compass_menu_items[COMPASS_MENU_ITEM_COUNT] = {
         "3D Sweep Cal",
-        "Mount Orient",
+        "3D Mount Orient",
         "Invert Z-Axis",
         "Mag Declin.",
         "Telemetry",
@@ -222,6 +226,8 @@ public:
 
     MotionState getMotionState() const { return motion_state; }
     void setMotionState(MotionState s) { motion_state = s; needs_redraw = true; }
+    int getImuOrientPreset() const { return imu_orient_preset; }
+    void setImuOrientPreset(int p) { imu_orient_preset = p; needs_redraw = true; }
     void handleMotionInput();
 
     void handleLedInput();
@@ -237,7 +243,7 @@ public:
 
     static const int MOTION_MENU_ITEM_COUNT = 7;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
-        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "Swap X/Y", "Invert X", "Invert Y", "Invert Z"
+        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
     };
 
     static const int IMU_SUBAPP_COUNT = 2;
@@ -443,6 +449,8 @@ public:
     CompassState compass_state;
     int compass_menu_selection;
     int compass_menu_offset;
+    int cal_orient_preset;
+    int imu_orient_preset;
     MotionState motion_state;
 
     bool needs_redraw;

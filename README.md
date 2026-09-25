@@ -81,7 +81,8 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
     *   **Pause & Recenter:** Short OK toggles pointer/scroll activity ON/OFF; Long OK establishes an Air Mouse recenter offset without modifying global IMU calibration.
     *   **Sensitivity Control:** Long UP / Long DOWN adjusts sensitivity levels (`LOW`, `MED`, `HIGH`).
-    *   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
+    *   **Visual 3D Vector Diagram Orientation Selectors:** Interactive 3D wireframe and vector arrow projections on the 128x64 OLED display for both Magnetometer (`SETTINGS -> SENSORS -> COMPASS CAL -> 3D Mount Orient`) and IMU (`MAIN MENU -> MOTION / ALTIMETER -> SETTINGS -> 3D Mount Orient`), featuring real-time live heading (`HDG: 000° N`) and pitch/roll telemetry (`P:%+03d° R:%+03d°`), 8 orthogonal mounting presets (including upside-down and inverted-Z configurations), and universal persistent saving across all watch faces, Q-Apps, and Q-Link companions.
+*   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
 
 
 ### Milestone 8: Full IR Remote Subsystem & Bruce / Flipper Zero Compatibility

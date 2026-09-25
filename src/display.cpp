@@ -961,6 +961,9 @@ void DisplayManager::drawAppCompass() {
     } else if (s == CompassState::CAL_DECLINATION) {
         drawAppCompassDeclination();
         return;
+    } else if (s == CompassState::CAL_ORIENTATION_3D) {
+        drawAppCompassOrientation3D();
+        return;
     }
 
     OrientationData o = sensors.getOrientation();
@@ -1317,6 +1320,8 @@ void DisplayManager::drawAppMotion() {
             drawAppMotionData();
         } else if (s == MotionState::PAGE_SETTINGS) {
             drawAppMotionSettings();
+        } else if (s == MotionState::PAGE_ORIENTATION_3D) {
+            drawAppMotionOrientation3D();
         }
     }
 }
@@ -1492,9 +1497,31 @@ void DisplayManager::drawAppMotionSettings() {
         }
 
         String label = ui.motion_menu_items[i];
-        if (i == 3) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
-        else if (i == 4) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
-        else if (i == 5) label += sensors.getImuInvY() ? " [ON]" : " [OFF]";
+        if (i == 3) {
+            static const bool kImuFlags[8][4] = {
+                {false, false, false, false},
+                {true,  false, true,  false},
+                {false, true,  true,  false},
+                {true,  true,  false, false},
+                {false, false, true,  true},
+                {true,  false, false, true},
+                {false, true,  false, true},
+                {true,  true,  true,  true}
+            };
+            int p = 0;
+            for (int k = 0; k < 8; k++) {
+                if (kImuFlags[k][0] == sensors.getImuSwapXY() &&
+                    kImuFlags[k][1] == sensors.getImuInvX() &&
+                    kImuFlags[k][2] == sensors.getImuInvY() &&
+                    kImuFlags[k][3] == sensors.getImuInvZ()) {
+                    p = k;
+                    break;
+                }
+            }
+            label += " [" + String(p + 1) + "/8]";
+        }
+        else if (i == 4) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
+        else if (i == 5) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
         else if (i == 6) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
 
         oled.drawStr(4, y_pos, label.c_str());
@@ -1513,6 +1540,125 @@ void DisplayManager::drawAppMotionSettings() {
                   " BME:" + String(sensors.isBmeOk() ? "OK" : "ERR");
     oled.drawStr(4, 58, stat.c_str());
 }
+
+void DisplayManager::drawAppMotionOrientation3D() {
+    int preset = ui.getImuOrientPreset();
+    if (preset < 0 || preset >= 8) preset = 0;
+
+    // Header banner
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawBox(0, 0, 128, 10);
+    oled.setDrawColor(0);
+    oled.drawStr(10, 8, "3D IMU ORIENTATION");
+    oled.setDrawColor(1);
+
+    // 3D Projection center and scale
+    const int cx = 27;
+    const int cy = 34;
+    const int scale = 14;
+
+    auto project3D = [&](float x, float y, float z, int& px, int& py) {
+        px = cx + (int)((y * 0.866f - x * 0.707f) * scale);
+        py = cy + (int)((-x * 0.5f + y * 0.35f + z * 0.85f) * scale);
+    };
+
+    // Draw watch plate in 3D perspective
+    int p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y;
+    project3D(1.2f, -0.9f, 0.0f, p1x, p1y);
+    project3D(1.2f,  0.9f, 0.0f, p2x, p2y);
+    project3D(-1.2f, 0.9f, 0.0f, p3x, p3y);
+    project3D(-1.2f, -0.9f, 0.0f, p4x, p4y);
+
+    oled.drawLine(p1x, p1y, p2x, p2y);
+    oled.drawLine(p2x, p2y, p3x, p3y);
+    oled.drawLine(p3x, p3y, p4x, p4y);
+    oled.drawLine(p4x, p4y, p1x, p1y);
+
+    // 12H Forward indicator on plate
+    int f1x, f1y;
+    project3D(1.5f, 0.0f, 0.0f, f1x, f1y);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(f1x - 5, f1y, "12H");
+
+    // Origin hub
+    oled.drawDisc(cx, cy, 1);
+
+    // Vector definitions for the 8 IMU presets:
+    struct ImuPresetDef {
+        const char* name;
+        const char* tag;
+        float vx[3];
+        float vy[3];
+        float vz[3];
+        const char* x_dir;
+        const char* y_dir;
+        const char* z_dir;
+    };
+
+    static const ImuPresetDef kPresets[8] = {
+        {"X-FWD", "[FLIP]", { 1.0f,  0.0f,  0.0f}, { 0.0f,  1.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "FWD",  "RGHT", "DOWN"},
+        {"Y-FWD", "[FLIP]", { 0.0f, -1.0f,  0.0f}, { 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "LEFT", "FWD",  "DOWN"},
+        {"X-BCK", "[FLIP]", {-1.0f,  0.0f,  0.0f}, { 0.0f, -1.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "BCK",  "LEFT", "DOWN"},
+        {"Y-BCK", "[FLIP]", { 0.0f,  1.0f,  0.0f}, {-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "RGHT", "BCK",  "DOWN"},
+        {"X-FWD", "[NORM]", { 1.0f,  0.0f,  0.0f}, { 0.0f, -1.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "FWD",  "LEFT", "UP"},
+        {"Y-FWD", "[NORM]", { 0.0f,  1.0f,  0.0f}, { 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "RGHT", "FWD",  "UP"},
+        {"X-BCK", "[NORM]", {-1.0f,  0.0f,  0.0f}, { 0.0f,  1.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "BCK",  "RGHT", "UP"},
+        {"Y-BCK", "[NORM]", { 0.0f, -1.0f,  0.0f}, {-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "LEFT", "BCK",  "UP"}
+    };
+
+    const ImuPresetDef& pdef = kPresets[preset];
+
+    // Project and draw X, Y, Z vector arrows
+    int vx_x, vx_y, vy_x, vy_y, vz_x, vz_y;
+    project3D(pdef.vx[0], pdef.vx[1], pdef.vx[2], vx_x, vx_y);
+    project3D(pdef.vy[0], pdef.vy[1], pdef.vy[2], vy_x, vy_y);
+    project3D(pdef.vz[0], pdef.vz[1], pdef.vz[2], vz_x, vz_y);
+
+    // Draw vector lines
+    oled.drawLine(cx, cy, vx_x, vx_y);
+    oled.drawLine(cx, cy, vy_x, vy_y);
+    oled.drawLine(cx, cy, vz_x, vz_y);
+
+    // Tip discs & labels
+    oled.drawDisc(vx_x, vx_y, 1);
+    oled.drawDisc(vy_x, vy_y, 1);
+    oled.drawDisc(vz_x, vz_y, 1);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(vx_x + (vx_x >= cx ? 2 : -6), vx_y + (vx_y >= cy ? 4 : -2), "X");
+    oled.drawStr(vy_x + (vy_x >= cx ? 2 : -6), vy_y + (vy_y >= cy ? 4 : -2), "Y");
+    oled.drawStr(vz_x + (vz_x >= cx ? 2 : -6), vz_y + (vz_y >= cy ? 5 : -2), "Z");
+
+    // Vertical divider line
+    oled.drawVLine(57, 12, 42);
+
+    // Right-hand telemetry & preset card
+    oled.setFont(u8g2_font_5x7_tr);
+    char pbuf[20];
+    snprintf(pbuf, sizeof(pbuf), "[%d/8] %s", preset + 1, pdef.name);
+    oled.drawStr(60, 20, pbuf);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    char axBuf[24];
+    snprintf(axBuf, sizeof(axBuf), "+X: %s", pdef.x_dir);
+    oled.drawStr(60, 28, axBuf);
+    snprintf(axBuf, sizeof(axBuf), "+Y: %s", pdef.y_dir);
+    oled.drawStr(60, 36, axBuf);
+    snprintf(axBuf, sizeof(axBuf), "+Z: %s %s", pdef.z_dir, pdef.tag);
+    oled.drawStr(60, 44, axBuf);
+
+    // Live pitch & roll telemetry from previewed orientation
+    OrientationData ori = sensors.getOrientation();
+    char telemBuf[24];
+    snprintf(telemBuf, sizeof(telemBuf), "P:%+03d\xb0 R:%+03d\xb0", (int)ori.pitch, (int)ori.roll);
+    oled.drawStr(60, 52, telemBuf);
+
+    // Bottom control hint
+    oled.drawHLine(0, 55, 128);
+    oled.drawStr(2, 63, "[OK]APPLY");
+    oled.drawStr(68, 63, "[UP/DN]CYCLE");
+}
+
 
 
 void DisplayManager::drawAppIR() {
@@ -2114,6 +2260,135 @@ void DisplayManager::drawAppCompassDeclination() {
     int w = oled.getStrWidth(dStr.c_str());
     oled.drawStr(64 - w/2, 44, dStr.c_str());
 }
+
+void DisplayManager::drawAppCompassOrientation3D() {
+    int preset = ui.getCalOrientPreset();
+    if (preset < 0 || preset >= 8) preset = 0;
+
+    // Header banner
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawBox(0, 0, 128, 10);
+    oled.setDrawColor(0);
+    oled.drawStr(8, 8, "3D MOUNT ORIENTATION");
+    oled.setDrawColor(1);
+
+    // 3D Projection center and scale
+    const int cx = 27;
+    const int cy = 34;
+    const int scale = 14;
+
+    auto project3D = [&](float x, float y, float z, int& px, int& py) {
+        px = cx + (int)((y * 0.866f - x * 0.707f) * scale);
+        py = cy + (int)((-x * 0.5f + y * 0.35f + z * 0.85f) * scale);
+    };
+
+    // Draw watch plate in 3D perspective
+    int p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y;
+    project3D(1.2f, -0.9f, 0.0f, p1x, p1y);
+    project3D(1.2f,  0.9f, 0.0f, p2x, p2y);
+    project3D(-1.2f, 0.9f, 0.0f, p3x, p3y);
+    project3D(-1.2f, -0.9f, 0.0f, p4x, p4y);
+
+    oled.drawLine(p1x, p1y, p2x, p2y);
+    oled.drawLine(p2x, p2y, p3x, p3y);
+    oled.drawLine(p3x, p3y, p4x, p4y);
+    oled.drawLine(p4x, p4y, p1x, p1y);
+
+    // 12H Forward indicator on plate
+    int f1x, f1y;
+    project3D(1.5f, 0.0f, 0.0f, f1x, f1y);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(f1x - 5, f1y, "12H");
+
+    // Origin hub
+    oled.drawDisc(cx, cy, 1);
+
+    // Vector definitions for the 8 presets:
+    struct OrientPresetDef {
+        const char* name;
+        const char* tag;
+        float vx[3];
+        float vy[3];
+        float vz[3];
+        const char* x_dir;
+        const char* y_dir;
+        const char* z_dir;
+    };
+
+    static const OrientPresetDef kPresets[8] = {
+        {"Y-FWD", "[DFLT]", { 0.0f, -1.0f,  0.0f}, { 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "LEFT", "FWD",  "DOWN"},
+        {"X-FWD", "[FLIP]", { 1.0f,  0.0f,  0.0f}, { 0.0f,  1.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "FWD",  "RGHT", "DOWN"},
+        {"Y-BCK", "[FLIP]", { 0.0f,  1.0f,  0.0f}, {-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "RGHT", "BCK",  "DOWN"},
+        {"X-BCK", "[FLIP]", {-1.0f,  0.0f,  0.0f}, { 0.0f, -1.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, "BCK",  "LEFT", "DOWN"},
+        {"Y-FWD", "[NORM]", { 0.0f,  1.0f,  0.0f}, { 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "RGHT", "FWD",  "UP"},
+        {"X-FWD", "[NORM]", { 1.0f,  0.0f,  0.0f}, { 0.0f, -1.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "FWD",  "LEFT", "UP"},
+        {"Y-BCK", "[NORM]", { 0.0f, -1.0f,  0.0f}, {-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "LEFT", "BCK",  "UP"},
+        {"X-BCK", "[NORM]", {-1.0f,  0.0f,  0.0f}, { 0.0f,  1.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, "RGHT", "BCK",  "UP"}
+    };
+
+    const OrientPresetDef& pdef = kPresets[preset];
+
+    // Project and draw X, Y, Z vector arrows
+    int vx_x, vx_y, vy_x, vy_y, vz_x, vz_y;
+    project3D(pdef.vx[0], pdef.vx[1], pdef.vx[2], vx_x, vx_y);
+    project3D(pdef.vy[0], pdef.vy[1], pdef.vy[2], vy_x, vy_y);
+    project3D(pdef.vz[0], pdef.vz[1], pdef.vz[2], vz_x, vz_y);
+
+    // Draw vector lines
+    oled.drawLine(cx, cy, vx_x, vx_y);
+    oled.drawLine(cx, cy, vy_x, vy_y);
+    oled.drawLine(cx, cy, vz_x, vz_y);
+
+    // Tip discs & labels
+    oled.drawDisc(vx_x, vx_y, 1);
+    oled.drawDisc(vy_x, vy_y, 1);
+    oled.drawDisc(vz_x, vz_y, 1);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(vx_x + (vx_x >= cx ? 2 : -6), vx_y + (vx_y >= cy ? 4 : -2), "X");
+    oled.drawStr(vy_x + (vy_x >= cx ? 2 : -6), vy_y + (vy_y >= cy ? 4 : -2), "Y");
+    oled.drawStr(vz_x + (vz_x >= cx ? 2 : -6), vz_y + (vz_y >= cy ? 5 : -2), "Z");
+
+    // Vertical divider line
+    oled.drawVLine(57, 12, 42);
+
+    // Right-hand telemetry & preset card
+    oled.setFont(u8g2_font_5x7_tr);
+    char pbuf[20];
+    snprintf(pbuf, sizeof(pbuf), "[%d/8] %s", preset + 1, pdef.name);
+    oled.drawStr(60, 20, pbuf);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    char axBuf[24];
+    snprintf(axBuf, sizeof(axBuf), "+X: %s", pdef.x_dir);
+    oled.drawStr(60, 28, axBuf);
+    snprintf(axBuf, sizeof(axBuf), "+Y: %s", pdef.y_dir);
+    oled.drawStr(60, 36, axBuf);
+    snprintf(axBuf, sizeof(axBuf), "+Z: %s %s", pdef.z_dir, pdef.tag);
+    oled.drawStr(60, 44, axBuf);
+
+    // Live heading readout from previewed orientation
+    float live_hdg = sensors.getOrientation().yaw;
+    const char* card = "N";
+    if (live_hdg >= 337.5f || live_hdg < 22.5f) card = "N";
+    else if (live_hdg < 67.5f) card = "NE";
+    else if (live_hdg < 112.5f) card = "E";
+    else if (live_hdg < 157.5f) card = "SE";
+    else if (live_hdg < 202.5f) card = "S";
+    else if (live_hdg < 247.5f) card = "SW";
+    else if (live_hdg < 292.5f) card = "W";
+    else card = "NW";
+
+    char hdgBuf[20];
+    snprintf(hdgBuf, sizeof(hdgBuf), "HDG:%03d\xb0 %s", (int)live_hdg, card);
+    oled.drawStr(60, 52, hdgBuf);
+
+    // Bottom control hint
+    oled.drawHLine(0, 55, 128);
+    oled.drawStr(2, 63, "[OK]APPLY");
+    oled.drawStr(68, 63, "[UP/DN]CYCLE");
+}
+
 
 
 void DisplayManager::drawKeyboardScreen() {

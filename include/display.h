@@ -50,6 +50,7 @@ private:
     void drawAppCompassCalResult();
     void drawAppCompassTelemetry();
     void drawAppCompassDeclination();
+    void drawAppCompassOrientation3D();
 
     float mag_history[64];
     int mag_history_idx;
@@ -61,6 +62,7 @@ private:
     void drawAppMotionLevel();
     void drawAppMotionData();
     void drawAppMotionSettings();
+    void drawAppMotionOrientation3D();
     void drawAppAirMouse();
     void drawAppIR();
     void drawAppBme();

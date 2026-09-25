@@ -61,6 +61,8 @@ UICore::UICore() :
     compass_state(CompassState::PAGE_MAIN),
     compass_menu_selection(0),
     compass_menu_offset(0),
+    cal_orient_preset(0),
+    imu_orient_preset(0),
     motion_state(MotionState::PAGE_LEVEL),
     needs_redraw(true),
     fm_current_path("/"),
@@ -401,9 +403,41 @@ void UICore::loop() {
             return;
         } else if (current_state == UIState::APP_COMPASS) {
             soundManager.playNavBack();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 3;
-            menu_scroll_offset = 1;
+            if (compass_state == CompassState::CAL_ORIENTATION_3D) {
+                sensors.revertMagOrientation();
+                compass_state = CompassState::PAGE_CAL_MENU;
+            } else if (compass_state == CompassState::CAL_SWEEP ||
+                       compass_state == CompassState::CAL_RESULT ||
+                       compass_state == CompassState::CAL_TELEMETRY ||
+                       compass_state == CompassState::CAL_DECLINATION) {
+                compass_state = CompassState::PAGE_CAL_MENU;
+            } else if (compass_state == CompassState::PAGE_CAL_MENU) {
+                compass_state = CompassState::PAGE_METRICS;
+            } else if (compass_state == CompassState::PAGE_METRICS) {
+                compass_state = CompassState::PAGE_MAIN;
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 3;
+                menu_scroll_offset = 1;
+            }
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_MOTION) {
+            soundManager.playNavBack();
+            if (motion_state == MotionState::PAGE_ORIENTATION_3D) {
+                sensors.revertImuOrientation();
+                motion_state = MotionState::PAGE_SETTINGS;
+            } else if (motion_state == MotionState::PAGE_SETTINGS) {
+                motion_state = MotionState::PAGE_DATA;
+            } else if (motion_state == MotionState::PAGE_DATA) {
+                motion_state = MotionState::PAGE_LEVEL;
+            } else if (imu_subapp != Imu6500SubApp::SUBAPP_MENU) {
+                imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 5;
+                menu_scroll_offset = 3;
+            }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_CLOCK) {
@@ -2502,9 +2536,9 @@ void UICore::handleCompassInput() {
                 sensors.startMagCalibration();
                 compass_state = CompassState::CAL_SWEEP;
             } else if (compass_menu_selection == 1) {
-                MagCalibration cal = sensors.getMagCalibration();
-                cal.orientation_mode = (cal.orientation_mode + 1) % 4;
-                sensors.saveMagCalibration(cal);
+                cal_orient_preset = (sensors.getMagCalibration().invert_z ? 4 : 0) + (sensors.getMagCalibration().orientation_mode % 4);
+                sensors.setPreviewMagOrientation(cal_orient_preset % 4, cal_orient_preset >= 4);
+                compass_state = CompassState::CAL_ORIENTATION_3D;
             } else if (compass_menu_selection == 2) {
                 MagCalibration cal = sensors.getMagCalibration();
                 cal.invert_z = !cal.invert_z;
@@ -2516,6 +2550,24 @@ void UICore::handleCompassInput() {
             } else if (compass_menu_selection == 5) {
                 sensors.factoryResetCalibration();
             }
+            needs_redraw = true;
+        }
+    } else if (compass_state == CompassState::CAL_ORIENTATION_3D) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            cal_orient_preset = (cal_orient_preset + 7) % 8;
+            sensors.setPreviewMagOrientation(cal_orient_preset % 4, cal_orient_preset >= 4);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            cal_orient_preset = (cal_orient_preset + 1) % 8;
+            sensors.setPreviewMagOrientation(cal_orient_preset % 4, cal_orient_preset >= 4);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            sensors.saveOrientationMode(cal_orient_preset % 4, cal_orient_preset >= 4);
+            soundManager.playNavSelect();
+            showToast("ORIENT SAVED");
+            compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
         }
     } else if (compass_state == CompassState::CAL_SWEEP) {
@@ -2638,10 +2690,73 @@ void UICore::handleMotionInput() {
                 else showToast("[BME UNLINKED]", 1500);
             } else if (compass_menu_selection == 1) sensors.zeroLevel();
             else if (compass_menu_selection == 2) sensors.calibrateAccel();
-            else if (compass_menu_selection == 3) sensors.setImuSwapXY(!sensors.getImuSwapXY());
-            else if (compass_menu_selection == 4) sensors.setImuInvX(!sensors.getImuInvX());
-            else if (compass_menu_selection == 5) sensors.setImuInvY(!sensors.getImuInvY());
+            else if (compass_menu_selection == 3) {
+                static const bool kImuFlags[8][4] = {
+                    {false, false, false, false},
+                    {true,  false, true,  false},
+                    {false, true,  true,  false},
+                    {true,  true,  false, false},
+                    {false, false, true,  true},
+                    {true,  false, false, true},
+                    {false, true,  false, true},
+                    {true,  true,  true,  true}
+                };
+                imu_orient_preset = 0;
+                for (int i = 0; i < 8; i++) {
+                    if (kImuFlags[i][0] == sensors.getImuSwapXY() &&
+                        kImuFlags[i][1] == sensors.getImuInvX() &&
+                        kImuFlags[i][2] == sensors.getImuInvY() &&
+                        kImuFlags[i][3] == sensors.getImuInvZ()) {
+                        imu_orient_preset = i;
+                        break;
+                    }
+                }
+                sensors.setPreviewImuOrientation(kImuFlags[imu_orient_preset][0],
+                                                 kImuFlags[imu_orient_preset][1],
+                                                 kImuFlags[imu_orient_preset][2],
+                                                 kImuFlags[imu_orient_preset][3]);
+                motion_state = MotionState::PAGE_ORIENTATION_3D;
+            }
+            else if (compass_menu_selection == 4) sensors.setImuSwapXY(!sensors.getImuSwapXY());
+            else if (compass_menu_selection == 5) sensors.setImuInvX(!sensors.getImuInvX());
             else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
+            needs_redraw = true;
+        }
+    } else if (motion_state == MotionState::PAGE_ORIENTATION_3D) {
+        static const bool kImuFlags[8][4] = {
+            {false, false, false, false},
+            {true,  false, true,  false},
+            {false, true,  true,  false},
+            {true,  true,  false, false},
+            {false, false, true,  true},
+            {true,  false, false, true},
+            {false, true,  false, true},
+            {true,  true,  true,  true}
+        };
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            imu_orient_preset = (imu_orient_preset + 7) % 8;
+            sensors.setPreviewImuOrientation(kImuFlags[imu_orient_preset][0],
+                                             kImuFlags[imu_orient_preset][1],
+                                             kImuFlags[imu_orient_preset][2],
+                                             kImuFlags[imu_orient_preset][3]);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            imu_orient_preset = (imu_orient_preset + 1) % 8;
+            sensors.setPreviewImuOrientation(kImuFlags[imu_orient_preset][0],
+                                             kImuFlags[imu_orient_preset][1],
+                                             kImuFlags[imu_orient_preset][2],
+                                             kImuFlags[imu_orient_preset][3]);
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            sensors.saveImuOrientation(kImuFlags[imu_orient_preset][0],
+                                       kImuFlags[imu_orient_preset][1],
+                                       kImuFlags[imu_orient_preset][2],
+                                       kImuFlags[imu_orient_preset][3]);
+            soundManager.playNavSelect();
+            showToast("IMU ORIENT SAVED");
+            motion_state = MotionState::PAGE_SETTINGS;
             needs_redraw = true;
         }
     }

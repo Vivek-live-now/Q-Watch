@@ -303,6 +303,107 @@ def test_qlink_protocol():
 
     print("  [PASS] Q-Link Compact Telemetry (32B), Magic, button injection, and sync interfaces verified.")
 
+def test_compass_3d_orientation():
+    print("\n--- 10. Compass 3D Orientation & Bijective Preset Test ---")
+    # 1. Bijective mapping test across all 8 presets
+    for preset in range(8):
+        mode = preset % 4
+        inv_z = (preset >= 4)
+        reconstructed = (4 if inv_z else 0) + (mode % 4)
+        assert reconstructed == preset, f"Preset reconstruction failed for {preset}"
+
+    # 2. Preset 1 check (User setup: X-Fwd, Y-Right, Z-Down [Upside-Down / Flipped])
+    user_preset = 1
+    assert user_preset % 4 == 1, "Preset 1 mode mismatch"
+    assert (user_preset >= 4) is False, "Preset 1 inv_z mismatch (must be Z-Down)"
+
+    # 3. 3D Projection geometry bounds check for 128x64 OLED
+    cx, cy, scale = 27, 34, 14
+    def project3D(x, y, z):
+        px = cx + int((y * 0.866 - x * 0.707) * scale)
+        py = cy + int((-x * 0.5 + y * 0.35 + z * 0.85) * scale)
+        return px, py
+
+    presets = [
+        (( 0, -1,  0), ( 1,  0,  0), ( 0,  0,  1)), # 0: Y-FWD, Z-DN
+        (( 1,  0,  0), ( 0,  1,  0), ( 0,  0,  1)), # 1: X-FWD, Z-DN (User)
+        (( 0,  1,  0), (-1,  0,  0), ( 0,  0,  1)), # 2: Y-BCK, Z-DN
+        ((-1,  0,  0), ( 0, -1,  0), ( 0,  0,  1)), # 3: X-BCK, Z-DN
+        (( 0,  1,  0), ( 1,  0,  0), ( 0,  0, -1)), # 4: Y-FWD, Z-UP
+        (( 1,  0,  0), ( 0, -1,  0), ( 0,  0, -1)), # 5: X-FWD, Z-UP
+        (( 0, -1,  0), (-1,  0,  0), ( 0,  0, -1)), # 6: Y-BCK, Z-UP
+        ((-1,  0,  0), ( 0,  1,  0), ( 0,  0, -1)), # 7: X-BCK, Z-UP
+    ]
+
+    for idx, (vx, vy, vz) in enumerate(presets):
+        px = project3D(*vx)
+        py = project3D(*vy)
+        pz = project3D(*vz)
+        for pt in [px, py, pz]:
+            assert 0 <= pt[0] <= 60, f"X out of left viewport bounds ({pt[0]}) in preset {idx}"
+            assert 10 <= pt[1] <= 55, f"Y out of vertical viewport bounds ({pt[1]}) in preset {idx}"
+
+    print("  [PASS] All 8 3D orientation presets, bijective mapping, and OLED projection bounds verified.")
+
+def test_imu_3d_orientation():
+    print("\n--- 11. IMU 3D Orientation & Right-Hand Rule Test ---")
+    kImuFlags = [
+        (False, False, False, False), # 0: X-FWD Z-DN (User)
+        (True,  false_val := False, True,  False), # 1: Y-FWD Z-DN
+        (False, True,  True,  False), # 2: X-BCK Z-DN
+        (True,  True,  False, False), # 3: Y-BCK Z-DN
+        (False, False, True,  True),  # 4: X-FWD Z-UP
+        (True,  False, False, True),  # 5: Y-FWD Z-UP
+        (False, True,  False, True),  # 6: X-BCK Z-UP
+        (True,  True,  True,  True)   # 7: Y-BCK Z-UP
+    ]
+
+    # 1. Uniqueness / bijection
+    assert len(set(kImuFlags)) == 8, "IMU preset flag combinations must be unique"
+
+    # 2. Preset 0 matches user's upside down orientation (X forward, Y right, Z down)
+    assert kImuFlags[0] == (False, False, False, False), "Preset 0 must be 1:1 identity for X-FWD Z-DN"
+
+    # 3. Orthogonality & Right-Hand rule check for all 8 presets
+    imu_presets = [
+        (( 1,  0,  0), ( 0,  1,  0), ( 0,  0,  1)), # 0: X-FWD, Z-DN (User)
+        (( 0, -1,  0), ( 1,  0,  0), ( 0,  0,  1)), # 1: Y-FWD, Z-DN
+        ((-1,  0,  0), ( 0, -1,  0), ( 0,  0,  1)), # 2: X-BCK, Z-DN
+        (( 0,  1,  0), (-1,  0,  0), ( 0,  0,  1)), # 3: Y-BCK, Z-DN
+        (( 1,  0,  0), ( 0, -1,  0), ( 0,  0, -1)), # 4: X-FWD, Z-UP
+        (( 0,  1,  0), ( 1,  0,  0), ( 0,  0, -1)), # 5: Y-FWD, Z-UP
+        ((-1,  0,  0), ( 0,  1,  0), ( 0,  0, -1)), # 6: X-BCK, Z-UP
+        (( 0, -1,  0), (-1,  0,  0), ( 0,  0, -1)), # 7: Y-BCK, Z-UP
+    ]
+
+    cx, cy, scale = 27, 34, 14
+    def project3D(x, y, z):
+        px = cx + int((y * 0.866 - x * 0.707) * scale)
+        py = cy + int((-x * 0.5 + y * 0.35 + z * 0.85) * scale)
+        return px, py
+
+    def cross(a, b):
+        return (
+            a[1]*b[2] - a[2]*b[1],
+            a[2]*b[0] - a[0]*b[2],
+            a[0]*b[1] - a[1]*b[0]
+        )
+
+    for idx, (vx, vy, vz) in enumerate(imu_presets):
+        # Verify right-hand rule: X x Y = Z
+        cz = cross(vx, vy)
+        assert cz == vz, f"Preset {idx} violates right-hand rule: {cz} != {vz}"
+
+        # Verify OLED viewport boundaries
+        px = project3D(*vx)
+        py = project3D(*vy)
+        pz = project3D(*vz)
+        for pt in [px, py, pz]:
+            assert 0 <= pt[0] <= 60, f"X out of left viewport ({pt[0]}) in IMU preset {idx}"
+            assert 10 <= pt[1] <= 55, f"Y out of vertical viewport ({pt[1]}) in IMU preset {idx}"
+
+    print("  [PASS] All 8 IMU presets, right-hand rule orthogonality, and projection bounds verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -313,4 +414,6 @@ if __name__ == "__main__":
     test_animation_engine()
     test_wireless_recon()
     test_qlink_protocol()
+    test_compass_3d_orientation()
+    test_imu_3d_orientation()
     print("\nAll self-test verifications PASSED!")

@@ -106,12 +106,62 @@ void SensorManager::saveMagCalibration(const MagCalibration& cal) {
     prefs.end();
 }
 
+void SensorManager::setPreviewMagOrientation(int mode, bool inv_z) {
+    mag_cal.orientation_mode = mode;
+    mag_cal.invert_z = inv_z;
+}
+
+void SensorManager::saveOrientationMode(int mode, bool inv_z) {
+    mag_cal.orientation_mode = mode;
+    mag_cal.invert_z = inv_z;
+    prefs.begin("sensors", false);
+    prefs.putInt("orient", mag_cal.orientation_mode);
+    prefs.putBool("inv_z", mag_cal.invert_z);
+    prefs.end();
+}
+
+void SensorManager::revertMagOrientation() {
+    prefs.begin("sensors", true);
+    mag_cal.orientation_mode = prefs.getInt("orient", 0);
+    mag_cal.invert_z = prefs.getBool("inv_z", false);
+    prefs.end();
+}
+
 
 
 void SensorManager::setImuSwapXY(bool swap) { offsets.swap_xy = swap; prefs.begin("sensors", false); prefs.putBool("swap_xy", swap); prefs.end(); }
 void SensorManager::setImuInvX(bool inv) { offsets.inv_x = inv; prefs.begin("sensors", false); prefs.putBool("inv_x", inv); prefs.end(); }
 void SensorManager::setImuInvY(bool inv) { offsets.inv_y = inv; prefs.begin("sensors", false); prefs.putBool("inv_y", inv); prefs.end(); }
 void SensorManager::setImuInvZ(bool inv) { offsets.inv_z = inv; prefs.begin("sensors", false); prefs.putBool("inv_z", inv); prefs.end(); }
+
+void SensorManager::setPreviewImuOrientation(bool swap_xy, bool inv_x, bool inv_y, bool inv_z) {
+    offsets.swap_xy = swap_xy;
+    offsets.inv_x = inv_x;
+    offsets.inv_y = inv_y;
+    offsets.inv_z = inv_z;
+}
+
+void SensorManager::saveImuOrientation(bool swap_xy, bool inv_x, bool inv_y, bool inv_z) {
+    offsets.swap_xy = swap_xy;
+    offsets.inv_x = inv_x;
+    offsets.inv_y = inv_y;
+    offsets.inv_z = inv_z;
+    prefs.begin("sensors", false);
+    prefs.putBool("swap_xy", offsets.swap_xy);
+    prefs.putBool("inv_x", offsets.inv_x);
+    prefs.putBool("inv_y", offsets.inv_y);
+    prefs.putBool("inv_z", offsets.inv_z);
+    prefs.end();
+}
+
+void SensorManager::revertImuOrientation() {
+    prefs.begin("sensors", true);
+    offsets.swap_xy = prefs.getBool("swap_xy", false);
+    offsets.inv_x = prefs.getBool("inv_x", false);
+    offsets.inv_y = prefs.getBool("inv_y", false);
+    offsets.inv_z = prefs.getBool("inv_z", false);
+    prefs.end();
+}
 
 void SensorManager::calibrateAccel() {
     Serial.println("Calibrating Accel...");

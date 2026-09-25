@@ -93,12 +93,18 @@ public:
 
     MagCalibration getMagCalibration() const { return mag_cal; }
     void saveMagCalibration(const MagCalibration& cal);
+    void setPreviewMagOrientation(int mode, bool inv_z);
+    void saveOrientationMode(int mode, bool inv_z);
+    void revertMagOrientation();
     void factoryResetCalibration();
 
     void setImuSwapXY(bool swap);
     void setImuInvX(bool inv);
     void setImuInvY(bool inv);
     void setImuInvZ(bool inv);
+    void setPreviewImuOrientation(bool swap_xy, bool inv_x, bool inv_y, bool inv_z);
+    void saveImuOrientation(bool swap_xy, bool inv_x, bool inv_y, bool inv_z);
+    void revertImuOrientation();
     bool getImuSwapXY() const { return offsets.swap_xy; }
     bool getImuInvX() const { return offsets.inv_x; }
     bool getImuInvY() const { return offsets.inv_y; }
