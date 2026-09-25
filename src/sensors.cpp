@@ -22,7 +22,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -55,9 +55,10 @@ void SensorManager::loadCalibration() {
 
     prefs.begin("sensors", false);
 
-
-
-offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
+    offsets.gyro_bias_x = prefs.getFloat("gb_x", 0.0f);
+    offsets.gyro_bias_y = prefs.getFloat("gb_y", 0.0f);
+    offsets.gyro_bias_z = prefs.getFloat("gb_z", 0.0f);
+    offsets.pitch_offset = prefs.getFloat("p_off", 0.0f);
     offsets.roll_offset = prefs.getFloat("r_off", 0.0f);
     offsets.accel_bias_x = prefs.getFloat("ab_x", 0.0f);
     offsets.accel_bias_y = prefs.getFloat("ab_y", 0.0f);
@@ -177,9 +178,12 @@ void SensorManager::calibrateAccel() {
     }
 
     // Z is gravity (1G), which is 4096 in 8G range
+    // When watch is held flat on table face-up, expected gravity along raw Z depends on whether Z is inverted:
+    // If inv_z is true, raw Z points down (-4096 LSB). If inv_z is false, raw Z points up (+4096 LSB).
+    float expected_gravity_z = offsets.inv_z ? -4096.0f : 4096.0f;
     offsets.accel_bias_x = (float)ax_sum / CAL_SAMPLES;
     offsets.accel_bias_y = (float)ay_sum / CAL_SAMPLES;
-    offsets.accel_bias_z = ((float)az_sum / CAL_SAMPLES) - 4096.0f;
+    offsets.accel_bias_z = ((float)az_sum / CAL_SAMPLES) - expected_gravity_z;
 
     prefs.begin("sensors", false);
     prefs.putFloat("ab_x", offsets.accel_bias_x);
@@ -189,15 +193,24 @@ void SensorManager::calibrateAccel() {
 }
 
 void SensorManager::zeroLevel() {
+    // Re-calibrate gyro bias while watch is resting on level surface
+    calibrateGyro();
+
     // Current uncompensated euler angles (raw from madgwick)
     // Performance Optimization: Use single-precision float math functions (atan2f/asinf) for hardware ESP32-S3 FPU acceleration
     float raw_roll  = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    float raw_pitch = asinf(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+    float sinp = -2.0f * (q1*q3 - q0*q2);
+    if (sinp > 1.0f) sinp = 1.0f;
+    else if (sinp < -1.0f) sinp = -1.0f;
+    float raw_pitch = asinf(sinp) * 57.29578f;
 
     offsets.roll_offset = raw_roll;
     offsets.pitch_offset = raw_pitch;
 
     prefs.begin("sensors", false);
+    prefs.putFloat("gb_x", offsets.gyro_bias_x);
+    prefs.putFloat("gb_y", offsets.gyro_bias_y);
+    prefs.putFloat("gb_z", offsets.gyro_bias_z);
     prefs.putFloat("p_off", offsets.pitch_offset);
     prefs.putFloat("r_off", offsets.roll_offset);
     prefs.end();
@@ -216,6 +229,7 @@ void SensorManager::factoryResetCalibration() {
     mag_cal.invert_z = false;
     mag_cal.declination = 0.0f;
     mag_cal.auto_declination = false;
+    yaw_initialized = false;
 
     saveMagCalibration(mag_cal);
 }
@@ -489,34 +503,34 @@ void SensorManager::applyCalibrationAndMapping() {
     if (offsets.inv_z) { cal_data.az = -cal_data.az; cal_data.gz = -cal_data.gz; }
 
     // MAG Pipeline
-    float rx = (float)raw_data.mx;
-    float ry = (float)raw_data.my;
-    float rz = (float)raw_data.mz;
+    // Step A: Hard-Iron (Offset) & Soft-Iron (Scale) in raw chip coordinate frame
+    float cx = ((float)raw_data.mx - mag_cal.hard_iron_x) * mag_cal.soft_iron_x;
+    float cy = ((float)raw_data.my - mag_cal.hard_iron_y) * mag_cal.soft_iron_y;
+    float cz = ((float)raw_data.mz - mag_cal.hard_iron_z) * mag_cal.soft_iron_z;
 
-    // Step A: Orientation Remap
+    // Step B: Orientation Remap into watch body frame
     float mapped_x, mapped_y, mapped_z;
     if (mag_cal.orientation_mode == 0) { // Default Y-Fwd, X-Left
-        mapped_x = -rx; mapped_y = ry; mapped_z = -rz;
+        mapped_x = -cx; mapped_y = cy; mapped_z = -cz;
     } else if (mag_cal.orientation_mode == 1) { // X-Fwd, Y-Right
-        mapped_x = -ry; mapped_y = -rx; mapped_z = -rz;
+        mapped_x = -cy; mapped_y = -cx; mapped_z = -cz;
     } else if (mag_cal.orientation_mode == 2) { // Y-Back, X-Right
-        mapped_x = rx; mapped_y = -ry; mapped_z = -rz;
+        mapped_x = cx; mapped_y = -cy; mapped_z = -cz;
     } else if (mag_cal.orientation_mode == 3) { // X-Back, Y-Left
-        mapped_x = ry; mapped_y = rx; mapped_z = -rz;
+        mapped_x = cy; mapped_y = cx; mapped_z = -cz;
     } else {
-        mapped_x = -rx; mapped_y = ry; mapped_z = -rz;
+        mapped_x = -cx; mapped_y = cy; mapped_z = -cz;
     }
 
-    // Step B: Z-Invert
+    // Step C: Z-Invert
     if (mag_cal.invert_z) {
         mapped_z = -mapped_z;
         mapped_x = -mapped_x; // Maintain right-hand rule
     }
 
-    // Step C: Hard-Iron (Offset) & Soft-Iron (Scale)
-    cal_data.mx = (mapped_x - mag_cal.hard_iron_x) * mag_cal.soft_iron_x;
-    cal_data.my = (mapped_y - mag_cal.hard_iron_y) * mag_cal.soft_iron_y;
-    cal_data.mz = (mapped_z - mag_cal.hard_iron_z) * mag_cal.soft_iron_z;
+    cal_data.mx = mapped_x;
+    cal_data.my = mapped_y;
+    cal_data.mz = mapped_z;
 }
 void SensorManager::updateMadgwick(float dt) {
     float recipNorm;
@@ -539,11 +553,17 @@ void SensorManager::updateMadgwick(float dt) {
     if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
         // Performance Optimization: Use sqrtf to execute directly on Xtensa LX7 FPU avoiding double precision emulation
-        recipNorm = 1.0f / sqrtf(ax * ax + ay * ay + az * az);
-        ax *= recipNorm; ay *= recipNorm; az *= recipNorm;
+        float norm_a = sqrtf(ax * ax + ay * ay + az * az);
+        if (norm_a > 1e-4f) {
+            recipNorm = 1.0f / norm_a;
+            ax *= recipNorm; ay *= recipNorm; az *= recipNorm;
+        }
 
-        recipNorm = 1.0f / sqrtf(mx * mx + my * my + mz * mz);
-        mx *= recipNorm; my *= recipNorm; mz *= recipNorm;
+        float norm_m = sqrtf(mx * mx + my * my + mz * mz);
+        if (norm_m > 1e-4f) {
+            recipNorm = 1.0f / norm_m;
+            mx *= recipNorm; my *= recipNorm; mz *= recipNorm;
+        }
 
         _2q0mx = 2.0f * q0 * mx; _2q0my = 2.0f * q0 * my; _2q0mz = 2.0f * q0 * mz; _2q1mx = 2.0f * q1 * mx;
         _2q0 = 2.0f * q0; _2q1 = 2.0f * q1; _2q2 = 2.0f * q2; _2q3 = 2.0f * q3;
@@ -562,13 +582,16 @@ void SensorManager::updateMadgwick(float dt) {
         s2 = -_2q0 * (2.0f * q1q3 - _2q0q2 - ax) + _2q3 * (2.0f * q0q1 + _2q2q3 - ay) - 4.0f * q2 * (1.0f - 2.0f * q1q1 - 2.0f * q2q2 - az) + (-_4bx * q2 - _2bz * q0) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q1 + _2bz * q3) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q0 - _4bz * q2) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
         s3 = _2q1 * (2.0f * q1q3 - _2q0q2 - ax) + _2q2 * (2.0f * q0q1 + _2q2q3 - ay) + (-_4bx * q3 + _2bz * q1) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q0 + _2bz * q2) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q1 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
 
-        recipNorm = 1.0f / sqrtf(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
-        s0 *= recipNorm; s1 *= recipNorm; s2 *= recipNorm; s3 *= recipNorm;
+        float norm_s = sqrtf(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
+        if (norm_s > 1e-4f) {
+            recipNorm = 1.0f / norm_s;
+            s0 *= recipNorm; s1 *= recipNorm; s2 *= recipNorm; s3 *= recipNorm;
 
-        qDot1 -= MADGWICK_BETA * s0;
-        qDot2 -= MADGWICK_BETA * s1;
-        qDot3 -= MADGWICK_BETA * s2;
-        qDot4 -= MADGWICK_BETA * s3;
+            qDot1 -= MADGWICK_BETA * s0;
+            qDot2 -= MADGWICK_BETA * s1;
+            qDot3 -= MADGWICK_BETA * s2;
+            qDot4 -= MADGWICK_BETA * s3;
+        }
     }
 
     q0 += qDot1 * dt;
@@ -576,31 +599,50 @@ void SensorManager::updateMadgwick(float dt) {
     q2 += qDot3 * dt;
     q3 += qDot4 * dt;
 
-    recipNorm = 1.0f / sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-    q0 *= recipNorm;
-    q1 *= recipNorm;
-    q2 *= recipNorm;
-    q3 *= recipNorm;
+    float norm_q = sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+    if (norm_q > 1e-4f) {
+        recipNorm = 1.0f / norm_q;
+        q0 *= recipNorm;
+        q1 *= recipNorm;
+        q2 *= recipNorm;
+        q3 *= recipNorm;
+    }
 }
 
 void SensorManager::computeEulerAngles() {
     // Performance Optimization: Use single-precision atan2f/asinf for direct hardware FPU execution
     float raw_roll  = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    float raw_pitch = asinf(-2.0f * (q1*q3 - q0*q2)) * 57.29578f;
+    float sinp = -2.0f * (q1*q3 - q0*q2);
+    if (sinp > 1.0f) sinp = 1.0f;
+    else if (sinp < -1.0f) sinp = -1.0f;
+    float raw_pitch = asinf(sinp) * 57.29578f;
 
     orientation.roll = raw_roll - offsets.roll_offset;
     orientation.pitch = raw_pitch - offsets.pitch_offset;
 
     float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
-    orientation.yaw = 360.0f - yaw_math - 90.0f;
+    float target_yaw = 360.0f - yaw_math - 90.0f;
 
     // Apply Declination
-    orientation.yaw += mag_cal.declination;
+    target_yaw += mag_cal.declination;
 
-    // Normalize
-    while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
-    while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
+    // Normalize target to [0, 360)
+    while (target_yaw < 0.0f) target_yaw += 360.0f;
+    while (target_yaw >= 360.0f) target_yaw -= 360.0f;
+
+    // Circular exponential smoothing (alpha = 0.25) across 360-degree wrap-around
+    if (!yaw_initialized) {
+        orientation.yaw = target_yaw;
+        yaw_initialized = true;
+    } else {
+        float diff = target_yaw - orientation.yaw;
+        while (diff < -180.0f) diff += 360.0f;
+        while (diff > 180.0f) diff -= 360.0f;
+        orientation.yaw += 0.25f * diff;
+        while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
+        while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
+    }
 }
 
 void SensorManager::startMagCalibration() {
@@ -625,24 +667,15 @@ int SensorManager::getCalProgress() const {
 void SensorManager::updateMagCalibration() {
     if (cal_state != MagCalState::SWEEPING) return;
 
-    // Read raw to find min/max boundaries
-    // Important: we map axes first so offsets align with the user's chosen coordinate frame.
+    // Track min/max boundaries directly in raw sensor coordinate frame
+    // Decoupled from 3D orientation presets so changing presets never corrupts hard-iron calibration
     float rx = (float)raw_data.mx;
     float ry = (float)raw_data.my;
     float rz = (float)raw_data.mz;
 
-    float mx, my, mz;
-    if (mag_cal.orientation_mode == 0) { mx = -rx; my = ry; mz = -rz; }
-    else if (mag_cal.orientation_mode == 1) { mx = -ry; my = -rx; mz = -rz; }
-    else if (mag_cal.orientation_mode == 2) { mx = rx; my = -ry; mz = -rz; }
-    else if (mag_cal.orientation_mode == 3) { mx = ry; my = rx; mz = -rz; }
-    else { mx = -rx; my = ry; mz = -rz; }
-
-    if (mag_cal.invert_z) { mz = -mz; mx = -mx; }
-
-    if (mx < min_x) min_x = mx; if (mx > max_x) max_x = mx;
-    if (my < min_y) min_y = my; if (my > max_y) max_y = my;
-    if (mz < min_z) min_z = mz; if (mz > max_z) max_z = mz;
+    if (rx < min_x) min_x = rx; if (rx > max_x) max_x = rx;
+    if (ry < min_y) min_y = ry; if (ry > max_y) max_y = ry;
+    if (rz < min_z) min_z = rz; if (rz > max_z) max_z = rz;
 
     if (millis() - cal_start_time >= 15000) {
         completeMagCalibration();

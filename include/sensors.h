@@ -182,6 +182,7 @@ private:
     CalibratedSensorData cal_data;
     CalibrationOffsets offsets;
     OrientationData orientation;
+    bool yaw_initialized;
 
     MagCalibration mag_cal;
 

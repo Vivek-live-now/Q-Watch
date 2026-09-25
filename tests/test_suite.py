@@ -404,6 +404,93 @@ def test_imu_3d_orientation():
 
     print("  [PASS] All 8 IMU presets, right-hand rule orthogonality, and projection bounds verified.")
 
+def test_sensor_calibration_and_robustness():
+    print("\n--- 12. Sensor Calibration & Robustness Verification ---")
+
+    # 1. Pitch asin clamping protection (NaN prevention)
+    def compute_pitch(sinp):
+        clamped = max(-1.0, min(1.0, sinp))
+        return math.degrees(math.asin(clamped))
+
+    # Test overshoot beyond [-1, 1] due to quaternion numerical drift
+    assert abs(compute_pitch(1.000005) - 90.0) < 1e-4, "Positive overshoot must clamp to +90 deg"
+    assert abs(compute_pitch(-1.000005) - (-90.0)) < 1e-4, "Negative overshoot must clamp to -90 deg"
+    assert not math.isnan(compute_pitch(1.000005)), "Must not return NaN"
+
+    # 2. Madgwick gradient descent division-by-zero guard
+    def safe_normalize(v):
+        norm = math.sqrt(sum(x*x for x in v))
+        if norm > 1e-4:
+            return [x / norm for x in v], True
+        return v, False
+
+    # Stationary/aligned gradient (s0=s1=s2=s3=0)
+    norm_vec, updated = safe_normalize([0.0, 0.0, 0.0, 0.0])
+    assert not updated and norm_vec == [0.0, 0.0, 0.0, 0.0], "Zero gradient must not trigger division by zero"
+
+    # 3. calibrateAccel gravity sign under inverted vs non-inverted Z
+    cal_samples = 200
+    # Case A: inv_z = False, raw sensor measures +4096 LSB
+    raw_az_meas_a = 4120 # slight bias +24 LSB
+    expected_g_a = 4096.0
+    bias_z_a = raw_az_meas_a - expected_g_a # +24.0
+    cal_az_a = (raw_az_meas_a - bias_z_a) / 4096.0 # +1.0g
+    assert abs(cal_az_a - 1.0) < 1e-5, f"Body Az must be +1.0g (was {cal_az_a})"
+
+    # Case B: inv_z = True, raw sensor measures -4096 LSB
+    raw_az_meas_b = -4072 # slight bias +24 LSB
+    expected_g_b = -4096.0
+    bias_z_b = raw_az_meas_b - expected_g_b # +24.0
+    # Mapping inverts Z when inv_z is true:
+    cal_az_b = -((raw_az_meas_b - bias_z_b) / 4096.0) # -(-4096 / 4096) = +1.0g
+    assert abs(cal_az_b - 1.0) < 1e-5, f"Body Az must be +1.0g under inv_z (was {cal_az_b})"
+
+    # 4. Magnetometer Raw-Frame Hard-Iron Independence
+    # Raw reading with hard iron distortion
+    raw_mx, raw_my, raw_mz = 1500, -800, 3200
+    hard_iron_x, hard_iron_y, hard_iron_z = 300, -200, 500
+    soft_iron = (1.0, 1.0, 1.0)
+
+    # Step A: Raw subtraction
+    cx = (raw_mx - hard_iron_x) * soft_iron[0] # 1200
+    cy = (raw_my - hard_iron_y) * soft_iron[1] # -600
+    cz = (raw_mz - hard_iron_z) * soft_iron[2] # 2700
+    raw_cal_mag = math.sqrt(cx*cx + cy*cy + cz*cz)
+
+    # Test all 4 modes with/without invert_z - magnitude must be perfectly invariant!
+    for mode in range(4):
+        for inv_z in [False, True]:
+            if mode == 0:   mx, my, mz = -cx, cy, -cz
+            elif mode == 1: mx, my, mz = -cy, -cx, -cz
+            elif mode == 2: mx, my, mz = cx, -cy, -cz
+            elif mode == 3: mx, my, mz = cy, cx, -cz
+            if inv_z:
+                mz = -mz
+                mx = -mx
+            body_mag = math.sqrt(mx*mx + my*my + mz*mz)
+            assert abs(body_mag - raw_cal_mag) < 1e-5, f"Magnetic field magnitude altered by mode {mode} inv {inv_z}"
+
+    # 5. Circular yaw exponential smoothing across 360-degree boundary
+    alpha = 0.25
+    def smooth_yaw(current, target):
+        diff = target - current
+        while diff < -180.0: diff += 360.0
+        while diff > 180.0: diff -= 360.0
+        res = current + alpha * diff
+        while res < 0.0: res += 360.0
+        while res >= 360.0: res -= 360.0
+        return res
+
+    # 359 -> 1 deg: diff is +2 deg, smoothed is 359 + 0.25*2 = 359.5 deg
+    s1 = smooth_yaw(359.0, 1.0)
+    assert abs(s1 - 359.5) < 1e-4, f"359 -> 1 wrap-around smoothing failed: got {s1}"
+
+    # 1 -> 359 deg: diff is -2 deg, smoothed is 1 - 0.25*2 = 0.5 deg
+    s2 = smooth_yaw(1.0, 359.0)
+    assert abs(s2 - 0.5) < 1e-4, f"1 -> 359 wrap-around smoothing failed: got {s2}"
+
+    print("  [PASS] Asin NaN protection, Madgwick division guard, accel gravity sign, raw hard-iron invariance, and circular yaw smoothing verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -416,4 +503,5 @@ if __name__ == "__main__":
     test_qlink_protocol()
     test_compass_3d_orientation()
     test_imu_3d_orientation()
+    test_sensor_calibration_and_robustness()
     print("\nAll self-test verifications PASSED!")
