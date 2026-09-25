@@ -128,6 +128,7 @@ public:
 
     String getWorldTimeStr(int tz_idx) const;
     String getWorldCityName(int tz_idx) const;
+    const char* getWorldCityNameCStr(int tz_idx) const;
     String getWorldDateOffsetStr(int tz_idx) const;
 
 private:

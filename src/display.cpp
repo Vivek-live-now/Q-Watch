@@ -198,6 +198,10 @@ void DisplayManager::drawScrollBar(int offset, int item_count) {
     }
 }
 
+void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset) {
+    drawStandardMenu(title, items, item_count, selection, offset, (const char* const*)nullptr);
+}
+
 void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const String* values) {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(2, 7, title);
@@ -649,7 +653,7 @@ void DisplayManager::drawClockMenu() {
     snprintf(buf_alm, sizeof(buf_alm), "%d/3", alm_active);
     vals[4] = buf_alm;
     vals[5] = s.hourly_chime_enabled ? "ON" : "OFF";
-    vals[6] = timekeeping.getWorldCityName(s.world_clock_tz_idx);
+    vals[6] = timekeeping.getWorldCityNameCStr(s.world_clock_tz_idx);
     char buf_stp[16];
     snprintf(buf_stp, sizeof(buf_stp), "%lu", (unsigned long)timekeeping.pedometer.getSteps());
     vals[7] = buf_stp;
@@ -2227,7 +2231,7 @@ void DisplayManager::drawStorageInfo() {
 }
 
 void DisplayManager::drawMenu(const char* title, const char** items, int item_count) {
-    drawStandardMenu(title, items, item_count, ui.getMenuSelection(), ui.getMenuScrollOffset(), nullptr);
+    drawStandardMenu(title, items, item_count, ui.getMenuSelection(), ui.getMenuScrollOffset());
 }
 
 void DisplayManager::drawValueEdit(const char* title) {

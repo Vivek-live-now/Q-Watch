@@ -103,7 +103,8 @@ private:
 
     void drawPortalScreen();
     void drawScrollBar(int offset, int item_count);
-    void drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const String* values = nullptr);
+    void drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset);
+    void drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const String* values);
     void drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const char* const* values);
     void drawMenu(const char* title, const char** items, int item_count);
     void drawValueEdit(const char* title);

@@ -368,11 +368,15 @@ static const char* const CITY_NAMES[] = {
     "CHICAGO", "DENVER", "LOS ANGELES", "DUBAI", "SINGAPORE", "TOKYO", "SYDNEY"
 };
 
-String TimekeepingManager::getWorldCityName(int tz_idx) const {
+const char* TimekeepingManager::getWorldCityNameCStr(int tz_idx) const {
     if (tz_idx >= 0 && tz_idx < 12) {
-        return String(CITY_NAMES[tz_idx]);
+        return CITY_NAMES[tz_idx];
     }
     return "UTC";
+}
+
+String TimekeepingManager::getWorldCityName(int tz_idx) const {
+    return String(getWorldCityNameCStr(tz_idx));
 }
 
 String TimekeepingManager::getWorldTimeStr(int tz_idx) const {
