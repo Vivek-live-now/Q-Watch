@@ -172,6 +172,21 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Firmware Q-Link Engine (`include/qlink.h`, `src/qlink.cpp`):** Zero-copy framebuffer streaming, synthetic button event injection into `ButtonManager`, and phone notification alert dispatch.
 * **Automated Verification & CI:** Host test suite (`tests/test_qlink.cpp`) verifying 32-byte telemetry packet alignment, magic header validation, and button parsing; automated GitHub Actions workflow (`.github/workflows/android.yml`) building the Android debug APK artifact on push.
 
+### Milestone 16: Multi-Tier Power Management Suite, Battery Cockpit & ULP Sentinel Architecture
+* **Unified Power Governor (`PowerManager`):** Centralized power lifecycle management in `include/power_manager.h` and `src/power_manager.cpp` offering 4 dynamic, user-switchable operational profiles:
+    * **`PERFORMANCE` ("Tactical Max"):** 240 MHz dual-core CPU clock, display-off idling with FreeRTOS `waiti` yielding, zero sleep latency, high-performance radios and sensors (~12–16 hrs runtime).
+    * **`BALANCED` ("Everyday Smart"):** Dynamic 160 MHz CPU clock, ESP32-S3 Light Sleep with instant 300µs wakeup, 24/7 background pedometer tracking, automatic radio sleep (~3–5 days runtime).
+    * **`ENDURANCE` ("Ultra Saver"):** 80 MHz eco CPU clock, Deep Sleep down to 15µA quiescent draw, automatic radio kill, RGB LED and buzzer audio muting (~15–20 days runtime).
+    * **`CUSTOM` ("Power Lab"):** Granular user-configured CPU clocks, sleep engines, radio power-down policies, and low-voltage cutoff guards.
+* **Interactive 5-Page Battery Cockpit (`APP_BATTERY`):**
+    * **Page 1 (HUD / Cockpit):** Large tactical battery gauge with fill level, real-time voltage (`3.92V`), battery percentage (`84%`), dynamic runtime estimate (`EST: 4.2d` or `EST: 14.5h`), active profile badge (`[BALANCED]`), and on-demand ADC refresh via `[OK]`.
+    * **Page 2 (Profiles Selector):** Quick 1-click selector menu to cycle between `PERFORMANCE`, `BALANCED`, `ENDURANCE`, and `CUSTOM` with active profile indicators.
+    * **Page 3 (Sleep Engine Configuration):** Interactive controls for sleep engine (`LIGHT SLEEP`, `DEEP SLEEP`, `DISPLAY OFF`, `ULP SENTRY`), 24/7 pedometer toggle, raise-to-wake gesture sensitivity, and screen auto-lock timeouts.
+    * **Page 4 (Peripheral Load Shedding):** Selective subsystem cuts including `Radio Cut` (kill Wi-Fi/BLE when locked), `RGB LED` blocking, `Audio/Chime` eco mute, and persistent low-battery safety cutoff (`3.20V`).
+    * **Page 5 (ULP RISC-V Sentinel Lab):** Diagnostic telemetry HUD displaying coprocessor execution status, RTC SLOW RAM allocation (8192 bytes), wake trigger tally, and interactive sentry test toggle.
+* **Hierarchical Navigation:** Seamless short/long button navigation (`[UP]`/`[DN]` to cycle items, long press to cycle pages, `[OK]` to select/toggle) with hierarchical `[CANCEL]` handling that returns from sub-pages to the root HUD before exiting to the main menu.
+* **Automated Verification:** Comprehensive self-test suite (`tests/test_suite.py` Section 14) verifying power profile enum boundaries, battery consumption models, mathematical runtime estimation across voltage/percentage curves, and navigation state transitions.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

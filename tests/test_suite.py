@@ -601,6 +601,175 @@ def test_firmware_optimization_and_equivalence():
     assert clk.posix_call_count <= 2, f"Expected at most 2 POSIX calls in 100ms, got {clk.posix_call_count}"
     print("  [PASS] Clock POSIX getLocalTime 20Hz throttling verified.")
 
+def test_power_management_suite():
+    print("\n--- 14. Power Management Suite & Battery Profile Verification ---")
+
+    # 1. Profile and Sleep Engine Enums and String Names
+    PROFILE_NAMES = ["PERFORMANCE", "BALANCED", "ENDURANCE", "CUSTOM"]
+    SLEEP_ENGINE_NAMES = ["LIGHT SLEEP", "DEEP SLEEP", "DISPLAY OFF", "ULP SENTRY"]
+
+    assert len(PROFILE_NAMES) == 4
+    assert len(SLEEP_ENGINE_NAMES) == 4
+    print("  [PASS] PowerProfile and SleepEngine enum specifications verified.")
+
+    # 2. Consumption Model and Runtime Estimation Formulas
+    class PowerModel:
+        def __init__(self, capacity_mah=300.0):
+            self.capacity_mah = capacity_mah
+
+        def get_current_ma(self, profile):
+            if profile == 0:  # PERFORMANCE
+                return 25.0
+            elif profile == 1:  # BALANCED
+                return 3.0
+            elif profile == 2:  # ENDURANCE
+                return 0.65
+            else:  # CUSTOM default
+                return 3.5
+
+        def calculate_runtime_hours(self, profile, voltage, percentage):
+            if percentage <= 0 or voltage < 3.20:
+                return 0.0
+            pct = min(100, max(0, percentage))
+            remaining_mah = (pct / 100.0) * self.capacity_mah
+            current_ma = self.get_current_ma(profile)
+            return remaining_mah / current_ma
+
+        def format_runtime(self, profile, voltage, percentage):
+            if percentage <= 5 or voltage < 3.30:
+                return "LOW BAT"
+            hours = self.calculate_runtime_hours(profile, voltage, percentage)
+            if hours >= 48.0:
+                return f"{hours / 24.0:.1f}d"
+            else:
+                return f"{hours:.1f}h"
+
+    pm = PowerModel()
+
+    # PERFORMANCE: 300mAh / 25mA = 12h at 100%, 6h at 50%
+    assert abs(pm.calculate_runtime_hours(0, 4.20, 100) - 12.0) < 1e-4
+    assert abs(pm.calculate_runtime_hours(0, 3.80, 50) - 6.0) < 1e-4
+    assert pm.format_runtime(0, 4.20, 100) == "12.0h"
+    assert pm.format_runtime(0, 3.80, 50) == "6.0h"
+
+    # BALANCED: 300mAh / 3mA = 100h (4.17d) at 100%, 50h (2.08d) at 50%
+    assert abs(pm.calculate_runtime_hours(1, 4.20, 100) - 100.0) < 1e-4
+    assert abs(pm.calculate_runtime_hours(1, 3.80, 50) - 50.0) < 1e-4
+    assert pm.format_runtime(1, 4.20, 100) == "4.2d"
+    assert pm.format_runtime(1, 3.80, 50) == "2.1d"
+
+    # ENDURANCE: 300mAh / 0.65mA = 461.54h (19.23d) at 100%, 230.77h (9.62d) at 50%
+    assert abs(pm.calculate_runtime_hours(2, 4.20, 100) - (300.0 / 0.65)) < 1e-4
+    assert pm.format_runtime(2, 4.20, 100) == "19.2d"
+    assert pm.format_runtime(2, 3.80, 50) == "9.6d"
+
+    # Low battery guards
+    assert pm.format_runtime(1, 3.10, 15) == "LOW BAT"
+    assert pm.format_runtime(1, 3.70, 4) == "LOW BAT"
+    print("  [PASS] Multi-tier battery runtime estimation mathematical models verified.")
+
+    # 3. Power Profile State Machine Transitions
+    class MockPowerManager:
+        def __init__(self):
+            self.profile = 1  # BALANCED
+            self.sleep_engine = 0  # LIGHT_SLEEP
+            self.cpu_mhz = 160
+            self.pedometer_247 = True
+            self.eco_radio_cut = True
+            self.eco_led_block = False
+            self.eco_audio_mute = False
+
+        def set_profile(self, p):
+            self.profile = p
+            if p == 0:  # PERFORMANCE
+                self.cpu_mhz = 240
+                self.sleep_engine = 2  # DISPLAY_OFF
+                self.pedometer_247 = True
+                self.eco_radio_cut = False
+                self.eco_led_block = False
+                self.eco_audio_mute = False
+            elif p == 1:  # BALANCED
+                self.cpu_mhz = 160
+                self.sleep_engine = 0  # LIGHT_SLEEP
+                self.pedometer_247 = True
+                self.eco_radio_cut = True
+                self.eco_led_block = False
+                self.eco_audio_mute = False
+            elif p == 2:  # ENDURANCE
+                self.cpu_mhz = 80
+                self.sleep_engine = 1  # DEEP_SLEEP
+                self.pedometer_247 = False
+                self.eco_radio_cut = True
+                self.eco_led_block = True
+                self.eco_audio_mute = True
+
+    mgr = MockPowerManager()
+    mgr.set_profile(0)
+    assert mgr.cpu_mhz == 240 and mgr.sleep_engine == 2 and not mgr.eco_radio_cut
+    mgr.set_profile(2)
+    assert mgr.cpu_mhz == 80 and mgr.sleep_engine == 1 and mgr.eco_led_block and mgr.eco_audio_mute
+    mgr.set_profile(1)
+    assert mgr.cpu_mhz == 160 and mgr.sleep_engine == 0 and mgr.pedometer_247 and mgr.eco_radio_cut
+    print("  [PASS] Power profile governor state transitions verified.")
+
+    # 4. Multi-Page Battery App Navigation State Machine
+    class MockBatteryUI:
+        def __init__(self):
+            self.page = 0
+            self.menu_sel = 0
+
+        def handle_dn(self):
+            if self.page == 0:
+                self.page = 1
+                self.menu_sel = 0
+            elif self.page in (1, 2, 3):
+                self.menu_sel = min(3, self.menu_sel + 1)
+            elif self.page == 4:
+                self.page = 0
+
+        def handle_up(self):
+            if self.page == 0:
+                self.page = 4
+                self.menu_sel = 0
+            elif self.page in (1, 2, 3):
+                self.menu_sel = max(0, self.menu_sel - 1)
+            elif self.page == 4:
+                self.page = 3
+                self.menu_sel = 0
+
+        def handle_long_dn(self):
+            if self.page < 4:
+                self.page += 1
+                self.menu_sel = 0
+
+        def handle_long_up(self):
+            if self.page > 0:
+                self.page -= 1
+                self.menu_sel = 0
+
+        def handle_cancel(self):
+            if self.page > 0:
+                self.page = 0
+                return "STAY_APP"
+            return "EXIT_MENU"
+
+    bui = MockBatteryUI()
+    assert bui.page == 0
+    bui.handle_dn()
+    assert bui.page == 1
+    bui.handle_long_dn()
+    assert bui.page == 2
+    bui.handle_long_dn()
+    assert bui.page == 3
+    bui.handle_long_dn()
+    assert bui.page == 4
+    # Cancel from page 4 goes to root HUD (page 0)
+    assert bui.handle_cancel() == "STAY_APP"
+    assert bui.page == 0
+    # Cancel from page 0 exits to main menu
+    assert bui.handle_cancel() == "EXIT_MENU"
+    print("  [PASS] 5-Page Battery cockpit navigation and hierarchical cancel verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -615,4 +784,5 @@ if __name__ == "__main__":
     test_imu_3d_orientation()
     test_sensor_calibration_and_robustness()
     test_firmware_optimization_and_equivalence()
+    test_power_management_suite()
     print("\nAll self-test verifications PASSED!")

@@ -20,6 +20,12 @@ struct SettingsData {
     bool raise_to_wake = true;    // Hand raise to wake gesture (IMU motion interrupt)
     int wifi_auto_off_idx = 0;    // 0: OFF, 1: After Sync, 2: When Idle
     bool low_power = false;
+    int power_profile_idx = 1;    // 0: PERF, 1: BALANCED, 2: ENDURANCE, 3: CUSTOM
+    int sleep_engine_idx = 0;     // 0: LIGHT, 1: DEEP, 2: DISP_OFF, 3: ULP_EXP
+    bool pedometer_247 = true;    // 24/7 background pedometer in light sleep
+    bool eco_radio_cut = true;    // Auto cut radios on screen lock
+    bool eco_led_block = false;   // Block RGB LED in eco mode
+    bool eco_audio_mute = false;  // Mute buzzer in eco mode
 
     // DISPLAY
     int contrast_idx = 3;         // 0: 25%, 1: 50%, 2: 75%, 3: 100%
@@ -53,6 +59,11 @@ struct SettingsData {
 };
 
 // Option labels lists
+static const char* const POWER_PROFILE_OPTIONS[] = {"PERFORMANCE", "BALANCED", "ENDURANCE", "CUSTOM"};
+static const int POWER_PROFILE_COUNT = 4;
+static const char* const SLEEP_ENGINE_OPTIONS[] = {"LIGHT SLEEP", "DEEP SLEEP", "DISPLAY OFF", "ULP SENTRY"};
+static const int SLEEP_ENGINE_COUNT = 4;
+
 static const char* const WATCH_FACE_OPTIONS[] = {"DIGITAL", "ANALOG", "RETRO LCD", "MISSION"};
 static const int WATCH_FACE_COUNT = 4;
 static const char* const DISPLAY_TIMEOUT_OPTIONS[] = {"10 sec", "30 sec", "1 min", "5 min", "NEVER"};

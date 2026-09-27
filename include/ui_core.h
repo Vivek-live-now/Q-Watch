@@ -623,6 +623,19 @@ public:
     void enterDeepSleep();
     bool isDisplayOff() const { return display_off; }
     void registerActivity();
+
+    // Battery & Power Management App
+    int battery_page = 0;
+    int battery_menu_selection = 0;
+    int battery_menu_scroll_offset = 0;
+    void handleBatteryInput();
+    int getBatteryPage() const { return battery_page; }
+    int getBatterySelection() const { return battery_menu_selection; }
+    int getBatteryScrollOffset() const { return battery_menu_scroll_offset; }
+    static const int BATTERY_PAGE_COUNT = 5;
+    static const int BATTERY_PROFILE_COUNT = 4;
+    static const int BATTERY_SLEEP_ITEM_COUNT = 4;
+    static const int BATTERY_PERIPH_ITEM_COUNT = 4;
 };
 
 extern UICore ui;

@@ -48,6 +48,12 @@ void SettingsManager::load() {
         else if (key == "wifi_auto_off_idx") settings.wifi_auto_off_idx = val.toInt();
         else if (key == "contrast_idx") settings.contrast_idx = val.toInt();
         else if (key == "low_power") settings.low_power = (val == "1");
+        else if (key == "power_profile_idx") settings.power_profile_idx = val.toInt();
+        else if (key == "sleep_engine_idx") settings.sleep_engine_idx = val.toInt();
+        else if (key == "pedometer_247") settings.pedometer_247 = (val == "1");
+        else if (key == "eco_radio_cut") settings.eco_radio_cut = (val == "1");
+        else if (key == "eco_led_block") settings.eco_led_block = (val == "1");
+        else if (key == "eco_audio_mute") settings.eco_audio_mute = (val == "1");
         else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
@@ -85,6 +91,12 @@ void SettingsManager::save() {
     out += "wifi_auto_off_idx=" + String(settings.wifi_auto_off_idx) + "\n";
     out += "contrast_idx=" + String(settings.contrast_idx) + "\n";
     out += "low_power=" + String(settings.low_power ? "1" : "0") + "\n";
+    out += "power_profile_idx=" + String(settings.power_profile_idx) + "\n";
+    out += "sleep_engine_idx=" + String(settings.sleep_engine_idx) + "\n";
+    out += "pedometer_247=" + String(settings.pedometer_247 ? "1" : "0") + "\n";
+    out += "eco_radio_cut=" + String(settings.eco_radio_cut ? "1" : "0") + "\n";
+    out += "eco_led_block=" + String(settings.eco_led_block ? "1" : "0") + "\n";
+    out += "eco_audio_mute=" + String(settings.eco_audio_mute ? "1" : "0") + "\n";
     out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";

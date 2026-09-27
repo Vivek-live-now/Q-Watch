@@ -17,6 +17,8 @@
 #include "qapp_loader.h"
 #include "anim_engine.h"
 #include "wireless_recon.h"
+#include "power_manager.h"
+#include "battery.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -157,6 +159,7 @@ void UICore::begin() {
 
         esp_deep_sleep_start();
     }
+    powerManager.begin();
 }
 
 void UICore::showToast(const char* msg, uint32_t duration_ms) {
@@ -396,9 +399,15 @@ void UICore::loop() {
             return;
         } else if (current_state == UIState::APP_BATTERY) {
             soundManager.playNavBack();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 9;
-            menu_scroll_offset = 7;
+            if (battery_page > 0) {
+                battery_page = 0;
+                battery_menu_selection = 0;
+                battery_menu_scroll_offset = 0;
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 9;
+                menu_scroll_offset = 7;
+            }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_COMPASS) {
@@ -558,6 +567,7 @@ void UICore::loop() {
         case UIState::APP_COMPASS: handleCompassInput(); break;
         case UIState::APP_HEALTH: handleHealthInput(); break;
         case UIState::APP_MOTION: handleMotionInput(); break;
+        case UIState::APP_BATTERY: handleBatteryInput(); break;
         default: handleGenericAppInput(); break;
     }
 }
@@ -1417,7 +1427,7 @@ void UICore::handleMainMenuInput() {
             case 6: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
             case 7: current_state = UIState::APP_AUDIO; sound_submenu = SoundSubmenu::MAIN; sound_selection = 0; sound_scroll_offset = 0; break;
             case 8: current_state = UIState::APP_ALTIMETER; bme_page = 0; break;
-            case 9: current_state = UIState::APP_BATTERY; break;
+            case 9: current_state = UIState::APP_BATTERY; battery_page = 0; battery_menu_selection = 0; battery_menu_scroll_offset = 0; break;
             case 10: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
             case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
             case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
@@ -2496,9 +2506,187 @@ void UICore::enterDeepSleep() {
     uint32_t sleep_sec = min(next_bme_in, next_health_in);
     sched_prefs.end();
 
-    esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+    powerManager.executeSleep(sleep_sec, sleep_s.raise_to_wake, wake_mask);
+}
 
-    esp_deep_sleep_start();
+void UICore::handleBatteryInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (battery_page == 0) {
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            battery_page = 1;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
+            battery_page = 4;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            battery.readPercentage();
+            soundManager.playNavSelect();
+            showToast("[BATTERY REFRESHED]", 1000);
+            needs_redraw = true;
+        }
+    } else if (battery_page == 1) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection > 0) {
+                battery_menu_selection--;
+                if (battery_menu_selection < battery_menu_scroll_offset) {
+                    battery_menu_scroll_offset = battery_menu_selection;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection < 3) {
+                battery_menu_selection++;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
+                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (up_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 2;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            powerManager.setProfile(static_cast<PowerProfile>(battery_menu_selection));
+            soundManager.playNavSelect();
+            showToast("[PROFILE APPLIED]", 1200);
+            needs_redraw = true;
+        }
+    } else if (battery_page == 2) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection > 0) {
+                battery_menu_selection--;
+                if (battery_menu_selection < battery_menu_scroll_offset) {
+                    battery_menu_scroll_offset = battery_menu_selection;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection < 3) {
+                battery_menu_selection++;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
+                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (up_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 1;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 3;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            SettingsData& s = settingsManager.get();
+            if (battery_menu_selection == 0) {
+                int eng = (static_cast<int>(powerManager.getSleepEngine()) + 1) % 4;
+                powerManager.setSleepEngine(static_cast<SleepEngine>(eng));
+            } else if (battery_menu_selection == 1) {
+                powerManager.setPedometer247Enabled(!powerManager.isPedometer247Enabled());
+                s.pedometer_247 = powerManager.isPedometer247Enabled();
+                settingsManager.save();
+            } else if (battery_menu_selection == 2) {
+                s.raise_to_wake = !s.raise_to_wake;
+                settingsManager.save();
+            } else if (battery_menu_selection == 3) {
+                s.display_timeout_idx = (s.display_timeout_idx + 1) % DISPLAY_TIMEOUT_COUNT;
+                settingsManager.save();
+            }
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        }
+    } else if (battery_page == 3) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection > 0) {
+                battery_menu_selection--;
+                if (battery_menu_selection < battery_menu_scroll_offset) {
+                    battery_menu_scroll_offset = battery_menu_selection;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            if (battery_menu_selection < 3) {
+                battery_menu_selection++;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
+                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                }
+                soundManager.playNavMove();
+                needs_redraw = true;
+            }
+        } else if (up_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 2;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 4;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            SettingsData& s = settingsManager.get();
+            if (battery_menu_selection == 0) {
+                powerManager.setEcoRadioCutEnabled(!powerManager.isEcoRadioCutEnabled());
+                s.eco_radio_cut = powerManager.isEcoRadioCutEnabled();
+                settingsManager.save();
+            } else if (battery_menu_selection == 1) {
+                powerManager.setEcoLedBlockEnabled(!powerManager.isEcoLedBlockEnabled());
+                s.eco_led_block = powerManager.isEcoLedBlockEnabled();
+                settingsManager.save();
+            } else if (battery_menu_selection == 2) {
+                powerManager.setEcoAudioMuteEnabled(!powerManager.isEcoAudioMuteEnabled());
+                s.eco_audio_mute = powerManager.isEcoAudioMuteEnabled();
+                settingsManager.save();
+            } else if (battery_menu_selection == 3) {
+                showToast("[CUTOFF: 3.20V]", 1000);
+            }
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        }
+    } else if (battery_page == 4) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 3;
+            battery_menu_selection = 0;
+            battery_menu_scroll_offset = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_LONG_PRESS) {
+            battery_page = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            powerManager.triggerUlpSentryTest();
+            soundManager.playNavSelect();
+            showToast("[ULP SENTRY TEST]", 1000);
+            needs_redraw = true;
+        }
+    }
 }
 
 void UICore::handleCompassInput() {

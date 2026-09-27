@@ -18,6 +18,7 @@
 #include "qapp_loader.h"
 #include "anim_engine.h"
 #include "wireless_recon.h"
+#include "power_manager.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -1970,27 +1971,156 @@ void DisplayManager::drawAppIR() {
 }
 
 
-void DisplayManager::drawAppBattery() {
+void DisplayManager::drawBatteryPageHud() {
     int pct = battery.readPercentage();
     float vol = battery.readVoltage();
+    PowerProfile profile = powerManager.getProfile();
 
-    oled.drawFrame(34, 10, 56, 25);
-    oled.drawBox(90, 16, 4, 13);
+    // Title bar
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "POWER COCKPIT [1/5]");
+    oled.drawLine(0, 9, 128, 9);
 
-    int fill_w = (pct * 52) / 100;
+    // Battery outline & tip
+    oled.drawFrame(4, 14, 46, 20);
+    oled.drawBox(50, 19, 3, 10);
+
+    // Fill gauge
+    int fill_w = (pct * 40) / 100;
     if (fill_w > 0) {
-        oled.drawBox(36, 12, fill_w, 21);
+        oled.drawBox(7, 17, fill_w, 14);
     }
 
-    oled.setFont(u8g2_font_ncenB12_tr);
-    String pctStr = String(pct) + "%";
-    int w1 = oled.getStrWidth(pctStr.c_str());
-    oled.drawStr(64 - w1/2, 50, pctStr.c_str());
+    // Percentage & Voltage
+    oled.setFont(u8g2_font_ncenB10_tr);
+    char pct_buf[16];
+    snprintf(pct_buf, sizeof(pct_buf), "%d%%", pct);
+    oled.drawStr(58, 25, pct_buf);
+
+    oled.setFont(u8g2_font_5x7_tr);
+    char vol_buf[16];
+    snprintf(vol_buf, sizeof(vol_buf), "%.2fV", vol);
+    oled.drawStr(58, 34, vol_buf);
+
+    // Profile & Runtime estimate
+    oled.setFont(u8g2_font_6x10_tr);
+    char est_buf[24];
+    char run_str[16];
+    powerManager.formatRuntimeEstimate(run_str, sizeof(run_str), vol, pct);
+    snprintf(est_buf, sizeof(est_buf), "EST: %s", run_str);
+    oled.drawStr(4, 46, est_buf);
+
+    // Active profile badge
+    const char* prof_name = powerManager.getProfileNameCStr(profile);
+    char prof_buf[32];
+    snprintf(prof_buf, sizeof(prof_buf), "MODE: [%s]", prof_name);
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(4, 55, prof_buf);
+
+    // Bottom navigation hint
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 63, "[DN] PROFILES  [OK] REFRESH");
+}
+
+void DisplayManager::drawBatteryPageProfiles() {
+    int sel = ui.getBatterySelection();
+    int off = ui.getBatteryScrollOffset();
+    PowerProfile active_p = powerManager.getProfile();
+
+    const char* items[4] = {
+        "1. PERFORMANCE",
+        "2. BALANCED",
+        "3. ENDURANCE",
+        "4. CUSTOM LAB"
+    };
+
+    String vals[4];
+    vals[0] = (active_p == PowerProfile::PERFORMANCE) ? "[ACTIVE]" : "14h";
+    vals[1] = (active_p == PowerProfile::BALANCED) ? "[ACTIVE]" : "4d";
+    vals[2] = (active_p == PowerProfile::ENDURANCE) ? "[ACTIVE]" : "18d";
+    vals[3] = (active_p == PowerProfile::CUSTOM) ? "[ACTIVE]" : "--";
+
+    drawStandardMenu("POWER PROFILES [2/5]", items, 4, sel, off, vals);
+}
+
+void DisplayManager::drawBatteryPageSleep() {
+    int sel = ui.getBatterySelection();
+    int off = ui.getBatteryScrollOffset();
+    SettingsData& s = settingsManager.get();
+
+    const char* items[4] = {
+        "Sleep Mode",
+        "24/7 Steps",
+        "Raise-Wake",
+        "Screen Lock"
+    };
+
+    String vals[4];
+    vals[0] = powerManager.getSleepEngineNameCStr(powerManager.getSleepEngine());
+    vals[1] = powerManager.isPedometer247Enabled() ? "ON" : "OFF";
+    vals[2] = s.raise_to_wake ? "ON" : "OFF";
+    vals[3] = DISPLAY_TIMEOUT_OPTIONS[s.display_timeout_idx];
+
+    drawStandardMenu("SLEEP ENGINE [3/5]", items, 4, sel, off, vals);
+}
+
+void DisplayManager::drawBatteryPagePeripherals() {
+    int sel = ui.getBatterySelection();
+    int off = ui.getBatteryScrollOffset();
+
+    const char* items[4] = {
+        "Radio Cut",
+        "RGB LED",
+        "Audio/Chime",
+        "Low-Bat Cut"
+    };
+
+    String vals[4];
+    vals[0] = powerManager.isEcoRadioCutEnabled() ? "AUTO-OFF" : "ALWAYS ON";
+    vals[1] = powerManager.isEcoLedBlockEnabled() ? "BLOCKED" : "ALLOWED";
+    vals[2] = powerManager.isEcoAudioMuteEnabled() ? "ECO MUTE" : "NORMAL";
+    vals[3] = "3.20V";
+
+    drawStandardMenu("PERIPHERALS [4/5]", items, 4, sel, off, vals);
+}
+
+void DisplayManager::drawBatteryPageUlp() {
+    UlpTelemetry t = powerManager.getUlpTelemetry();
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "ULP RISC-V LAB [5/5]");
+    oled.drawLine(0, 9, 128, 9);
 
     oled.setFont(u8g2_font_6x10_tr);
-    String volStr = String(vol, 2) + "V";
-    int w2 = oled.getStrWidth(volStr.c_str());
-    oled.drawStr(64 - w2/2, 62, volStr.c_str());
+    char line1[32];
+    snprintf(line1, sizeof(line1), "STATUS: %s", t.status_str);
+    oled.drawStr(4, 21, line1);
+
+    char line2[32];
+    snprintf(line2, sizeof(line2), "RTC RAM: 8192 B");
+    oled.drawStr(4, 33, line2);
+
+    char line3[32];
+    snprintf(line3, sizeof(line3), "TRIGGERS: %lu", (unsigned long)t.wake_count);
+    oled.drawStr(4, 45, line3);
+
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(4, 55, "[OK] TOGGLE SENTRY TEST");
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 63, "[UP] PERIPH  [CANCEL] HUD");
+}
+
+void DisplayManager::drawAppBattery() {
+    int page = ui.getBatteryPage();
+    switch (page) {
+        case 0: drawBatteryPageHud(); break;
+        case 1: drawBatteryPageProfiles(); break;
+        case 2: drawBatteryPageSleep(); break;
+        case 3: drawBatteryPagePeripherals(); break;
+        case 4: drawBatteryPageUlp(); break;
+        default: drawBatteryPageHud(); break;
+    }
 }
 
 void DisplayManager::drawAppLED() {

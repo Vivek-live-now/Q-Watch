@@ -72,6 +72,11 @@ private:
     void drawBmePage4Altitude();
     void drawBmePage5Info();
     void drawAppBattery();
+    void drawBatteryPageHud();
+    void drawBatteryPageProfiles();
+    void drawBatteryPageSleep();
+    void drawBatteryPagePeripherals();
+    void drawBatteryPageUlp();
     void drawAppLED();
     void drawAppAudio();
     void drawAppAbout();
