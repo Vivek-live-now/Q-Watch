@@ -1,5 +1,5 @@
 #include "power_manager.h"
-#include "settings_manager.h"
+#include "settings_data.h"
 #include <stdio.h>
 #include <math.h>
 
