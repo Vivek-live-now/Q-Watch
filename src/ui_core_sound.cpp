@@ -281,9 +281,12 @@ void UICore::handleSoundCreatorEditInput() {
     if (ok_evt == BTN_EVT_LONG_PRESS) {
         // Save & Play Melody
         String path = "/sounds/" + active_melody_name + ".mel";
-        String out = "";
+        String out;
+        out.reserve(creator_count * 16);
+        char noteBuf[32];
         for (int i = 0; i < creator_count; i++) {
-            out += String(creator_notes[i].freq) + "," + String(creator_notes[i].duration) + "\n";
+            snprintf(noteBuf, sizeof(noteBuf), "%u,%u\n", creator_notes[i].freq, creator_notes[i].duration);
+            out += noteBuf;
         }
         fileManager.write(path, out);
         soundManager.playSequence(creator_notes, creator_count);
@@ -397,10 +400,14 @@ void UICore::handleSoundCreatorEditInput() {
 static void onComposerSaveEntered(bool success, const String& name) {
     if (success && name.length() > 0) {
         String path = "/sounds/" + name + ".mel";
-        String out = "";
+        int count = ui.getComposerCount();
+        String out;
+        out.reserve(count * 16);
+        char noteBuf[32];
         const SoundNote* notes = ui.getComposerNotes();
-        for (int i = 0; i < ui.getComposerCount(); i++) {
-            out += String(notes[i].freq) + "," + String(notes[i].duration) + "\n";
+        for (int i = 0; i < count; i++) {
+            snprintf(noteBuf, sizeof(noteBuf), "%u,%u\n", notes[i].freq, notes[i].duration);
+            out += noteBuf;
         }
         fileManager.write(path, out);
         ui.showToast("[COMPOSITION SAVED]", 1200);

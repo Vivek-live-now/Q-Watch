@@ -289,20 +289,19 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
             current_btn.has_duty_cycle = true;
         } else if (key == "data") {
             current_btn.raw_data.clear();
-            int tok_pos = 0;
-            while (tok_pos < val.length()) {
-                int space_idx = val.indexOf(' ', tok_pos);
-                if (space_idx < 0) space_idx = val.length();
-                String numStr = val.substring(tok_pos, space_idx);
-                numStr.trim();
-                if (numStr.length() > 0) {
-                    if (current_btn.raw_data.size() < MAX_IR_RAW_TIMINGS) {
-                        current_btn.raw_data.push_back((uint16_t)numStr.toInt());
-                    } else {
-                        current_btn.truncated = true;
-                    }
+            const char* p = val.c_str();
+            while (*p != '\0') {
+                while (*p == ' ' || *p == '\t') p++;
+                if (*p == '\0') break;
+                char* endp = nullptr;
+                unsigned long num = strtoul(p, &endp, 10);
+                if (endp == p) break;
+                if (current_btn.raw_data.size() < MAX_IR_RAW_TIMINGS) {
+                    current_btn.raw_data.push_back((uint16_t)num);
+                } else {
+                    current_btn.truncated = true;
                 }
-                tok_pos = space_idx + 1;
+                p = endp;
             }
         }
     }
@@ -315,7 +314,14 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
 }
 
 bool IREngine::saveIrFile(const String& path, const IrRemoteFile& remote) {
-    String out = "Filetype: IR library file\nVersion: 1\n#\n";
+    // Pre-calculate approximate size to avoid frequent reallocations
+    size_t approx_size = 64;
+    for (size_t i = 0; i < remote.buttons.size(); i++) {
+        approx_size += 128 + remote.buttons[i].raw_data.size() * 7;
+    }
+    String out;
+    out.reserve(approx_size);
+    out = "Filetype: IR library file\nVersion: 1\n#\n";
 
     for (size_t i = 0; i < remote.buttons.size(); i++) {
         const IrButton& b = remote.buttons[i];
@@ -344,8 +350,10 @@ bool IREngine::saveIrFile(const String& path, const IrRemoteFile& remote) {
             }
             out += "data:";
             size_t write_count = min(b.raw_data.size(), MAX_IR_RAW_TIMINGS);
+            char numBuf[16];
             for (size_t j = 0; j < write_count; j++) {
-                out += " " + String(b.raw_data[j]);
+                snprintf(numBuf, sizeof(numBuf), " %u", b.raw_data[j]);
+                out += numBuf;
             }
             out += "\n#\n";
         }

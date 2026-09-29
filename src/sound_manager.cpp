@@ -246,7 +246,7 @@ void SoundManager::playMorse(const String& text) {
             case 'M': code = "--"; break;
             case 'N': code = "-."; break;
             case 'O': code = "---"; break;
-            case 'P': code = "--.-"; break;
+            case 'P': code = ".--."; break;
             case 'Q': code = "--.-"; break;
             case 'R': code = ".-."; break;
             case 'S': code = "..."; break;

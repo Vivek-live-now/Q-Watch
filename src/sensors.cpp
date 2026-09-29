@@ -388,16 +388,19 @@ void SensorManager::logBmeSample() {
 
     fileManager.append("/bme_history.bin", (const uint8_t*)&entry, sizeof(BMEHistoryEntry));
 
-    // Limit binary history file to MAX_BME_HISTORY (288 entries * 10 bytes = 2880 bytes)
+    // Batched Pruning: Allow hysteresis up to MAX_BME_HISTORY + 32 before trimming.
+    // This avoids rewriting the entire file on every 5-minute sample (reduces flash wear by 97%).
     size_t sz = fileManager.fileSize("/bme_history.bin");
-    if (sz > (size_t)(MAX_BME_HISTORY * sizeof(BMEHistoryEntry))) {
-        // Read buffer, trim oldest, write back
+    const int BATCH_TRIM = 32;
+    if (sz >= (size_t)((MAX_BME_HISTORY + BATCH_TRIM) * sizeof(BMEHistoryEntry))) {
         int total = sz / sizeof(BMEHistoryEntry);
-        BMEHistoryEntry* buf = new BMEHistoryEntry[total];
-        fileManager.read("/bme_history.bin", (uint8_t*)buf, sz);
-
         int keep = MAX_BME_HISTORY;
-        fileManager.write("/bme_history.bin", (const uint8_t*)&buf[total - keep], keep * sizeof(BMEHistoryEntry));
+        BMEHistoryEntry* buf = new BMEHistoryEntry[keep];
+        // Read only the tail to keep using seek offset, avoiding full-file heap allocation
+        size_t offset = (total - keep) * sizeof(BMEHistoryEntry);
+        if (fileManager.readSeek("/bme_history.bin", offset, (uint8_t*)buf, keep * sizeof(BMEHistoryEntry)) == keep * sizeof(BMEHistoryEntry)) {
+            fileManager.write("/bme_history.bin", (const uint8_t*)buf, keep * sizeof(BMEHistoryEntry));
+        }
         delete[] buf;
     }
 
@@ -413,12 +416,9 @@ bool SensorManager::getBmeHistory(BMEHistoryEntry* buffer, int max_entries) cons
     int to_read = (total < max_entries) ? total : max_entries;
     size_t offset_bytes = (total - to_read) * sizeof(BMEHistoryEntry);
 
-    // Read full or tail
-    BMEHistoryEntry* full_buf = new BMEHistoryEntry[total];
-    fileManager.read("/bme_history.bin", (uint8_t*)full_buf, sz);
-    memcpy(buffer, &full_buf[total - to_read], to_read * sizeof(BMEHistoryEntry));
-    delete[] full_buf;
-    return true;
+    // Direct seek read of only the requested tail - zero temporary heap buffer
+    size_t bytes_read = fileManager.readSeek("/bme_history.bin", offset_bytes, (uint8_t*)buffer, to_read * sizeof(BMEHistoryEntry));
+    return (bytes_read == to_read * sizeof(BMEHistoryEntry));
 }
 
 void SensorManager::updateBmeHistory() {

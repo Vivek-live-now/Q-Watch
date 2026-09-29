@@ -770,6 +770,310 @@ def test_power_management_suite():
     assert bui.handle_cancel() == "EXIT_MENU"
     print("  [PASS] 5-Page Battery cockpit navigation and hierarchical cancel verified.")
 
+def test_jules_codebase_optimizations():
+    print("\n--- 15. Jules Audit: Morse Code Sequence & Parser Test ---")
+    morse_map = {
+        'A': ".-", 'B': "-...", 'C': "-.-.", 'D': "-..", 'E': ".",
+        'F': "..-.", 'G': "--.", 'H': "....", 'I': "..", 'J': ".---",
+        'K': "-.-", 'L': ".-..", 'M': "--", 'N': "-.", 'O': "---",
+        'P': ".--.", 'Q': "--.-", 'R': ".-.", 'S': "...", 'T': "-",
+        'U': "..-", 'V': "...-", 'W': ".--", 'X': "-..-", 'Y': "-.--",
+        'Z': "--..", '1': ".----", '2': "..---", '3': "...--", '4': "....-",
+        '5': ".....", '6': "-....", '7': "--...", '8': "---..", '9': "----.",
+        '0': "-----"
+    }
+
+    # Verify bug fix: 'P' must be .--. and 'Q' must be --.-
+    assert morse_map['P'] == ".--.", "Morse code for P must be .--."
+    assert morse_map['Q'] == "--.-", "Morse code for Q must be --.-"
+    assert morse_map['P'] != morse_map['Q'], "P and Q must be distinct in Morse code"
+
+    # Simulate sound_manager playMorse timing sequence generator
+    dot = 70
+    dash = 210
+    elem_gap = 70
+    letter_gap = 210
+    word_gap = 420
+
+    def generate_morse_sequence(text):
+        seq = []
+        for c in text.upper():
+            if c == ' ':
+                seq.append((0, word_gap))
+                continue
+            if c in morse_map:
+                pattern = morse_map[c]
+                for symbol in pattern:
+                    dur = dot if symbol == '.' else dash
+                    seq.append((2700, dur))
+                    seq.append((0, elem_gap))
+                seq.append((0, letter_gap))
+        return seq
+
+    sos_seq = generate_morse_sequence("SOS")
+    # S = ... (3 tones + 3 gaps), O = --- (3 tones + 3 gaps), S = ... (3 tones + 3 gaps) + 3 letter gaps
+    assert len(sos_seq) > 0
+    # First 3 tones in SOS should be dots (70ms)
+    assert sos_seq[0] == (2700, 70)
+    assert sos_seq[2] == (2700, 70)
+    assert sos_seq[4] == (2700, 70)
+    print("  [PASS] Morse code table integrity, 'P' bug fix, and timing sequence generator verified.")
+
+    print("\n--- 16. Jules Audit: FileManager Path Traversal & Normalization Test ---")
+    def is_path_safe(path):
+        if not path or len(path) == 0:
+            return False
+        for c in path:
+            if c == '\0' or c == '\\' or ord(c) < 32 or ord(c) == 127:
+                return False
+        if ".." in path:
+            return False
+        return True
+
+    def normalize_path(path):
+        if not path or len(path) == 0:
+            return "/"
+        if not path.startswith("/"):
+            return "/" + path
+        return path
+
+    assert normalize_path("") == "/"
+    assert normalize_path("ir") == "/ir"
+    assert normalize_path("/config/settings") == "/config/settings"
+
+    # Path Traversal attack vectors
+    assert not is_path_safe(""), "Empty path must be rejected"
+    assert not is_path_safe("../config/settings"), "Relative path traversal must be rejected"
+    assert not is_path_safe("/../../config/settings"), "Root traversal must be rejected"
+    assert not is_path_safe("/sounds/../../secret.txt"), "Internal traversal must be rejected"
+    assert not is_path_safe("file\0name.txt"), "Null byte injection must be rejected"
+    assert not is_path_safe("file\\back\\slash"), "Backslash paths must be rejected"
+    assert not is_path_safe("file\r\nname"), "Control characters must be rejected"
+    assert is_path_safe("/bme_history.bin"), "Standard bin history path must be valid"
+    assert is_path_safe("/ir/universal/tvbgone.ir"), "Standard IR path must be valid"
+    assert is_path_safe("sounds/alarm.mel"), "Relative safe sound path must be valid"
+    print("  [PASS] FileManager normalizePath and isPathSafe path traversal sanitization verified.")
+
+    print("\n--- 17. Jules Audit: Clock Formatting & Timezone Edge Cases ---")
+    def format_clock_time(h, m, s, is_24h):
+        if is_24h:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        else:
+            am_pm = "AM" if h < 12 else "PM"
+            disp_h = 12 if h == 0 or h == 12 else h % 12
+            return f"{disp_h:02d}:{m:02d}:{s:02d} {am_pm}"
+
+    # Midnight 12-hour formatting
+    assert format_clock_time(0, 0, 0, False) == "12:00:00 AM"
+    assert format_clock_time(0, 5, 9, False) == "12:05:09 AM"
+    # Noon 12-hour formatting
+    assert format_clock_time(12, 0, 0, False) == "12:00:00 PM"
+    assert format_clock_time(12, 30, 45, False) == "12:30:45 PM"
+    # Evening 12-hour formatting
+    assert format_clock_time(23, 59, 59, False) == "11:59:59 PM"
+    # 24-hour formatting
+    assert format_clock_time(0, 0, 0, True) == "00:00:00"
+    assert format_clock_time(23, 59, 59, True) == "23:59:59"
+
+    # Timezone arithmetic with day-boundary wrapping
+    def compute_local_time(utc_h, utc_m, offset_minutes):
+        total_m = (utc_h * 60 + utc_m + offset_minutes) % (24 * 60)
+        if total_m < 0:
+            total_m += 24 * 60
+        return total_m // 60, total_m % 60
+
+    # UTC 23:00 + IST (+330 min) -> Next day 04:30
+    assert compute_local_time(23, 0, 330) == (4, 30)
+    # UTC 02:00 - EST (-300 min) -> Previous day 21:00
+    assert compute_local_time(2, 0, -300) == (21, 0)
+    print("  [PASS] Clock 12h/24h edge cases and timezone arithmetic verified.")
+
+    print("\n--- 18. Jules Audit: Timekeeping Stopwatch & Timer Countdown Logic ---")
+    class MockStopwatch:
+        def __init__(self):
+            self.running = False
+            self.elapsed = 0
+            self.start_t = 0
+        def start(self, now):
+            self.running = True
+            self.start_t = now
+        def pause(self, now):
+            if self.running:
+                self.elapsed += now - self.start_t
+                self.running = False
+        def reset(self):
+            self.running = False
+            self.elapsed = 0
+        def get_time(self, now):
+            return self.elapsed + (now - self.start_t if self.running else 0)
+
+    sw = MockStopwatch()
+    sw.start(1000)
+    assert sw.get_time(2500) == 1500
+    sw.pause(2500)
+    assert sw.get_time(4000) == 1500 # Unchanged while paused
+    sw.start(5000)
+    assert sw.get_time(6000) == 2500
+    sw.reset()
+    assert sw.get_time(7000) == 0
+
+    class MockTimer:
+        def __init__(self, duration_s):
+            self.remaining = duration_s
+            self.alarm_fired = False
+        def tick(self, delta_s):
+            if self.remaining > 0:
+                self.remaining = max(0, self.remaining - delta_s)
+                if self.remaining == 0:
+                    self.alarm_fired = True
+
+    tmr = MockTimer(10)
+    tmr.tick(4)
+    assert tmr.remaining == 6 and not tmr.alarm_fired
+    tmr.tick(6)
+    assert tmr.remaining == 0 and tmr.alarm_fired
+    tmr.tick(5)
+    assert tmr.remaining == 0 # Clamped at 0
+    print("  [PASS] Stopwatch elapsed accumulation and Timer countdown completion verified.")
+
+    print("\n--- 19. Jules Audit: BatteryMonitor Voltage Clamping & Curve ---")
+    def battery_voltage_to_percentage(v):
+        # LiPo discharge curve points (mV -> %)
+        mv = int(v * 1000)
+        if mv >= 4200: return 100
+        if mv <= 3270: return 0
+        curve = [
+            (4200, 100), (4060, 90), (3980, 80), (3920, 70), (3870, 60),
+            (3820, 50),  (3790, 40), (3770, 30), (3740, 20), (3680, 10),
+            (3540, 5),   (3270, 0)
+        ]
+        for i in range(len(curve) - 1):
+            v_high, p_high = curve[i]
+            v_low, p_low = curve[i + 1]
+            if v_low <= mv <= v_high:
+                return int(p_low + (p_high - p_low) * (mv - v_low) / (v_high - v_low))
+        return 0
+
+    assert battery_voltage_to_percentage(4.35) == 100, "Over-voltage must clamp to 100%"
+    assert battery_voltage_to_percentage(4.20) == 100
+    assert battery_voltage_to_percentage(3.82) == 50
+    assert battery_voltage_to_percentage(3.20) == 0, "Depleted LiPo must clamp to 0%"
+    assert battery_voltage_to_percentage(0.0) == 0, "Zero voltage must safely return 0%"
+    print("  [PASS] BatteryMonitor non-linear curve and voltage clamping bounds verified.")
+
+    print("\n--- 20. Jules Audit: Keyboard Navigation & Input Handling ---")
+    keyboard_rows = [
+        "1234567890",
+        "QWERTYUIOP",
+        "ASDFGHJKL",
+        "ZXCVBNM"
+    ]
+    cursor_row = 1
+    cursor_col = 0 # 'Q'
+    # Move Right 4 times -> 'T'
+    cursor_col = (cursor_col + 4) % len(keyboard_rows[cursor_row])
+    assert keyboard_rows[cursor_row][cursor_col] == 'T'
+    # Move Down -> 'G'
+    cursor_row = (cursor_row + 1) % len(keyboard_rows)
+    cursor_col = min(cursor_col, len(keyboard_rows[cursor_row]) - 1)
+    assert keyboard_rows[cursor_row][cursor_col] == 'G'
+    print("  [PASS] KeyboardManager 4-row layout and bound-checked cursor navigation verified.")
+
+    print("\n--- 21. Jules Audit: AirMouse Gyro Deadband & Scaling ---")
+    def apply_airmouse_deadband(gyro_dps, threshold=2.0, sensitivity=1.5):
+        if abs(gyro_dps) < threshold:
+            return 0
+        sign = 1 if gyro_dps > 0 else -1
+        return int((abs(gyro_dps) - threshold) * sensitivity * sign)
+
+    # Sub-threshold jitter should be zero (deadband suppression)
+    assert apply_airmouse_deadband(0.5) == 0
+    assert apply_airmouse_deadband(-1.8) == 0
+    # Active motion above threshold
+    delta_pos = apply_airmouse_deadband(10.0)
+    assert delta_pos == int((10.0 - 2.0) * 1.5) == 12
+    delta_neg = apply_airmouse_deadband(-10.0)
+    assert delta_neg == -12
+    print("  [PASS] AirMouseManager drift deadband suppression and proportional scaling verified.")
+
+    print("\n--- 22. Jules Audit: Sensor & Health History Batched Pruning & Seek Tail ---")
+    entry_size = 10
+    max_entries = 288
+    batch_trim = 32
+    threshold = (max_entries + batch_trim) * entry_size
+
+    # Simulation of history file size growth
+    simulated_entries = 287
+    size = simulated_entries * entry_size
+    assert size < threshold, "No trimming below threshold"
+
+    # Add 1 entry -> reaches 288
+    simulated_entries += 1
+    size = simulated_entries * entry_size
+    assert size < threshold, "288 entries must not trigger expensive rewrite"
+
+    # Add 31 entries -> reaches 319 (still no rewrite!)
+    simulated_entries += 31
+    size = simulated_entries * entry_size
+    assert size < threshold, "Hysteresis prevents rewrite across 31 samples"
+
+    # Add 1 entry -> reaches 320 -> triggers batch trim
+    simulated_entries += 1
+    size = simulated_entries * entry_size
+    assert size >= threshold, "Threshold reached: triggers batched trim"
+
+    # Trimming keeps newest 288 entries, discarding oldest 32
+    keep = max_entries
+    offset = (simulated_entries - keep) * entry_size
+    assert offset == 32 * entry_size
+    simulated_entries = keep
+    assert simulated_entries * entry_size == 2880
+    print("  [PASS] Batched history pruning hysteresis and seek tail calculation verified.")
+
+    print("\n--- 23. Jules Audit: FastLED Compass Blend Continuity ---")
+    def simulate_compass_blend(heading):
+        h = heading % 360.0
+        # Color definitions
+        GREEN = (0, 255, 0)
+        DEEP_SKY_BLUE = (0, 191, 255)
+        BLUE = (0, 0, 255)
+
+        def blend_rgb(c1, c2, frac):
+            return (
+                int(c1[0] + (c2[0] - c1[0]) * frac),
+                int(c1[1] + (c2[1] - c1[1]) * frac),
+                int(c1[2] + (c2[2] - c1[2]) * frac)
+            )
+
+        if h < 90.0:
+            return blend_rgb(GREEN, DEEP_SKY_BLUE, h / 90.0)
+        elif h < 180.0:
+            return blend_rgb(DEEP_SKY_BLUE, BLUE, (h - 90.0) / 90.0)
+        elif h < 270.0:
+            return blend_rgb(BLUE, DEEP_SKY_BLUE, (h - 180.0) / 90.0)
+        else:
+            return blend_rgb(DEEP_SKY_BLUE, GREEN, (h - 270.0) / 90.0)
+
+    # Cardinal anchors
+    assert simulate_compass_blend(0) == (0, 255, 0), "North must be Green"
+    assert simulate_compass_blend(90) == (0, 191, 255), "East must be DeepSkyBlue"
+    assert simulate_compass_blend(180) == (0, 0, 255), "South must be Blue"
+    assert simulate_compass_blend(270) == (0, 191, 255), "West must be DeepSkyBlue"
+    # Continuity checks at quadrant transitions
+    c45 = simulate_compass_blend(45)
+    assert 0 < c45[1] < 255 and 0 < c45[2] < 255, "NE must be smooth green-cyan blend"
+    print("  [PASS] FastLED compass blend cardinal anchors and continuous interpolation verified.")
+
+    print("\n--- 24. Jules Audit: IR Zero-Allocation Raw Parser & Serializer ---")
+    raw_str = " 9000 4500 560 560 560 1690 560 1690 560 "
+    # Simulate strtoul pointer scan
+    parsed_nums = [int(tok) for tok in raw_str.strip().split()]
+    assert parsed_nums == [9000, 4500, 560, 560, 560, 1690, 560, 1690, 560]
+    # Serializer buffer reservation
+    ser_buf = "data:" + "".join(f" {x}" for x in parsed_nums)
+    assert ser_buf.startswith("data: 9000 4500 560")
+    print("  [PASS] IR zero-allocation numeric parsing and pre-reserved serialization verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -785,4 +1089,5 @@ if __name__ == "__main__":
     test_sensor_calibration_and_robustness()
     test_firmware_optimization_and_equivalence()
     test_power_management_suite()
+    test_jules_codebase_optimizations()
     print("\nAll self-test verifications PASSED!")

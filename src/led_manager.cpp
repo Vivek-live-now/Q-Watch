@@ -67,35 +67,26 @@ void LedManager::updateCompassSync() {
     OrientationData o = sensors.getOrientation();
     float heading = o.yaw;
 
-    // N green, S W E Blue, others red.
-    // Smooth transition: Let's map heading to a hue or mix colors.
-    // To match "N Green, S/W/E Blue, others Red", we can use HSV
-    // But exact request: slowly transition.
+    // Normalize heading to [0, 360)
+    while (heading < 0.0f) heading += 360.0f;
+    while (heading >= 360.0f) heading -= 360.0f;
 
+    // Smoothly blend between cardinal and intercardinal anchor colors using FastLED blend():
+    // North (0/360) = Green, East (90) = DeepSkyBlue, South (180) = Blue, West (270) = DeepSkyBlue
     CRGB target;
-    // Map to specific ranges
-    if (heading >= 315 || heading < 45) {
-        // North (Green)
-        target = CRGB::Green;
-    } else if (heading >= 135 && heading < 225) {
-        // South (Blue)
-        target = CRGB::Blue;
-    } else if (heading >= 45 && heading < 135) {
-        // East (Blue)
-        target = CRGB::Blue;
-    } else if (heading >= 225 && heading < 315) {
-        // West (Blue)
-        target = CRGB::Blue;
+    if (heading < 90.0f) {
+        fract8 amount = (fract8)((heading / 90.0f) * 255.0f);
+        target = blend(CRGB::Green, CRGB::DeepSkyBlue, amount);
+    } else if (heading < 180.0f) {
+        fract8 amount = (fract8)(((heading - 90.0f) / 90.0f) * 255.0f);
+        target = blend(CRGB::DeepSkyBlue, CRGB::Blue, amount);
+    } else if (heading < 270.0f) {
+        fract8 amount = (fract8)(((heading - 180.0f) / 90.0f) * 255.0f);
+        target = blend(CRGB::Blue, CRGB::DeepSkyBlue, amount);
+    } else {
+        fract8 amount = (fract8)(((heading - 270.0f) / 90.0f) * 255.0f);
+        target = blend(CRGB::DeepSkyBlue, CRGB::Green, amount);
     }
-
-    // Smooth blending is nice, but for now simple block assignment or naive blending:
-    // Let's implement a clean color wheel based on heading.
-    // 0 = N (Green H=96), 90=E (Blue H=160), 180=S (Blue H=160), 270=W (Blue H=160)
-    // The user specifically wanted NW, NE etc to be Sky Blue, others Red.
-    // A quick hack: Use FastLED blend
-
-    uint8_t h = (int)(heading / 360.0f * 255.0f);
-    target = CHSV(h, 255, 255); // This creates a full rainbow mapped to compass, very smooth!
 
     leds[0] = target;
 }

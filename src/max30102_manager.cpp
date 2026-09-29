@@ -225,16 +225,19 @@ void MAX30102Manager::logSample(uint8_t bpm, uint8_t spo2, float temp) {
 
     fileManager.append("/health_history.bin", (const uint8_t*)&entry, sizeof(HealthHistoryEntry));
 
-    // Keep history file capped at 288 records (24 hours at 5 min intervals)
+    // Batched Pruning: Allow hysteresis up to MAX_ENTRIES + 32 before trimming.
+    // This avoids rewriting the entire file on every 5-minute sample (reduces flash wear by 97%).
     size_t sz = fileManager.fileSize("/health_history.bin");
     const int MAX_ENTRIES = 288;
-    if (sz > (size_t)(MAX_ENTRIES * sizeof(HealthHistoryEntry))) {
+    const int BATCH_TRIM = 32;
+    if (sz >= (size_t)((MAX_ENTRIES + BATCH_TRIM) * sizeof(HealthHistoryEntry))) {
         int total = sz / sizeof(HealthHistoryEntry);
-        HealthHistoryEntry* buf = new HealthHistoryEntry[total];
-        fileManager.read("/health_history.bin", (uint8_t*)buf, sz);
-
         int keep = MAX_ENTRIES;
-        fileManager.write("/health_history.bin", (const uint8_t*)&buf[total - keep], keep * sizeof(HealthHistoryEntry));
+        HealthHistoryEntry* buf = new HealthHistoryEntry[keep];
+        size_t offset = (total - keep) * sizeof(HealthHistoryEntry);
+        if (fileManager.readSeek("/health_history.bin", offset, (uint8_t*)buf, keep * sizeof(HealthHistoryEntry)) == keep * sizeof(HealthHistoryEntry)) {
+            fileManager.write("/health_history.bin", (const uint8_t*)buf, keep * sizeof(HealthHistoryEntry));
+        }
         delete[] buf;
     }
 }
@@ -252,9 +255,9 @@ bool MAX30102Manager::getHistory(HealthHistoryEntry* buffer, int max_entries) co
     if (total <= 0) return false;
 
     int to_read = (total < max_entries) ? total : max_entries;
-    HealthHistoryEntry* full_buf = new HealthHistoryEntry[total];
-    fileManager.read("/health_history.bin", (uint8_t*)full_buf, sz);
-    memcpy(buffer, &full_buf[total - to_read], to_read * sizeof(HealthHistoryEntry));
-    delete[] full_buf;
-    return true;
+    size_t offset_bytes = (total - to_read) * sizeof(HealthHistoryEntry);
+
+    // Direct seek read of only the requested tail - zero temporary heap buffer
+    size_t bytes_read = fileManager.readSeek("/health_history.bin", offset_bytes, (uint8_t*)buffer, to_read * sizeof(HealthHistoryEntry));
+    return (bytes_read == to_read * sizeof(HealthHistoryEntry));
 }

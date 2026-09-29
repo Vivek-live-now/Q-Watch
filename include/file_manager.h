@@ -27,6 +27,7 @@ public:
     // Read operations
     String read(const String& path);
     size_t read(const String& path, uint8_t* buffer, size_t maxSize);
+    size_t readSeek(const String& path, size_t offset, uint8_t* buffer, size_t length);
 
     // Write operations
     bool write(const String& path, const String& data);
@@ -44,8 +45,9 @@ public:
     size_t totalSpace();
     size_t fileSize(const String& path);
 
-private:
+    // Path sanitization & normalization
     String normalizePath(const String& path);
+    static bool isPathSafe(const String& path);
 };
 
 extern FileManager fileManager;

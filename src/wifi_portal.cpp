@@ -516,6 +516,10 @@ void WifiPortal::handleFileList() {
         return;
     }
     String path = server.hasArg("path") ? server.arg("path") : "/";
+    if (!FileManager::isPathSafe(path)) {
+        server.send(400, "application/json", "{\"error\":\"Invalid / Unsafe Path\"}");
+        return;
+    }
     FileInfo entries[32];
     size_t num = fileManager.listDir(path, entries, 32);
 
@@ -540,12 +544,16 @@ void WifiPortal::handleFileDownload() {
         return;
     }
     String path = server.arg("path");
+    if (!FileManager::isPathSafe(path)) {
+        server.send(400, "text/plain", "Invalid / Unsafe Path");
+        return;
+    }
     if (!fileManager.exists(path)) {
         server.send(404, "text/plain", "File Not Found");
         return;
     }
 
-    File file = LittleFS.open(path, FILE_READ);
+    File file = LittleFS.open(fileManager.normalizePath(path), FILE_READ);
     server.streamFile(file, "application/octet-stream");
     file.close();
 }
@@ -556,7 +564,12 @@ void WifiPortal::handleFileDelete() {
         return;
     }
     if (server.hasArg("path")) {
-        fileManager.remove(server.arg("path"));
+        String path = server.arg("path");
+        if (!FileManager::isPathSafe(path)) {
+            server.send(400, "text/plain", "Invalid / Unsafe Path");
+            return;
+        }
+        fileManager.remove(path);
         server.send(200, "text/plain", "OK");
     } else {
         server.send(400, "text/plain", "Missing Path");
@@ -570,6 +583,10 @@ void WifiPortal::handleFileMkdir() {
     }
     if (server.hasArg("path")) {
         String p = server.arg("path");
+        if (!FileManager::isPathSafe(p)) {
+            server.send(400, "text/plain", "Invalid / Unsafe Path");
+            return;
+        }
         if (!p.endsWith("/")) p += "/.keep";
         fileManager.create(p);
         server.send(200, "text/plain", "OK");
@@ -584,8 +601,17 @@ void WifiPortal::handleFileRename() {
         return;
     }
     if (server.hasArg("from") && server.hasArg("to")) {
-        fileManager.rename(server.arg("from"), server.arg("to"));
-        server.send(200, "text/plain", "OK");
+        String from = server.arg("from");
+        String to = server.arg("to");
+        if (!FileManager::isPathSafe(from) || !FileManager::isPathSafe(to)) {
+            server.send(400, "text/plain", "Invalid / Unsafe Path");
+            return;
+        }
+        if (fileManager.rename(from, to)) {
+            server.send(200, "text/plain", "OK");
+        } else {
+            server.send(500, "text/plain", "Rename Failed");
+        }
     } else {
         server.send(400, "text/plain", "Missing Params");
     }
@@ -599,8 +625,11 @@ void WifiPortal::handleFileUpload() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
         String filename = upload.filename;
-        if (!filename.startsWith("/")) filename = "/" + filename;
-        uploadFile = LittleFS.open(filename, FILE_WRITE);
+        if (!FileManager::isPathSafe(filename)) {
+            return; // Reject unsafe upload filename
+        }
+        String p = fileManager.normalizePath(filename);
+        uploadFile = LittleFS.open(p, FILE_WRITE);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (uploadFile) {
             uploadFile.write(upload.buf, upload.currentSize);

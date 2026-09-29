@@ -24,6 +24,19 @@ void FileManager::end() {
     LittleFS.end();
 }
 
+bool FileManager::isPathSafe(const String& path) {
+    if (path.length() == 0) return false;
+    for (size_t i = 0; i < path.length(); i++) {
+        char c = path.charAt(i);
+        if (c == '\0' || c == '\\' || (uint8_t)c < 32 || (uint8_t)c == 127) {
+            return false;
+        }
+    }
+    // Reject path traversal
+    if (path.indexOf("..") != -1) return false;
+    return true;
+}
+
 String FileManager::normalizePath(const String& path) {
     if (path.length() == 0) return "/";
     if (path.charAt(0) != '/') {
@@ -33,10 +46,12 @@ String FileManager::normalizePath(const String& path) {
 }
 
 bool FileManager::exists(const String& path) {
+    if (!isPathSafe(path)) return false;
     return LittleFS.exists(normalizePath(path));
 }
 
 bool FileManager::create(const String& path) {
+    if (!isPathSafe(path)) return false;
     String p = normalizePath(path);
     if (LittleFS.exists(p)) return true; // Already exists
     File file = LittleFS.open(p, FILE_WRITE);
@@ -46,14 +61,17 @@ bool FileManager::create(const String& path) {
 }
 
 bool FileManager::remove(const String& path) {
+    if (!isPathSafe(path)) return false;
     return LittleFS.remove(normalizePath(path));
 }
 
 bool FileManager::rename(const String& pathFrom, const String& pathTo) {
+    if (!isPathSafe(pathFrom) || !isPathSafe(pathTo)) return false;
     return LittleFS.rename(normalizePath(pathFrom), normalizePath(pathTo));
 }
 
 String FileManager::read(const String& path) {
+    if (!isPathSafe(path)) return String();
     File file = LittleFS.open(normalizePath(path), FILE_READ);
     if (!file) return String();
 
@@ -63,7 +81,7 @@ String FileManager::read(const String& path) {
 }
 
 size_t FileManager::read(const String& path, uint8_t* buffer, size_t maxSize) {
-    if (!buffer || maxSize == 0) return 0;
+    if (!buffer || maxSize == 0 || !isPathSafe(path)) return 0;
 
     File file = LittleFS.open(normalizePath(path), FILE_READ);
     if (!file) return 0;
@@ -73,7 +91,24 @@ size_t FileManager::read(const String& path, uint8_t* buffer, size_t maxSize) {
     return bytesRead;
 }
 
+size_t FileManager::readSeek(const String& path, size_t offset, uint8_t* buffer, size_t length) {
+    if (!buffer || length == 0 || !isPathSafe(path)) return 0;
+
+    File file = LittleFS.open(normalizePath(path), FILE_READ);
+    if (!file) return 0;
+
+    if (offset > 0 && !file.seek(offset, SeekSet)) {
+        file.close();
+        return 0;
+    }
+
+    size_t bytesRead = file.read(buffer, length);
+    file.close();
+    return bytesRead;
+}
+
 bool FileManager::write(const String& path, const String& data) {
+    if (!isPathSafe(path)) return false;
     File file = LittleFS.open(normalizePath(path), FILE_WRITE);
     if (!file) return false;
 
@@ -83,6 +118,7 @@ bool FileManager::write(const String& path, const String& data) {
 }
 
 bool FileManager::write(const String& path, const uint8_t* data, size_t size) {
+    if (!isPathSafe(path)) return false;
     if (!data || size == 0) return create(path); // Create empty file if no data
 
     File file = LittleFS.open(normalizePath(path), FILE_WRITE);
@@ -94,6 +130,7 @@ bool FileManager::write(const String& path, const uint8_t* data, size_t size) {
 }
 
 bool FileManager::append(const String& path, const String& data) {
+    if (!isPathSafe(path)) return false;
     File file = LittleFS.open(normalizePath(path), FILE_APPEND);
     if (!file) return false;
 
@@ -103,6 +140,7 @@ bool FileManager::append(const String& path, const String& data) {
 }
 
 bool FileManager::append(const String& path, const uint8_t* data, size_t size) {
+    if (!isPathSafe(path)) return false;
     if (!data || size == 0) return true;
 
     File file = LittleFS.open(normalizePath(path), FILE_APPEND);
@@ -114,7 +152,7 @@ bool FileManager::append(const String& path, const uint8_t* data, size_t size) {
 }
 
 size_t FileManager::listDir(const String& path, FileInfo* results, size_t maxResults) {
-    if (!results || maxResults == 0) return 0;
+    if (!results || maxResults == 0 || !isPathSafe(path)) return 0;
 
     File root = LittleFS.open(normalizePath(path));
     if (!root || !root.isDirectory()) {
@@ -145,6 +183,7 @@ size_t FileManager::totalSpace() {
 }
 
 size_t FileManager::fileSize(const String& path) {
+    if (!isPathSafe(path)) return 0;
     String p = normalizePath(path);
     if (!LittleFS.exists(p)) return 0;
     File f = LittleFS.open(p, "r");
