@@ -2681,9 +2681,11 @@ void UICore::handleBatteryInput() {
             soundManager.playNavMove();
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
-            powerManager.triggerUlpSentryTest();
+            bool next_state = !powerManager.isUlpEnabled();
+            powerManager.setUlpEnabled(next_state);
+            settingsManager.save();
             soundManager.playNavSelect();
-            showToast("[ULP SENTRY TEST]", 1000);
+            showToast(next_state ? "[ULP: ENABLED]" : "[ULP: DISABLED]", 1000);
             needs_redraw = true;
         }
     }

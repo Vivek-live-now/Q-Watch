@@ -7,6 +7,7 @@
 #include "display.h"
 #include "sound_manager.h"
 #include "hw_config.h"
+#include "simd_accel.h"
 #else
 #include <stdio.h>
 #include <stdlib.h>
@@ -383,9 +384,13 @@ void AnimEngine::drawFrame(int16_t x, int16_t y) {
     oled.drawXBMP(x, y, ANIM_WIDTH, ANIM_HEIGHT, frame_buffer);
 
     if (current_header.flags & ANIM_FLAG_INVERT) {
-        oled.setDrawColor(2); // XOR invert mode
-        oled.drawBox(x, y, ANIM_WIDTH, ANIM_HEIGHT);
-        oled.setDrawColor(1);
+        if (x == 0 && y == 0) {
+            simd_invert_128(oled.getBufferPtr(), oled.getBufferPtr(), 1024);
+        } else {
+            oled.setDrawColor(2); // XOR invert mode fallback for sub-rectangles
+            oled.drawBox(x, y, ANIM_WIDTH, ANIM_HEIGHT);
+            oled.setDrawColor(1);
+        }
     }
 #else
     (void)x; (void)y;

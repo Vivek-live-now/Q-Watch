@@ -54,6 +54,7 @@ void SettingsManager::load() {
         else if (key == "eco_radio_cut") settings.eco_radio_cut = (val == "1");
         else if (key == "eco_led_block") settings.eco_led_block = (val == "1");
         else if (key == "eco_audio_mute") settings.eco_audio_mute = (val == "1");
+        else if (key == "ulp_sentry_enabled") settings.ulp_sentry_enabled = (val == "1");
         else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
@@ -97,6 +98,7 @@ void SettingsManager::save() {
     out += "eco_radio_cut=" + String(settings.eco_radio_cut ? "1" : "0") + "\n";
     out += "eco_led_block=" + String(settings.eco_led_block ? "1" : "0") + "\n";
     out += "eco_audio_mute=" + String(settings.eco_audio_mute ? "1" : "0") + "\n";
+    out += "ulp_sentry_enabled=" + String(settings.ulp_sentry_enabled ? "1" : "0") + "\n";
     out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";

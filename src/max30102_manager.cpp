@@ -3,6 +3,7 @@
 #include "settings_data.h"
 #include "hw_config.h"
 #include "clock.h"
+#include "simd_accel.h"
 #include <Wire.h>
 
 MAX30102Manager max30102Manager;
@@ -90,11 +91,12 @@ void MAX30102Manager::loop() {
         if (ir > 20000) {
             current_metrics.finger_detected = true;
 
-            // Normalize IR signal to 0-255 PPG waveform graph
+            // Normalize IR signal and apply 32-tap SIMD FIR bandpass filter (0.5Hz - 4.0Hz)
             static uint32_t dc_filter = 50000;
             dc_filter = (dc_filter * 15 + ir) / 16;
             int32_t ac = (int32_t)ir - (int32_t)dc_filter;
-            int graph_val = 128 + (ac / 30);
+            int16_t filtered_ac = simd_max30102_fir_sample((int16_t)constrain(ac, -32768, 32767));
+            int graph_val = 128 + (filtered_ac / 30);
             if (graph_val < 0) graph_val = 0;
             if (graph_val > 255) graph_val = 255;
 
@@ -121,6 +123,7 @@ void MAX30102Manager::loop() {
             current_metrics.bpm = 0; // Clear stale values when no finger detected
             current_metrics.spo2 = 0;
             sample_idx = 0;
+            simd_max30102_fir_reset();
             ppg_buffer[ppg_head] = 128;
             ppg_head = (ppg_head + 1) % 64;
         }

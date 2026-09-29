@@ -72,6 +72,8 @@ public:
     // ULP Lab / Diagnostic Interface
     UlpTelemetry getUlpTelemetry() const;
     void triggerUlpSentryTest();
+    bool isUlpEnabled() const { return ulp_sentry_active; }
+    void setUlpEnabled(bool en);
 
     // Sleep Execution Dispatcher
     void executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t wake_mask);

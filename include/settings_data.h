@@ -26,6 +26,7 @@ struct SettingsData {
     bool eco_radio_cut = true;    // Auto cut radios on screen lock
     bool eco_led_block = false;   // Block RGB LED in eco mode
     bool eco_audio_mute = false;  // Mute buzzer in eco mode
+    bool ulp_sentry_enabled = false; // ULP Coprocessor Sentry power architecture ON/OFF
 
     // DISPLAY
     int contrast_idx = 3;         // 0: 25%, 1: 50%, 2: 75%, 3: 100%

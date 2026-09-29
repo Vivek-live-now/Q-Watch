@@ -16,6 +16,10 @@ public:
     void setPowerSave(bool enable);
     const uint8_t* getBufferPtr() const;
     size_t getBufferSize() const { return 1024; }
+    void invertBuffer();
+    void xorBuffer(const uint8_t* mask);
+    void andBuffer(const uint8_t* mask);
+    void orBuffer(const uint8_t* mask);
 
 private:
     void drawAppHome();

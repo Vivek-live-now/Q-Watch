@@ -19,6 +19,7 @@
 #include "anim_engine.h"
 #include "wireless_recon.h"
 #include "power_manager.h"
+#include "simd_accel.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -39,6 +40,34 @@ void DisplayManager::begin() {
 
 const uint8_t* DisplayManager::getBufferPtr() const {
     return oled.getBufferPtr();
+}
+
+void DisplayManager::invertBuffer() {
+    uint8_t* buf = oled.getBufferPtr();
+    if (buf) {
+        simd_invert_128(buf, buf, getBufferSize());
+    }
+}
+
+void DisplayManager::xorBuffer(const uint8_t* mask) {
+    uint8_t* buf = oled.getBufferPtr();
+    if (buf && mask) {
+        simd_xor_mask_128(buf, buf, mask, getBufferSize());
+    }
+}
+
+void DisplayManager::andBuffer(const uint8_t* mask) {
+    uint8_t* buf = oled.getBufferPtr();
+    if (buf && mask) {
+        simd_and_mask_128(buf, buf, mask, getBufferSize());
+    }
+}
+
+void DisplayManager::orBuffer(const uint8_t* mask) {
+    uint8_t* buf = oled.getBufferPtr();
+    if (buf && mask) {
+        simd_or_mask_128(buf, buf, mask, getBufferSize());
+    }
 }
 
 void DisplayManager::update() {
@@ -2086,18 +2115,19 @@ void DisplayManager::drawBatteryPagePeripherals() {
 
 void DisplayManager::drawBatteryPageUlp() {
     UlpTelemetry t = powerManager.getUlpTelemetry();
+    bool enabled = powerManager.isUlpEnabled();
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, "ULP RISC-V LAB [5/5]");
+    oled.drawStr(2, 7, "ULP RISC-V COP [5/5]");
     oled.drawLine(0, 9, 128, 9);
 
     oled.setFont(u8g2_font_6x10_tr);
     char line1[32];
-    snprintf(line1, sizeof(line1), "STATUS: %s", t.status_str);
+    snprintf(line1, sizeof(line1), "SENTRY: %s", enabled ? "[ON] ACTIVE" : "[OFF] STANDBY");
     oled.drawStr(4, 21, line1);
 
     char line2[32];
-    snprintf(line2, sizeof(line2), "RTC RAM: 8192 B");
+    snprintf(line2, sizeof(line2), "RTC RAM: %u / 8192B", (unsigned)t.rtc_mem_used_bytes);
     oled.drawStr(4, 33, line2);
 
     char line3[32];
@@ -2105,7 +2135,7 @@ void DisplayManager::drawBatteryPageUlp() {
     oled.drawStr(4, 45, line3);
 
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(4, 55, "[OK] TOGGLE SENTRY TEST");
+    oled.drawStr(4, 55, "[OK] TOGGLE ON / OFF");
 
     oled.setFont(u8g2_font_4x6_tr);
     oled.drawStr(4, 63, "[UP] PERIPH  [CANCEL] HUD");

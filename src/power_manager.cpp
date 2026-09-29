@@ -53,6 +53,7 @@ void PowerManager::begin() {
     eco_radio_cut = s.eco_radio_cut;
     eco_led_block = s.eco_led_block;
     eco_audio_mute = s.eco_audio_mute;
+    ulp_sentry_active = s.ulp_sentry_enabled;
 
     applyCpuFrequency();
 }
@@ -217,15 +218,21 @@ UlpTelemetry PowerManager::getUlpTelemetry() const {
     t.rtc_mem_used_bytes = ulp_sentry_active ? 384 : 0;
     t.wake_count = ulp_test_wake_count;
     t.last_adc_raw = 0;
-    t.status_str = ulp_sentry_active ? "RUNNING" : "STANDBY";
+    t.status_str = ulp_sentry_active ? "RUNNING [ON]" : "STANDBY [OFF]";
     return t;
 }
 
-void PowerManager::triggerUlpSentryTest() {
-    ulp_sentry_active = !ulp_sentry_active;
-    if (ulp_sentry_active) {
+void PowerManager::setUlpEnabled(bool en) {
+    ulp_sentry_active = en;
+    SettingsData& s = settingsManager.get();
+    s.ulp_sentry_enabled = en;
+    if (en) {
         ulp_test_wake_count++;
     }
+}
+
+void PowerManager::triggerUlpSentryTest() {
+    setUlpEnabled(!ulp_sentry_active);
 }
 
 void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t wake_mask) {

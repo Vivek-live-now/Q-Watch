@@ -316,132 +316,139 @@ void WifiPortal::handleSave() {
     ESP.restart();
 }
 
+static const char DASHBOARD_HTML_TEMPLATE[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Q-Watch Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #f0f0f0; margin: 0; padding: 0; }
+        .header { background: #1e1e1e; padding: 20px; text-align: center; border-bottom: 2px solid #333; }
+        .container { padding: 20px; max-width: 600px; margin: auto; }
+        .card { background: #1e1e1e; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h2 { margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; font-size: 1.2em; color: #00bcd4; }
+        label { display: block; margin-top: 10px; font-size: 0.9em; color: #aaa; }
+        input, select { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 5px; background: #2c2c2c; color: #fff; border: 1px solid #444; border-radius: 4px; }
+        button { background: #00bcd4; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; }
+        button:hover { background: #0097a7; }
+        .secondary-btn { background: #444; margin-top: 5px; }
+        .secondary-btn:hover { background: #555; }
+        .status-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
+        .net-item { padding: 10px; background: #2c2c2c; margin-bottom: 5px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; }
+        .net-item:hover { background: #3c3c3c; }
+        #scanResults { max-height: 200px; overflow-y: auto; margin-top: 10px; display: none; }
+    </style>
+    <script>
+        function fetchStatus() {
+            fetch('/status_json').then(r=>r.json()).then(data => {
+                document.getElementById('st_wifi').innerText = data.wifi;
+                document.getElementById('st_ip').innerText = data.ip;
+                document.getElementById('st_rssi').innerText = data.rssi + " dBm";
+                document.getElementById('st_time').innerText = data.time_sync;
+                document.getElementById('st_wsync').innerText = data.w_sync;
+                document.getElementById('st_wlast').innerText = data.w_last;
+                document.getElementById('st_up').innerText = data.uptime + " s";
+            }).catch(e => console.error(e));
+        }
+        function pollScanResults() {
+            fetch('/scan_results').then(r=>r.json()).then(data => {
+                let res = document.getElementById('scanResults');
+                if (data.status === 'running') {
+                    setTimeout(pollScanResults, 1000);
+                } else if (data.status === 'complete') {
+                    res.innerHTML = "";
+                    data.networks.forEach(net => {
+                        let d = document.createElement('div');
+                        d.className = 'net-item';
+                        d.innerHTML = `<span>${net.ssid} ${net.enc ? 'SECURE' : 'OPEN'}</span><span>${net.rssi} dBm</span>`;
+                        d.onclick = () => { document.getElementById('ssid').value = net.ssid; res.style.display='none'; };
+                        res.appendChild(d);
+                    });
+                } else {
+                    res.innerHTML = "Scan failed.";
+                }
+            }).catch(e => { document.getElementById('scanResults').innerHTML = "Scan error."; });
+        }
+        function scanWifi() {
+            let res = document.getElementById('scanResults');
+            res.style.display = 'block';
+            res.innerHTML = "Triggering Async Scan...";
+            fetch('/scan_trigger').then(() => {
+                res.innerHTML = "Scanning in background...";
+                setTimeout(pollScanResults, 1000);
+            });
+        }
+        function forceWeather() {
+            fetch('/weather_force').then(() => alert('Weather update triggered.'));
+        }
+        setInterval(fetchStatus, 5000);
+        window.onload = fetchStatus;
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h1>Q-Watch Dashboard</h1>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h2>Device Status</h2>
+            <div class="status-row"><span>Wi-Fi</span><span id="st_wifi">Loading...</span></div>
+            <div class="status-row"><span>IP Address</span><span id="st_ip">...</span></div>
+            <div class="status-row"><span>Signal</span><span id="st_rssi">...</span></div>
+            <div class="status-row"><span>Time Sync</span><span id="st_time">...</span></div>
+            <div class="status-row"><span>Weather Sync</span><span id="st_wsync">...</span></div>
+            <div class="status-row"><span>Last Weather</span><span id="st_wlast">...</span></div>
+            <div class="status-row"><span>Uptime</span><span id="st_up">...</span></div>
+        </div>
+        <form action="/save" method="POST">
+            <div class="card">
+                <h2>Wi-Fi Configuration</h2>
+                <label>SSID</label>
+                <input type="text" id="ssid" name="ssid" value="{{SSID}}">
+                <button type="button" class="secondary-btn" onclick="scanWifi()">Scan Networks</button>
+                <div id="scanResults"></div>
+                <label>Password (leave blank to keep current)</label>
+                <input type="password" name="pass" placeholder="********">
+            </div>
+            <div class="card">
+                <h2>Time & Weather</h2>
+                <label>Timezone (POSIX format)</label>
+                <input type="text" name="tz" value="{{TZ}}">
+                <label>OpenWeatherMap API Key (leave blank to keep current)</label>
+                <input type="password" name="owm_key" placeholder="********">
+                <label>City Location (e.g., London,UK)</label>
+                <input type="text" name="owm_loc" value="{{OWM_LOC}}">
+                <label>Latitude & Longitude</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="number" step="0.0001" name="lat" value="{{LAT}}">
+                    <input type="number" step="0.0001" name="lon" value="{{LON}}">
+                </div>
+                <label>Units</label>
+                <select name="owm_unt">
+                    <option value="metric" {{OPT_METRIC}}>Metric (deg C, m/s)</option>
+                    <option value="imperial" {{OPT_IMPERIAL}}>Imperial (deg F, mph)</option>
+                </select>
+                <label>Update Interval (minutes)</label>
+                <input type="number" name="w_int" value="{{W_INT}}">
+                <button type="button" class="secondary-btn" onclick="forceWeather()">Force Weather Update Now</button>
+            </div>
+            <button type="submit">Save & Reboot</button>
+        </form>
+    </div>
+</body>
+</html>)rawliteral";
+
 String WifiPortal::getHtml() {
     AppConfig& cfg = configManager.get();
-    String html;
-    html.reserve(4096);
-    html = "<!DOCTYPE html>\n";
-    html += "<html>\n";
-    html += "<head>\n";
-    html += "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
-    html += "    <title>Q-Watch Dashboard</title>\n";
-    html += "    <style>\n";
-    html += "        body { font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #f0f0f0; margin: 0; padding: 0; }\n";
-    html += "        .header { background: #1e1e1e; padding: 20px; text-align: center; border-bottom: 2px solid #333; }\n";
-    html += "        .container { padding: 20px; max-width: 600px; margin: auto; }\n";
-    html += "        .card { background: #1e1e1e; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }\n";
-    html += "        h2 { margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; font-size: 1.2em; color: #00bcd4; }\n";
-    html += "        label { display: block; margin-top: 10px; font-size: 0.9em; color: #aaa; }\n";
-    html += "        input, select { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 5px; background: #2c2c2c; color: #fff; border: 1px solid #444; border-radius: 4px; }\n";
-    html += "        button { background: #00bcd4; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; }\n";
-    html += "        button:hover { background: #0097a7; }\n";
-    html += "        .secondary-btn { background: #444; margin-top: 5px; }\n";
-    html += "        .secondary-btn:hover { background: #555; }\n";
-    html += "        .status-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #333; font-size: 0.9em; }\n";
-    html += "        .net-item { padding: 10px; background: #2c2c2c; margin-bottom: 5px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; }\n";
-    html += "        .net-item:hover { background: #3c3c3c; }\n";
-    html += "        #scanResults { max-height: 200px; overflow-y: auto; margin-top: 10px; display: none; }\n";
-    html += "    </style>\n";
-    html += "    <script>\n";
-    html += "        function fetchStatus() {\n";
-    html += "            fetch('/status_json').then(r=>r.json()).then(data => {\n";
-    html += "                document.getElementById('st_wifi').innerText = data.wifi;\n";
-    html += "                document.getElementById('st_ip').innerText = data.ip;\n";
-    html += "                document.getElementById('st_rssi').innerText = data.rssi + \" dBm\";\n";
-    html += "                document.getElementById('st_time').innerText = data.time_sync;\n";
-    html += "                document.getElementById('st_wsync').innerText = data.w_sync;\n";
-    html += "                document.getElementById('st_wlast').innerText = data.w_last;\n";
-    html += "                document.getElementById('st_up').innerText = data.uptime + \" s\";\n";
-    html += "            }).catch(e => console.error(e));\n";
-    html += "        }\n";
-    html += "        function pollScanResults() {\n";
-    html += "            fetch('/scan_results').then(r=>r.json()).then(data => {\n";
-    html += "                let res = document.getElementById('scanResults');\n";
-    html += "                if (data.status === 'running') {\n";
-    html += "                    setTimeout(pollScanResults, 1000);\n";
-    html += "                } else if (data.status === 'complete') {\n";
-    html += "                    res.innerHTML = \"\";\n";
-    html += "                    data.networks.forEach(net => {\n";
-    html += "                        let d = document.createElement('div');\n";
-    html += "                        d.className = 'net-item';\n";
-    html += "                        d.innerHTML = `<span>${net.ssid} ${net.enc ? 'SECURE' : 'OPEN'}</span><span>${net.rssi} dBm</span>`;\n";
-    html += "                        d.onclick = () => { document.getElementById('ssid').value = net.ssid; res.style.display='none'; };\n";
-    html += "                        res.appendChild(d);\n";
-    html += "                    });\n";
-    html += "                } else {\n";
-    html += "                    res.innerHTML = \"Scan failed.\";\n";
-    html += "                }\n";
-    html += "            }).catch(e => { document.getElementById('scanResults').innerHTML = \"Scan error.\"; });\n";
-    html += "        }\n";
-    html += "        function scanWifi() {\n";
-    html += "            let res = document.getElementById('scanResults');\n";
-    html += "            res.style.display = 'block';\n";
-    html += "            res.innerHTML = \"Triggering Async Scan...\";\n";
-    html += "            fetch('/scan_trigger').then(() => {\n";
-    html += "                res.innerHTML = \"Scanning in background...\";\n";
-    html += "                setTimeout(pollScanResults, 1000);\n";
-    html += "            });\n";
-    html += "        }\n";
-    html += "        function forceWeather() {\n";
-    html += "            fetch('/weather_force').then(() => alert('Weather update triggered.'));\n";
-    html += "        }\n";
-    html += "        setInterval(fetchStatus, 5000);\n";
-    html += "        window.onload = fetchStatus;\n";
-    html += "    </script>\n";
-    html += "</head>\n";
-    html += "<body>\n";
-    html += "    <div class=\"header\">\n";
-    html += "        <h1>Q-Watch Dashboard</h1>\n";
-    html += "    </div>\n";
-    html += "    <div class=\"container\">\n";
-    html += "        <div class=\"card\">\n";
-    html += "            <h2>Device Status</h2>\n";
-    html += "            <div class=\"status-row\"><span>Wi-Fi</span><span id=\"st_wifi\">Loading...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>IP Address</span><span id=\"st_ip\">...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>Signal</span><span id=\"st_rssi\">...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>Time Sync</span><span id=\"st_time\">...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>Weather Sync</span><span id=\"st_wsync\">...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>Last Weather</span><span id=\"st_wlast\">...</span></div>\n";
-    html += "            <div class=\"status-row\"><span>Uptime</span><span id=\"st_up\">...</span></div>\n";
-    html += "        </div>\n";
-    html += "        <form action=\"/save\" method=\"POST\">\n";
-    html += "            <div class=\"card\">\n";
-    html += "                <h2>Wi-Fi Configuration</h2>\n";
-    html += "                <label>SSID</label>\n";
-    html += "                <input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + cfg.wifi_ssid + "\">\n";
-    html += "                <button type=\"button\" class=\"secondary-btn\" onclick=\"scanWifi()\">Scan Networks</button>\n";
-    html += "                <div id=\"scanResults\"></div>\n";
-    html += "                <label>Password (leave blank to keep current)</label>\n";
-    html += "                <input type=\"password\" name=\"pass\" placeholder=\"********\">\n";
-    html += "            </div>\n";
-    html += "            <div class=\"card\">\n";
-    html += "                <h2>Time & Weather</h2>\n";
-    html += "                <label>Timezone (POSIX format)</label>\n";
-    html += "                <input type=\"text\" name=\"tz\" value=\"" + cfg.timezone + "\">\n";
-    html += "                <label>OpenWeatherMap API Key (leave blank to keep current)</label>\n";
-    html += "                <input type=\"password\" name=\"owm_key\" placeholder=\"********\">\n";
-    html += "                <label>City Location (e.g., London,UK)</label>\n";
-    html += "                <input type=\"text\" name=\"owm_loc\" value=\"" + cfg.owm_location + "\">\n";
-    html += "                <label>Latitude & Longitude</label>\n";
-    html += "                <div style=\"display:flex; gap:10px;\">\n";
-    html += "                    <input type=\"number\" step=\"0.0001\" name=\"lat\" value=\"" + String(cfg.latitude, 4) + "\">\n";
-    html += "                    <input type=\"number\" step=\"0.0001\" name=\"lon\" value=\"" + String(cfg.longitude, 4) + "\">\n";
-    html += "                </div>\n";
-    html += "                <label>Units</label>\n";
-    html += "                <select name=\"owm_unt\">\n";
-    html += "                    <option value=\"metric\" " + String(cfg.owm_units == "metric" ? "selected" : "") + ">Metric (deg C, m/s)</option>\n";
-    html += "                    <option value=\"imperial\" " + String(cfg.owm_units == "imperial" ? "selected" : "") + ">Imperial (deg F, mph)</option>\n";
-    html += "                </select>\n";
-    html += "                <label>Update Interval (minutes)</label>\n";
-    html += "                <input type=\"number\" name=\"w_int\" value=\"" + String(cfg.weather_interval_ms / 60000) + "\">\n";
-    html += "                <button type=\"button\" class=\"secondary-btn\" onclick=\"forceWeather()\">Force Weather Update Now</button>\n";
-    html += "            </div>\n";
-    html += "            <button type=\"submit\">Save & Reboot</button>\n";
-    html += "        </form>\n";
-    html += "    </div>\n";
-    html += "</body>\n";
-    html += "</html>\n";
-
+    String html = FPSTR(DASHBOARD_HTML_TEMPLATE);
+    html.replace("{{SSID}}", cfg.wifi_ssid);
+    html.replace("{{TZ}}", cfg.timezone);
+    html.replace("{{OWM_LOC}}", cfg.owm_location);
+    html.replace("{{LAT}}", String(cfg.latitude, 4));
+    html.replace("{{LON}}", String(cfg.longitude, 4));
+    html.replace("{{OPT_METRIC}}", cfg.owm_units == "metric" ? "selected" : "");
+    html.replace("{{OPT_IMPERIAL}}", cfg.owm_units == "imperial" ? "selected" : "");
+    html.replace("{{W_INT}}", String(cfg.weather_interval_ms / 60000));
     return html;
 }
 

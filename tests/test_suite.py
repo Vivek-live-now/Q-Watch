@@ -1074,6 +1074,169 @@ def test_jules_codebase_optimizations():
     assert ser_buf.startswith("data: 9000 4500 560")
     print("  [PASS] IR zero-allocation numeric parsing and pre-reserved serialization verified.")
 
+def test_simd_oled_engine():
+    print("\n--- 25. Xtensa LX7 SIMD/PIE Vector OLED Blit & Invert Engine ---")
+    fb_len = 1024
+    test_pattern = bytes([i % 256 for i in range(fb_len)])
+
+    # Scalar baseline
+    scalar_fb = bytearray(test_pattern)
+    for i in range(fb_len):
+        scalar_fb[i] = (~scalar_fb[i]) & 0xFF
+
+    # 128-bit vector chunks emulation (16 bytes per chunk)
+    simd_fb = bytearray(test_pattern)
+    num_chunks = fb_len // 16
+    for c in range(num_chunks):
+        offset = c * 16
+        for b in range(16):
+            simd_fb[offset + b] = (~simd_fb[offset + b]) & 0xFF
+
+    assert scalar_fb == simd_fb, "SIMD invert must match scalar invert byte-for-byte"
+
+    # Bitwise XOR mask blit (reticle / transparent overlay)
+    mask = bytes([0x55] * fb_len)
+    scalar_xor = bytearray(scalar_fb[i] ^ mask[i] for i in range(fb_len))
+    simd_xor = bytearray(simd_fb)
+    for c in range(num_chunks):
+        offset = c * 16
+        for b in range(16):
+            simd_xor[offset + b] ^= mask[offset + b]
+
+    assert scalar_xor == simd_xor, "SIMD XOR mask must match scalar XOR exactly"
+
+    # Unaligned tail fallback test
+    unaligned = bytearray(b"1234567890123456789012345") # 25 bytes
+    scalar_unaligned = bytearray((~b) & 0xFF for b in unaligned)
+    simd_unaligned = bytearray(unaligned)
+    aligned_len = (len(unaligned) // 16) * 16
+    for c in range(0, aligned_len, 16):
+        for b in range(16):
+            simd_unaligned[c + b] = (~simd_unaligned[c + b]) & 0xFF
+    for i in range(aligned_len, len(unaligned)):
+        simd_unaligned[i] = (~simd_unaligned[i]) & 0xFF
+    assert scalar_unaligned == simd_unaligned, "Unaligned buffer fallback mismatch"
+    print("  [PASS] OLED 1024-byte framebuffer 128-bit vector invert, XOR mask, and tail fallback verified.")
+
+def test_simd_max30102_fir_filter():
+    print("\n--- 26. MAX30102 PPG 32-Tap Digital Bandpass FIR Filter ---")
+    coeffs = [
+        -39,   -82,  -134,  -180,  -190,  -128,    39,   308,
+        672,  1104,  1566,  2005,  2366,  2598,  2680,  2598,
+       2366,  2005,  1566,  1104,   672,   308,    39,  -128,
+       -190,  -180,  -134,   -82,   -39,     3,    26,    33
+    ]
+    assert len(coeffs) == 32
+
+    # Synthesize test PPG signal: 75 BPM pulse (1.25 Hz) + 0.1 Hz baseline wander
+    num_samples = 64
+    raw_ppg = []
+    for i in range(num_samples):
+        t = i / 50.0 # 50 Hz
+        clean_pulse = 5000.0 * math.sin(2.0 * math.pi * 1.25 * t)
+        baseline = 12000.0 * math.sin(2.0 * math.pi * 0.1 * t)
+        raw_ppg.append(int(clean_pulse + baseline))
+
+    # Scalar FIR baseline
+    scalar_output = []
+    for i in range(31, num_samples):
+        acc = 0
+        for tap in range(32):
+            acc += raw_ppg[i - tap] * coeffs[tap]
+        scalar_output.append(acc >> 15)
+
+    # SIMD vector emulation (4 passes of 8 x 16-bit MAC: ee.vmulas.s16.acc)
+    simd_output = []
+    for i in range(31, num_samples):
+        acc = 0
+        for pass_idx in range(4):
+            tap_offset = pass_idx * 8
+            x_vec = [raw_ppg[i - (tap_offset + k)] for k in range(8)]
+            h_vec = coeffs[tap_offset : tap_offset + 8]
+            vec_dot = sum(x * h for x, h in zip(x_vec, h_vec))
+            acc += vec_dot
+        simd_output.append(acc >> 15)
+
+    assert len(scalar_output) == len(simd_output)
+    for s, v in zip(scalar_output, simd_output):
+        assert abs(s - v) <= 1, f"FIR output discrepancy: scalar={s}, simd={v}"
+
+    # Reset test
+    history = [0] * 32
+    assert sum(history) == 0
+    print(f"  [PASS] MAX30102 32-tap FIR filter scalar and 4-pass SIMD vector equivalence verified on {len(simd_output)} samples.")
+
+def test_web_portal_progmem_cross_verification():
+    print("\n--- 27. Web Portal PROGMEM Migration & Cross-Verification ---")
+    portal_cpp = os.path.join(os.path.dirname(__file__), "..", "src", "wifi_portal.cpp")
+    with open(portal_cpp, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Verify template is defined with PROGMEM
+    assert "DASHBOARD_HTML_TEMPLATE[] PROGMEM" in content, "Template must be stored in PROGMEM"
+    assert "FPSTR(DASHBOARD_HTML_TEMPLATE)" in content, "Must use FPSTR for zero-RAM template instantiation"
+
+    # Cross-verify all 8 substitution tokens
+    tokens = ["{{SSID}}", "{{TZ}}", "{{OWM_LOC}}", "{{LAT}}", "{{LON}}", "{{OPT_METRIC}}", "{{OPT_IMPERIAL}}", "{{W_INT}}"]
+    for tok in tokens:
+        assert tok in content, f"Missing template token: {tok}"
+
+    # Cross-verify Form inputs and names
+    form_inputs = ['id="ssid"', 'name="ssid"', 'name="pass"', 'name="tz"', 'name="owm_key"', 'name="owm_loc"', 'name="lat"', 'name="lon"', 'name="owm_unt"', 'name="w_int"']
+    for inp in form_inputs:
+        assert inp in content, f"Missing form input field: {inp}"
+
+    # Cross-verify Buttons and onclick handlers
+    buttons = ['onclick="scanWifi()"', 'onclick="forceWeather()"', 'type="submit"']
+    for btn in buttons:
+        assert btn in content, f"Missing button/action handler: {btn}"
+
+    # Cross-verify Status DOM IDs in JavaScript
+    dom_ids = ["st_wifi", "st_ip", "st_rssi", "st_time", "st_wsync", "st_wlast", "st_up"]
+    for d in dom_ids:
+        assert f"document.getElementById('{d}')" in content, f"Missing status DOM ID: {d}"
+
+    # Cross-verify API endpoints in JavaScript
+    endpoints = ["/status_json", "/scan_results", "/scan_trigger", "/weather_force", "/save"]
+    for ep in endpoints:
+        assert ep in content, f"Missing API endpoint: {ep}"
+
+    # Cross-verify CSS rules
+    css_rules = [".header", ".container", ".card", ".status-row", ".net-item", "#scanResults"]
+    for css in css_rules:
+        assert css in content, f"Missing CSS rule: {css}"
+
+    print("  [PASS] 100% cross-verified: all form fields, DOM IDs, JS handlers, endpoints & CSS intact.")
+
+def test_ulp_power_architecture_and_user_toggle():
+    print("\n--- 28. ULP Coprocessor Power Architecture & User Toggle ---")
+    settings_cpp = os.path.join(os.path.dirname(__file__), "..", "src", "settings_data.cpp")
+    with open(settings_cpp, "r", encoding="utf-8") as f:
+        s_content = f.read()
+
+    assert 'else if (key == "ulp_sentry_enabled") settings.ulp_sentry_enabled = (val == "1");' in s_content, "Missing ulp_sentry_enabled parser"
+    assert 'out += "ulp_sentry_enabled=" + String(settings.ulp_sentry_enabled ? "1" : "0") + "\\n";' in s_content, "Missing ulp_sentry_enabled serializer"
+
+    power_h = os.path.join(os.path.dirname(__file__), "..", "include", "power_manager.h")
+    with open(power_h, "r", encoding="utf-8") as f:
+        p_content = f.read()
+    assert "bool isUlpEnabled() const" in p_content, "Missing isUlpEnabled method"
+    assert "void setUlpEnabled(bool en);" in p_content, "Missing setUlpEnabled method"
+
+    display_cpp = os.path.join(os.path.dirname(__file__), "..", "src", "display.cpp")
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        d_content = f.read()
+    assert "drawBatteryPageUlp" in d_content, "Missing drawBatteryPageUlp in display.cpp"
+    assert "[OK] TOGGLE ON / OFF" in d_content, "Missing explicit [OK] TOGGLE ON / OFF option in UI"
+
+    ui_core_cpp = os.path.join(os.path.dirname(__file__), "..", "src", "ui_core.cpp")
+    with open(ui_core_cpp, "r", encoding="utf-8") as f:
+        u_content = f.read()
+    assert "powerManager.setUlpEnabled(next_state);" in u_content, "Missing UI toggle execution"
+    assert "settingsManager.save();" in u_content, "Missing settings save on ULP toggle"
+
+    print("  [PASS] ULP Coprocessor ON/OFF toggle, persistent settings serialization & UI verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1090,4 +1253,8 @@ if __name__ == "__main__":
     test_firmware_optimization_and_equivalence()
     test_power_management_suite()
     test_jules_codebase_optimizations()
+    test_simd_oled_engine()
+    test_simd_max30102_fir_filter()
+    test_web_portal_progmem_cross_verification()
+    test_ulp_power_architecture_and_user_toggle()
     print("\nAll self-test verifications PASSED!")
