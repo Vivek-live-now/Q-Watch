@@ -211,8 +211,9 @@ void UICore::loop() {
     }
 
     if (current_state == UIState::APP_MOCHI) {
-        CalibratedSensorData cal = sensors.getCalibratedData();
-        mochiPet.updatePhysics(sensors.getPitch(), sensors.getRoll(),
+        CalibratedSensorData cal = sensors.getCalData();
+        OrientationData ori = sensors.getOrientation();
+        mochiPet.updatePhysics(ori.pitch, ori.roll,
                                cal.ax, cal.ay, cal.az,
                                cal.gx, cal.gy, cal.gz);
         mochiPet.update(0.033f);
@@ -3244,28 +3245,28 @@ void UICore::handleMochiInput() {
         if (up_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.nextEmote();
             needs_redraw = true;
-        } else if (up_evt == BTN_EVT_LONG_HOLD) {
+        } else if (up_evt == BTN_EVT_LONG_PRESS) {
             mochiPet.setSubmode(MochiSubmode::EMOTE_PICKER);
             soundManager.playNavSelect();
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.prevEmote();
             needs_redraw = true;
-        } else if (dn_evt == BTN_EVT_LONG_HOLD) {
+        } else if (dn_evt == BTN_EVT_LONG_PRESS) {
             mochiPet.setSubmode(MochiSubmode::HELMET_PICKER);
             soundManager.playNavSelect();
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.pet();
             needs_redraw = true;
-        } else if (ok_evt == BTN_EVT_LONG_HOLD) {
+        } else if (ok_evt == BTN_EVT_LONG_PRESS) {
             mochiPet.feed();
             needs_redraw = true;
         } else if (cancel_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.toggleHud();
             soundManager.playNavSelect();
             needs_redraw = true;
-        } else if (cancel_evt == BTN_EVT_LONG_HOLD) {
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
             menu_selection = 14;
@@ -3283,7 +3284,7 @@ void UICore::handleMochiInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.prevHelmet();
             needs_redraw = true;
-        } else if (cancel_evt == BTN_EVT_LONG_HOLD) {
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
             menu_selection = 14;
@@ -3303,7 +3304,7 @@ void UICore::handleMochiInput() {
             mochiPet.pickerSelect();
             soundManager.playNavSelect();
             needs_redraw = true;
-        } else if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_HOLD) {
+        } else if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_PRESS) {
             mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
             soundManager.playNavBack();
             needs_redraw = true;
