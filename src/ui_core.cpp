@@ -210,6 +210,15 @@ void UICore::loop() {
         }
     }
 
+    if (current_state == UIState::APP_MOCHI) {
+        CalibratedSensorData cal = sensors.getCalibratedData();
+        mochiPet.updatePhysics(sensors.getPitch(), sensors.getRoll(),
+                               cal.ax, cal.ay, cal.az,
+                               cal.gx, cal.gy, cal.gz);
+        mochiPet.update(0.033f);
+        needs_redraw = true;
+    }
+
     if (current_state == UIState::APP_WIRELESS) {
         wirelessRecon.loop();
         radar_sweep_angle += 0.12f;
@@ -359,7 +368,7 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (settings_submenu == SettingsSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 15;
+                menu_selection = 16;
                 menu_scroll_offset = 13;
             } else {
                 settings_submenu = SettingsSubmenu::MAIN;
@@ -465,8 +474,19 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ABOUT) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 16;
+            menu_selection = 17;
             menu_scroll_offset = 14;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_MOCHI) {
+            soundManager.playNavBack();
+            if (mochiPet.getSubmode() != MochiSubmode::INTERACTIVE) {
+                mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 14;
+                menu_scroll_offset = 11;
+            }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_ANIM_LIST) {
@@ -486,7 +506,7 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (recon_submenu == ReconSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 14;
+                menu_selection = 15;
                 menu_scroll_offset = 12;
             } else if (recon_submenu == ReconSubmenu::BLE_RADAR) {
                 recon_submenu = ReconSubmenu::BLE_LIST;
@@ -561,6 +581,7 @@ void UICore::loop() {
         case UIState::APP_ANIM_LIST: handleAnimListInput(); break;
         case UIState::APP_ANIM_PLAYER: handleAnimPlayerInput(); break;
         case UIState::APP_WIRELESS: handleWirelessInput(); break;
+        case UIState::APP_MOCHI: handleMochiInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
         case UIState::VALUE_EDIT: handleValueEditInput(); break;
@@ -1433,18 +1454,22 @@ void UICore::handleMainMenuInput() {
             case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
             case 13: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
             case 14:
+                current_state = UIState::APP_MOCHI;
+                mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
+                break;
+            case 15:
                 current_state = UIState::APP_WIRELESS;
                 recon_submenu = ReconSubmenu::MAIN;
                 recon_selection = 0;
                 recon_scroll_offset = 0;
                 break;
-            case 15:
+            case 16:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 16: current_state = UIState::APP_ABOUT; break;
+            case 17: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -3204,5 +3229,84 @@ void UICore::handlePacketMonitorInput() {
         wirelessRecon.cycleChannel();
         soundManager.playNavMove();
         needs_redraw = true;
+    }
+}
+
+void UICore::handleMochiInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    MochiSubmode sub = mochiPet.getSubmode();
+
+    if (sub == MochiSubmode::INTERACTIVE) {
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.nextEmote();
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_LONG_HOLD) {
+            mochiPet.setSubmode(MochiSubmode::EMOTE_PICKER);
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.prevEmote();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_LONG_HOLD) {
+            mochiPet.setSubmode(MochiSubmode::HELMET_PICKER);
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.pet();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_LONG_HOLD) {
+            mochiPet.feed();
+            needs_redraw = true;
+        } else if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.toggleHud();
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (cancel_evt == BTN_EVT_LONG_HOLD) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 14;
+            menu_scroll_offset = 11;
+            needs_redraw = true;
+        }
+    } else if (sub == MochiSubmode::STATS_HUD) {
+        if (cancel_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.toggleHud();
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.nextHelmet();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.prevHelmet();
+            needs_redraw = true;
+        } else if (cancel_evt == BTN_EVT_LONG_HOLD) {
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 14;
+            menu_scroll_offset = 11;
+            needs_redraw = true;
+        }
+    } else if (sub == MochiSubmode::EMOTE_PICKER || sub == MochiSubmode::HELMET_PICKER) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            mochiPet.pickerUp();
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            mochiPet.pickerDown();
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.pickerSelect();
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_HOLD) {
+            mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
+            soundManager.playNavBack();
+            needs_redraw = true;
+        }
     }
 }

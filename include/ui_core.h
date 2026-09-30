@@ -7,6 +7,7 @@
 #include "keyboard.h"
 #include "ir_engine.h"
 #include "sound_manager.h"
+#include "mochi_pet.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
@@ -112,6 +113,7 @@ enum class UIState {
     APP_ANIM_PLAYER,
     APP_WIRELESS,
     APP_STORAGE_INFO,
+    APP_MOCHI,
     APP_KEYBOARD,
     VALUE_EDIT,
     SLEEPING
@@ -232,6 +234,7 @@ public:
 
     void handleLedInput();
     void handleSoundInput();
+    void handleMochiInput();
 
     int getLedMenuSelection() const { return led_menu_selection; }
     int getLedMenuOffset() const { return led_menu_offset; }
@@ -270,10 +273,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 17;
+    static const int MAIN_MENU_ITEM_COUNT = 18;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "WIRELESS", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;

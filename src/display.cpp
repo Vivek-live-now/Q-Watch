@@ -20,6 +20,7 @@
 #include "wireless_recon.h"
 #include "power_manager.h"
 #include "simd_accel.h"
+#include "mochi_pet.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -95,6 +96,7 @@ void DisplayManager::update() {
             case UIState::APP_ANIM_LIST: drawAppAnimList(); break;
             case UIState::APP_ANIM_PLAYER: drawAppAnimPlayer(); break;
             case UIState::APP_WIRELESS: drawAppWireless(); break;
+            case UIState::APP_MOCHI: drawAppMochi(); break;
             case UIState::APP_STORAGE_INFO: drawStorageInfo(); break;
 
             case UIState::MAIN_MENU:
@@ -3087,6 +3089,10 @@ void DisplayManager::drawAppAudio() {
 
     drawTopStatusBar();
     drawToastOverlay();
+}
+
+void DisplayManager::drawAppMochi() {
+    mochiPet.render(oled);
 }
 
 void DisplayManager::drawAppWireless() {

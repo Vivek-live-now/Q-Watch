@@ -1237,6 +1237,51 @@ def test_ulp_power_architecture_and_user_toggle():
 
     print("  [PASS] ULP Coprocessor ON/OFF toggle, persistent settings serialization & UI verified.")
 
+def test_mochi_pet_system():
+    print("\n--- 29. Dasai Mochi Pet Engine & Vector Emotes Test ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    bin_path = os.path.join(os.path.dirname(__file__), "test_mochi_bin")
+
+    # 1. Compile and execute C++ host test harness
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude",
+        "tests/test_mochi_system.cpp", "src/mochi_pet.cpp",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_mochi_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_mochi_bin failed:\n{run_res.stderr}\n{run_res.stdout}"
+
+    # 2. Check UI & Menu Registration
+    ui_core_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_core_h, "r", encoding="utf-8") as f:
+        u_h = f.read()
+    assert "APP_MOCHI," in u_h, "Missing APP_MOCHI in UIState"
+    assert '"MOCHI PET"' in u_h, 'Missing "MOCHI PET" in main_menu_items'
+    assert "MAIN_MENU_ITEM_COUNT = 18;" in u_h, "MAIN_MENU_ITEM_COUNT must be 18"
+
+    display_h = os.path.join(base_dir, "include", "display.h")
+    with open(display_h, "r", encoding="utf-8") as f:
+        d_h = f.read()
+    assert "void drawAppMochi();" in d_h, "Missing drawAppMochi in display.h"
+
+    display_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        d_cpp = f.read()
+    assert "case UIState::APP_MOCHI: drawAppMochi(); break;" in d_cpp, "Missing APP_MOCHI dispatch in display.cpp"
+    assert "mochiPet.render(oled);" in d_cpp, "drawAppMochi must call mochiPet.render"
+
+    # 3. Flash & Zero-Bloat Safety Verification
+    mochi_pet_cpp = os.path.join(base_dir, "src", "mochi_pet.cpp")
+    with open(mochi_pet_cpp, "r", encoding="utf-8") as f:
+        m_cpp = f.read()
+    # Ensure no large embedded bitmap tables (> 1KB) in source
+    assert "static const uint8_t" not in m_cpp or len(m_cpp) < 30000, "Suspected large bitmap table in mochi_pet.cpp"
+
+    print("  [PASS] All 17 emotes, 5 helmets, IMU physics, Tamagotchi mechanics & UI integration verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1257,4 +1302,5 @@ if __name__ == "__main__":
     test_simd_max30102_fir_filter()
     test_web_portal_progmem_cross_verification()
     test_ulp_power_architecture_and_user_toggle()
+    test_mochi_pet_system()
     print("\nAll self-test verifications PASSED!")

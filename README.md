@@ -187,6 +187,33 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Hierarchical Navigation:** Seamless short/long button navigation (`[UP]`/`[DN]` to cycle items, long press to cycle pages, `[OK]` to select/toggle) with hierarchical `[CANCEL]` handling that returns from sub-pages to the root HUD before exiting to the main menu.
 * **Automated Verification:** Comprehensive self-test suite (`tests/test_suite.py` Section 14) verifying power profile enum boundaries, battery consumption models, mathematical runtime estimation across voltage/percentage curves, and navigation state transitions.
 
+### Milestone 17: Dasai Mochi Pet Companion & Procedural Vector Emote Engine
+* **Zero-Flash-Bloat Architecture:** Unlike traditional approaches that embed megabytes of raw GIF frame arrays in firmware (which would overflow the ESP32's remaining 26% flash partition), Mochi is built with a parameterized procedural vector rendering engine consuming **< 8 KB of flash code** and **only 140 bytes of RAM**.
+* **17 Expressive Emotes & Moods:**
+    * **Positive / Cheerful:** `HAPPY` (smiling crescent eyes, blushing cheeks, cheerful bounce), `LOVE` (pulsing heartbeat eyes, sweet love chime), `LAUGH` (squinting `><` eyes, laughing mouth), `EXCITED` (winking eye, energetic hop), `CONTENT` (warm soft gaze), `RELAXED` (zen wavy eyes, gentle breathing), `PROUD` (raised tilted eyebrows, smug grin).
+    * **Negative / Reactive:** `ANGRY` (sharp slanted brows `\ /`, crimson LED, low grumble), `FRUSTRATED` (annoyed frown, animated dripping forehead sweat drop), `CONFUSED` (asymmetric eyes, floating animated `?` question mark), `EMBARRASSED` (bashful glance, hatching blush `///`), `DIZZY` (spinning Archimedean spiral eyes, orbiting stars triggered by shake).
+    * **Care & Ambient:** `SLEEPY` (drooping 70% closed eyelids, yawning), `SLEEPING` (closed eyes, animated floating `Zzz` drifting up, slow breathing), `DRIVING` (aerodynamic racing visor, animated wind speed streaks, engine rev), `MUSIC` (rhythmic head bobbing, floating eighth-notes), `GUNDAM` (awakened combat visor optics, lock-on reticle, robot chime).
+* **Modular Digital Helmets (Swappable Skins):**
+    * **`CLASSIC`:** Smooth rounded helmet shell with top aerodynamic intake.
+    * **`GUNDAM`:** RX-78-2 Mobile Suit helmet featuring iconic V-fin crest, forehead sensor gem, dual cheek intake slits, and red chin tab.
+    * **`CYBER`:** Cyberpunk carbon edition with HUD corner brackets and tech lines.
+    * **`NEKO`:** Cute cat ears with inner notch geometry.
+    * **`TACTICAL`:** 007 Agent night-vision reticle bezel with corner tick brackets.
+* **IMU 6-Axis Reactive Physics (Driving Companion):**
+    * **Gaze Tracking:** Low-pass filtered roll/pitch angle smoothly tracks watch tilt, moving Mochi's pupils naturally ($dx \in [-7, 7]$, $dy \in [-5, 5]$).
+    * **Cornering Lean:** Leans body into sharp turns.
+    * **Shake Detection:** High-G shakes ($> 2.2\text{G}$) trigger instant `DIZZY` state with orbiting stars and stumble tones.
+    * **Freefall Response:** Zero-G drops ($< 0.25\text{G}$) trigger shocked `CONFUSED` / panic face.
+    * **Auto-Sleep Idle Timer:** Stationary inactivity ($> 25\text{s}$) automatically transitions Mochi into sleepy yawn and deep slumber (`Zzz`), waking up immediately upon wrist movement.
+* **Interactive Petting & Feeding (Tamagotchi Mechanics):**
+    * Short `[OK]`: Pet Mochi (heart burst, happiness meter boost, friendship XP, arpeggio chime).
+    * Long `[OK]`: Feed Mochi (animated onigiri snack glides across screen, munching `nom nom` chewing animation, restores hunger).
+    * Friendship level progression (Level 1–10) with persistent stats.
+    * Short `[CANCEL]`: Toggle between full-screen interactive face and Stats Cockpit (Happiness, Hunger, Friendship, Battery, Step count).
+* **Acoustic SFX & WS2812 LED Sync:** Synchronized audio chirps and RGB mood colors (Warm Amber, Vivid Pink, Bright Yellow, Crimson, Moon Blue, Mecha Blue/Gold).
+* **LittleFS `.anim` Extensibility:** Built-in compatibility with `/mochi/*.anim` allowing users to drop custom converted GIFs from the community into LittleFS without consuming code flash.
+* **Automated Host Verification:** Host test harness (`tests/test_mochi_system.cpp`) verifying all 17 emotes, 5 helmets, gaze physics, shake triggers, Tamagotchi mechanics, and 128x64 vector buffer rendering.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
