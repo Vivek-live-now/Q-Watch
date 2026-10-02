@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "qwatch_api.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -27,6 +28,17 @@ public:
     }
     void toUpperCase() {
         for (auto& c : *this) c = (char)toupper((unsigned char)c);
+    }
+    void toLowerCase() {
+        for (auto& c : *this) c = (char)tolower((unsigned char)c);
+    }
+    void replace(const std::string& from, const std::string& to) {
+        if (from.empty()) return;
+        size_t start_pos = 0;
+        while((start_pos = find(from, start_pos)) != std::string::npos) {
+            std::string::replace(start_pos, from.length(), to);
+            start_pos += to.length();
+        }
     }
     void trim() {
         while (!empty() && isspace((unsigned char)front())) erase(begin());
@@ -109,6 +121,9 @@ public:
     void setStreamingDisplay(bool enable, uint8_t target_fps = 20);
     bool isStreamingDisplay() const { return display_streaming; }
     uint8_t getTargetFps() const { return target_stream_fps; }
+
+    // App Sideloading & Verification APIs
+    bool validateQAppHeader(const uint8_t* data, size_t len, String& out_app_name, String& out_version, size_t& out_size, String* out_error = nullptr);
 
 #ifdef ARDUINO
     void registerHttpRoutes(WebServer& server);

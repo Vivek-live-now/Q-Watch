@@ -228,8 +228,30 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     * **Morse Code Timing Engine:** Corrected Morse sequence for letter `'P'` (`.--.`) in `src/sound_manager.cpp`.
     * **FastLED Compass Blend Interpolation:** Eliminated cardinal boundary discontinuities in `src/led_manager.cpp` with continuous 360° circular hue blending.
     * **IR Zero-Allocation Stream Parser:** Replaced dynamic heap string splits with pre-reserved buffers and zero-allocation token iteration in `src/ir_engine.cpp` to prevent heap fragmentation during rapid signal capture.
-    * **Dynamic ULP Sentinel Toggle:** Interactive ON/OFF toggle in Power/Battery settings with NVS persistence and live coprocessor telemetry reporting.
-* **Comprehensive 29-Suite Automated Verification:** Expanded test harness (`tests/test_suite.py` Sections 15–29, `tests/test_simd_audit.py`, and `tests/test_mochi_system.cpp`) verifying SIMD vector arithmetic, security sanitization, storage hysteresis, and emote kinematics across all subsystems.
+    * **Comprehensive 29-Suite Automated Verification:** Expanded test harness (`tests/test_suite.py` Sections 15–29, `tests/test_simd_audit.py`, and `tests/test_mochi_system.cpp`) verifying SIMD vector arithmetic, security sanitization, storage hysteresis, and emote kinematics across all subsystems.
+
+### Milestone 19: App Store Q-Apps & Wireless App Sideload Installer
+* **007 Retro Invaders (`apps/invaders/`, `apps/invaders.qapp`):**
+    * Full-featured Micro-ELF arcade space shooter for the 128x64 OLED display.
+    * **Dual Steering Pipeline:** Precise digital navigation with `[UP]`/`[DN]` buttons or smooth analog wrist steering utilizing MPU-6500 gyro/accelerometer roll fusion.
+    * **Procedural Alien Fleet:** 3 rows × 6 columns (18 invaders: Spectre Bosses, Drones, Minions) with 2-frame flapping vector animations, accelerating 4-pitch cadence tones, and dynamic alien bomb drops.
+    * **Destructible Tactical Bunkers:** 3 energy barriers with 4 hit points that degrade as they absorb player and alien lasers.
+    * **SPECTRE UFO Mystery Ship:** High-value stealth ship flying across the top with oscillating warble tone and mystery bonus points (+50, +100, +150).
+    * **Audio & WS2812 LED Sync:** Green laser muzzle flashes, red damage strobes, purple UFO hits, and emerald wave victory fanfares.
+    * **Persistent High Scores:** Automatic score persistence saved in LittleFS at `/apps/invaders.dat` via `api->file_read` and `api->file_write`.
+* **Tactical Dice & RNG Engine (`apps/dice/`, `apps/dice.qapp`):**
+    * **High-Entropy Cryptographic Dice:** Combines hardware TRNG, microsecond timers, and IMU accelerometer noise jitter for non-deterministic random number generation.
+    * **9 Tactical Modes:** `D6` (realistic 3D pip die), `D20` (icosahedral diamond with "NAT 20 CRITICAL!" and "NAT 1 FUMBLE!" banners), `D100` (percentile), `COIN` (spinning flip animation landing on Heads/Tails), `2D6`, `3D6`, `D4`, `D8`, and `D12`.
+    * **Physical Shake-to-Roll:** High-G IMU acceleration detection ($> 1.85\text{G}$) automatically triggers tumbling dice physics with decelerating mechanical ratchet click SFX and landing chime.
+    * **Telemetry History:** Ring buffer displaying the last 4 roll results on the OLED status bar.
+* **Q-Link Wireless Sideload & Filesystem REST Endpoints (`src/qlink.cpp`, `include/qlink.h`):**
+    * **Over-The-Air Q-App Installer (`POST /api/v1/app/install`):** Direct wireless `.qapp` upload and installation directly into `/apps/` from the Android Companion App.
+    * **Binary Header Validation (`validateQAppHeader`):** Enforces `QAPP_MAGIC (0x51415050)`, API version compatibility, and code/data/relocation memory boundary bounds checking before disk write.
+    * **Filesystem Endpoints:** Implemented `/api/v1/fs/list`, `/api/v1/fs/download`, and `/api/v1/fs/delete` endpoints protected with `FileManager::isPathSafe` path traversal sandboxing.
+* **100% Android Companion App Store Catalog Synchronization:**
+    * All 4 apps in `android/.../AppStoreScreen.kt` (`tilt_ball.qapp`, `compass_hud.qapp`, `invaders.qapp`, `dice.qapp`) now possess full firmware implementations, relocatable packagers, and binaries in `apps/`.
+* **Comprehensive 30-Suite Automated Verification:**
+    * 30 complete test suites passing 100% across `tests/test_suite.py`, `tests/test_qapp_system.cpp`, and `tests/test_qlink.cpp`, including 100-cycle zero-leak dynamic memory stress tests for all apps.
 
 ## Hardware Architecture & Pinout
 

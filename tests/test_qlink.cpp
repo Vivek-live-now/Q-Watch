@@ -70,6 +70,59 @@ void test_streaming_state() {
     printf("  [PASS] Display streaming state & FPS rate gating verified.\n");
 }
 
+void test_qapp_sideload_validation() {
+    printf("\n--- Test: Q-Link Q-App Sideload Validation ---\n");
+    // 1. Buffer too small
+    uint8_t tiny_buf[10] = { 0 };
+    String name, ver, err;
+    size_t sz = 0;
+    assert(qlink.validateQAppHeader(tiny_buf, sizeof(tiny_buf), name, ver, sz, &err) == false);
+    assert(err.indexOf("smaller than QAppFileHeader") != -1);
+
+    // 2. Corrupt magic
+    QAppFileHeader bad_hdr;
+    memset(&bad_hdr, 0, sizeof(bad_hdr));
+    bad_hdr.magic = 0xDEADBEEF;
+    assert(qlink.validateQAppHeader((const uint8_t*)&bad_hdr, sizeof(bad_hdr), name, ver, sz, &err) == false);
+    assert(err.indexOf("Invalid QAPP magic") != -1);
+
+    // 3. Valid QApp file from disk (invaders.qapp)
+    FILE* fp = fopen("apps/invaders.qapp", "rb");
+    assert(fp != NULL);
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    assert(fsize > 0);
+    uint8_t* inv_buf = (uint8_t*)malloc(fsize);
+    assert(fread(inv_buf, 1, fsize, fp) == (size_t)fsize);
+    fclose(fp);
+
+    assert(qlink.validateQAppHeader(inv_buf, fsize, name, ver, sz, &err) == true);
+    assert(name == "007 Invaders");
+    assert(ver == "1.0.0");
+    assert(sz == (size_t)fsize);
+    printf("  [PASS] Verified invaders.qapp: name='%s', version='%s', size=%zu B\n", name.c_str(), ver.c_str(), sz);
+    free(inv_buf);
+
+    // 4. Valid QApp file from disk (dice.qapp)
+    fp = fopen("apps/dice.qapp", "rb");
+    assert(fp != NULL);
+    fseek(fp, 0, SEEK_END);
+    fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    assert(fsize > 0);
+    uint8_t* dice_buf = (uint8_t*)malloc(fsize);
+    assert(fread(dice_buf, 1, fsize, fp) == (size_t)fsize);
+    fclose(fp);
+
+    assert(qlink.validateQAppHeader(dice_buf, fsize, name, ver, sz, &err) == true);
+    assert(name == "Tactical Dice");
+    assert(ver == "1.0.0");
+    assert(sz == (size_t)fsize);
+    printf("  [PASS] Verified dice.qapp: name='%s', version='%s', size=%zu B\n", name.c_str(), ver.c_str(), sz);
+    free(dice_buf);
+}
+
 int main() {
     printf("==========================================\n");
     printf(" RUNNING Q-LINK PROTOCOL VERIFICATION\n");
@@ -78,6 +131,7 @@ int main() {
     test_button_injection_parsing();
     test_sync_handlers();
     test_streaming_state();
+    test_qapp_sideload_validation();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");
     return 0;
 }

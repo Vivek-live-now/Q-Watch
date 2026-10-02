@@ -219,15 +219,51 @@ def test_qapp_abi_and_system():
     if os.path.exists(test_compass_qapp):
         os.remove(test_compass_qapp)
 
-    print("  [PASS] Relocatable .qapp packagers compiled and verified for Tilt Ball and Compass HUD.")
+    # Generate 007 Invaders .qapp (test packager)
+    gen_invaders_bin = os.path.join(os.path.dirname(__file__), "gen_invaders_qapp_bin")
+    res_invaders_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/invaders",
+        "apps/invaders/generate_invaders_qapp.c", "apps/invaders/invaders.c", "-lm",
+        "-o", gen_invaders_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_invaders_cmp.returncode == 0, f"Failed to compile invaders packager:\n{res_invaders_cmp.stderr}"
+
+    test_invaders_qapp = os.path.join(os.path.dirname(__file__), "test_invaders_pkg.qapp")
+    res_invaders_run = subprocess.run([gen_invaders_bin, test_invaders_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_invaders_run.returncode == 0, f"Failed to generate invaders.qapp:\n{res_invaders_run.stderr}"
+    if os.path.exists(gen_invaders_bin):
+        os.remove(gen_invaders_bin)
+    if os.path.exists(test_invaders_qapp):
+        os.remove(test_invaders_qapp)
+
+    # Generate Tactical Dice .qapp (test packager)
+    gen_dice_bin = os.path.join(os.path.dirname(__file__), "gen_dice_qapp_bin")
+    res_dice_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/dice",
+        "apps/dice/generate_dice_qapp.c", "apps/dice/dice.c", "-lm",
+        "-o", gen_dice_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_dice_cmp.returncode == 0, f"Failed to compile dice packager:\n{res_dice_cmp.stderr}"
+
+    test_dice_qapp = os.path.join(os.path.dirname(__file__), "test_dice_pkg.qapp")
+    res_dice_run = subprocess.run([gen_dice_bin, test_dice_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_dice_run.returncode == 0, f"Failed to generate dice.qapp:\n{res_dice_run.stderr}"
+    if os.path.exists(gen_dice_bin):
+        os.remove(gen_dice_bin)
+    if os.path.exists(test_dice_qapp):
+        os.remove(test_dice_qapp)
+
+    print("  [PASS] Relocatable .qapp packagers compiled and verified for Tilt Ball, Compass HUD, 007 Invaders and Tactical Dice.")
 
     # 3. Re-compile and execute the C++ Q-App test harness
     bin_path = os.path.join(os.path.dirname(__file__), "test_qapp_system_bin")
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude", "-Itests", "-Iapps/tilt_game", "-Iapps/compass_hud",
+        "clang++", "-O2", "-Iinclude", "-Itests",
+        "-Iapps/tilt_game", "-Iapps/compass_hud", "-Iapps/invaders", "-Iapps/dice",
         "tests/test_qapp_system.cpp", "tests/mock_qwatch_api.cpp",
         "src/qapp_loader.cpp", "src/qapp_target_poc.cpp",
         "apps/tilt_game/tilt_game.c", "apps/compass_hud/compass_hud.c",
+        "apps/invaders/invaders.c", "apps/dice/dice.c",
         "-lm", "-o", bin_path
     ]
     res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
@@ -238,7 +274,7 @@ def test_qapp_abi_and_system():
     assert "ALL RELOCATABLE LOADER & POC TESTS PASSED" in run_res.stdout, "POC & Relocatable test verification string missing"
     if os.path.exists(bin_path):
         os.remove(bin_path)
-    print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, Tilt Ball & Compass HUD stress tests verified.")
+    print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, Tilt Ball, Compass HUD, 007 Invaders & Tactical Dice stress tests verified.")
 
 def test_animation_engine():
     print("\n--- 7. Tactical Animation Engine & Player Test ---")
@@ -1282,6 +1318,71 @@ def test_mochi_pet_system():
 
     print("  [PASS] All 17 emotes, 5 helmets, IMU physics, Tamagotchi mechanics & UI integration verified.")
 
+def test_app_store_qapps_and_installer():
+    print("\n--- 30. App Store Q-Apps (Invaders & Dice) & Wireless Installer Test ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+
+    # 1. Verify existence and binary headers of all 4 store apps
+    apps = [
+        ("tilt_ball.qapp", b"Tilt Ball\x00"),
+        ("compass_hud.qapp", b"Compass HUD\x00"),
+        ("invaders.qapp", b"007 Invaders\x00"),
+        ("dice.qapp", b"Tactical Dice\x00")
+    ]
+    import struct
+    for filename, name_prefix in apps:
+        app_path = os.path.join(base_dir, "apps", filename)
+        assert os.path.exists(app_path), f"Missing {filename} in apps/"
+        with open(app_path, "rb") as f:
+            data = f.read()
+        assert len(data) >= 72, f"{filename} too small"
+        magic, api_ver, caps = struct.unpack("<III", data[:12])
+        assert magic == 0x51415050, f"Bad magic in {filename}: {hex(magic)}"
+        assert api_ver == 1, f"Bad API version in {filename}: {api_ver}"
+        raw_name = data[12:32]
+        assert raw_name.startswith(name_prefix), f"Name mismatch in {filename}: {raw_name}"
+    print("  [PASS] All 4 curated App Store binaries (Tilt Ball, Compass HUD, Invaders, Dice) verified with valid Q-App headers.")
+
+    # 2. Verify Android AppStoreScreen catalog synchronization
+    store_kt_path = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "AppStoreScreen.kt")
+    assert os.path.exists(store_kt_path)
+    with open(store_kt_path, "r", encoding="utf-8") as f:
+        kt_content = f.read()
+    assert 'filename = "tilt_ball.qapp"' in kt_content
+    assert 'filename = "compass_hud.qapp"' in kt_content
+    assert 'filename = "invaders.qapp"' in kt_content
+    assert 'filename = "dice.qapp"' in kt_content
+    print("  [PASS] Android AppStoreScreen catalog 100% synchronized with firmware app binaries.")
+
+    # 3. Verify Q-Link Wireless Sideload & Filesystem REST Routes
+    qlink_cpp_path = os.path.join(base_dir, "src", "qlink.cpp")
+    with open(qlink_cpp_path, "r", encoding="utf-8") as f:
+        q_cpp = f.read()
+    assert 'server.on("/api/v1/app/install"' in q_cpp
+    assert 'server.on("/api/v1/fs/list"' in q_cpp
+    assert 'server.on("/api/v1/fs/download"' in q_cpp
+    assert 'server.on("/api/v1/fs/delete"' in q_cpp
+    assert "validateQAppHeader" in q_cpp
+    assert "FileManager::isPathSafe" in q_cpp
+    print("  [PASS] Q-Link /api/v1/app/install, /api/v1/fs/* endpoints & path sanitization verified.")
+
+    # 4. Run Q-Link binary verification test including sideload validation
+    bin_path = os.path.join(os.path.dirname(__file__), "test_qlink_bin")
+    compile_cmd = [
+        "clang++", "-O2", "-Iinclude",
+        "tests/test_qlink.cpp", "src/qlink.cpp",
+        "-lm", "-o", bin_path
+    ]
+    res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res.returncode == 0, f"Failed to compile test_qlink_bin:\n{res.stderr}"
+
+    run_res = subprocess.run([bin_path], cwd=base_dir, capture_output=True, text=True)
+    assert run_res.returncode == 0, f"test_qlink_bin failed:\n{run_res.stdout}\n{run_res.stderr}"
+    assert "ALL Q-LINK PROTOCOL TESTS PASSED!" in run_res.stdout
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
+    print("  [PASS] End-to-end Q-Link sideload validation and packet tests verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1303,4 +1404,5 @@ if __name__ == "__main__":
     test_web_portal_progmem_cross_verification()
     test_ulp_power_architecture_and_user_toggle()
     test_mochi_pet_system()
+    test_app_store_qapps_and_installer()
     print("\nAll self-test verifications PASSED!")

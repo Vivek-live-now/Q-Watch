@@ -250,6 +250,38 @@ bool QLinkEngine::syncWeather(const String& city, float temp_c, int humidity, in
 #endif
 }
 
+bool QLinkEngine::validateQAppHeader(const uint8_t* data, size_t len, String& out_app_name, String& out_version, size_t& out_size, String* out_error) {
+    if (!data || len < sizeof(QAppFileHeader)) {
+        if (out_error) *out_error = "Payload smaller than QAppFileHeader";
+        return false;
+    }
+    const QAppFileHeader* hdr = (const QAppFileHeader*)data;
+    if (hdr->magic != QAPP_MAGIC) {
+        if (out_error) *out_error = "Invalid QAPP magic header";
+        return false;
+    }
+    if (hdr->api_version > QAPP_API_VERSION) {
+        if (out_error) *out_error = "Incompatible QAPP API version";
+        return false;
+    }
+    if (hdr->code_offset + hdr->code_size > len) {
+        if (out_error) *out_error = "Code section out of bounds";
+        return false;
+    }
+    if (hdr->data_offset + hdr->data_size > len) {
+        if (out_error) *out_error = "Data section out of bounds";
+        return false;
+    }
+    if (hdr->reloc_offset + hdr->reloc_count * sizeof(QAppReloc) > len) {
+        if (out_error) *out_error = "Relocation table out of bounds";
+        return false;
+    }
+    out_app_name = hdr->name;
+    out_version = hdr->version;
+    out_size = len;
+    return true;
+}
+
 #ifdef ARDUINO
 void QLinkEngine::registerHttpRoutes(WebServer& server) {
     // 1. Device Info
@@ -352,6 +384,101 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
         }
         server.send(400, "application/json", "{\"error\":\"invalid_weather\"}");
+    });
+
+    // 9. Filesystem Directory List
+    server.on("/api/v1/fs/list", HTTP_GET, [&server]() {
+        String path = server.hasArg("path") ? server.arg("path") : "/";
+        if (!FileManager::isPathSafe(path)) {
+            server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
+            return;
+        }
+        FileInfo files[32];
+        size_t count = fileManager.listDir(path, files, 32);
+        String json = "{\"path\":\"" + path + "\",\"files\":[";
+        for (size_t i = 0; i < count; i++) {
+            if (i > 0) json += ",";
+            json += "{\"name\":\"" + files[i].name + "\",\"size\":" + String((unsigned long)files[i].size) + ",\"is_dir\":" + (files[i].isDir ? "true" : "false") + "}";
+        }
+        json += "]}";
+        server.send(200, "application/json", json);
+    });
+
+    // 10. Filesystem Download
+    server.on("/api/v1/fs/download", HTTP_GET, [&server]() {
+        if (!server.hasArg("path")) {
+            server.send(400, "application/json", "{\"error\":\"missing_path\"}");
+            return;
+        }
+        String path = server.arg("path");
+        if (!FileManager::isPathSafe(path) || !fileManager.exists(path)) {
+            server.send(404, "application/json", "{\"error\":\"not_found\"}");
+            return;
+        }
+        File f = LittleFS.open(path, "r");
+        if (!f) {
+            server.send(500, "application/json", "{\"error\":\"open_failed\"}");
+            return;
+        }
+        server.streamFile(f, "application/octet-stream");
+        f.close();
+    });
+
+    // 11. Filesystem Delete
+    auto handleDelete = [&server]() {
+        if (!server.hasArg("path")) {
+            server.send(400, "application/json", "{\"error\":\"missing_path\"}");
+            return;
+        }
+        String path = server.arg("path");
+        if (!FileManager::isPathSafe(path)) {
+            server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
+            return;
+        }
+        if (fileManager.remove(path)) {
+            server.send(200, "application/json", "{\"status\":\"deleted\"}");
+        } else {
+            server.send(404, "application/json", "{\"error\":\"delete_failed\"}");
+        }
+    };
+    server.on("/api/v1/fs/delete", HTTP_DELETE, handleDelete);
+    server.on("/api/v1/fs/delete", HTTP_POST, handleDelete);
+
+    // 12. Micro-ELF Q-App Sideload / Install
+    server.on("/api/v1/app/install", HTTP_POST, [&server, this]() {
+        if (!server.hasArg("plain")) {
+            server.send(400, "application/json", "{\"error\":\"missing_payload\"}");
+            return;
+        }
+        const String& body = server.arg("plain");
+        const uint8_t* data = (const uint8_t*)body.c_str();
+        size_t len = body.length();
+
+        String app_name, version, err_msg;
+        size_t size_bytes = 0;
+        if (!validateQAppHeader(data, len, app_name, version, size_bytes, &err_msg)) {
+            server.send(400, "application/json", "{\"error\":\"" + err_msg + "\"}");
+            return;
+        }
+
+        String filename = server.hasArg("filename") ? server.arg("filename") : "";
+        if (filename.length() == 0) {
+            filename = app_name;
+            filename.toLowerCase();
+            filename.replace(" ", "_");
+            filename += ".qapp";
+        }
+        if (!FileManager::isPathSafe("/apps/" + filename)) {
+            server.send(400, "application/json", "{\"error\":\"invalid_app_filename\"}");
+            return;
+        }
+
+        if (fileManager.write("/apps/" + filename, data, len)) {
+            String resp = "{\"status\":\"success\",\"app_name\":\"" + app_name + "\",\"version\":\"" + version + "\",\"size_bytes\":" + String((unsigned long)size_bytes) + "}";
+            server.send(200, "application/json", resp);
+        } else {
+            server.send(500, "application/json", "{\"error\":\"write_failed\"}");
+        }
     });
 }
 #endif

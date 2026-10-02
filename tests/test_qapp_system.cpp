@@ -9,6 +9,8 @@
 #include "../include/qapp_target_poc.h"
 #include "../apps/tilt_game/tilt_game.h"
 #include "../apps/compass_hud/compass_hud.h"
+#include "../apps/invaders/invaders.h"
+#include "../apps/dice/dice.h"
 
 // Generates a genuine relocatable .qapp file with code, data, and relocations
 static void create_relocatable_qapp(const char* path) {
@@ -500,6 +502,350 @@ static void test_compass_hud_100_cycle_stress(void) {
     remove(test_path);
 }
 
+// -------------------------------------------------------------
+// Invaders Q-App Relocatable Packager & Unit Tests
+// -------------------------------------------------------------
+static void create_relocatable_invaders_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = {
+        0x58000040,
+        0xd65f03c0,
+        0x00000000,
+        0x00000000
+    };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = {
+        0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0,
+        0xc3
+    };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_invaders_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "007 Invaders", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 4096;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 128;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+
+    fclose(fp);
+}
+
+static void test_invaders_dynamic_execution(void) {
+    printf("\n=== 7. 007 Retro Invaders Dynamic Loading, Controls & Execution ===\n");
+    const char* test_path = "./tests/test_reloc_invaders.qapp";
+    create_relocatable_invaders_qapp(test_path);
+
+    // 1. Inspect on-disk header
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(fhdr.magic == QAPP_MAGIC);
+    assert(fhdr.api_version == QAPP_API_VERSION);
+    assert(strcmp(fhdr.name, "007 Invaders") == 0);
+    assert(fhdr.required_psram == 4096);
+    assert(fhdr.code_size > 0);
+    assert(fhdr.reloc_count == 1);
+    printf("  [PASS] Inspected 007 Invaders header: '%s' (caps=0x%03X, psram=%u B).\n",
+           fhdr.name, fhdr.required_caps, fhdr.required_psram);
+
+    // 2. Load into memory
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "007 Invaders") == 0);
+    assert(qappLoader.getCodeAllocatedSize() > 0);
+    assert(qappLoader.getDataAllocatedSize() >= sizeof(QAppHeader) + 128 + 4096);
+
+    // Check startup values
+    assert(invaders_get_lives() == 3);
+    assert(invaders_get_aliens_alive() == 18);
+    assert(invaders_get_score() == 0);
+    float init_x = invaders_get_player_x();
+    assert(fabsf(init_x - 64.0f) < 0.1f);
+
+    // 3. Test Button Controls: Move Left (UP), Move Right (DN), Fire Laser (OK)
+    qappLoader.handleButton(QBTN_UP, QEVT_BTN_SHORT_CLICK);
+    assert(invaders_get_player_x() < init_x);
+
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+    assert(invaders_get_player_x() > init_x);
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+    assert(mock_get_last_tone_freq() == 1760); // Laser firing sound triggered
+    uint8_t lr = 0, lg = 0, lb = 0;
+    mock_get_last_led(&lr, &lg, &lb);
+    assert(lg == 80); // Green laser muzzle flash
+
+    // 4. Run update loop and verify rendering
+    for (int f = 0; f < 30; f++) {
+        qappLoader.update(0.016f);
+    }
+    int flushes_before = mock_get_flush_count();
+    qappLoader.render();
+    assert(mock_get_flush_count() == flushes_before + 1);
+
+    // Verify display has rendered pixels
+    uint8_t* fb = mock_get_display_buffer();
+    int lit_pixels = 0;
+    for (int i = 0; i < 1024; i++) {
+        lit_pixels += __builtin_popcount(fb[i]);
+    }
+    assert(lit_pixels > 50); // Aliens, bunker, player, HUD pixels
+    printf("  [PASS] 007 Invaders rendered %d active pixels and simulated fleet stepping.\n", lit_pixels);
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    assert(qappLoader.getCodeAllocatedSize() == 0);
+    assert(qappLoader.getDataAllocatedSize() == 0);
+    remove(test_path);
+}
+
+static void test_invaders_100_cycle_stress(void) {
+    printf("\n=== 8. 007 Invaders 100-Cycle Relocation & Dynamic Stress Test ===\n");
+    const char* test_path = "./tests/test_stress_invaders.qapp";
+    create_relocatable_invaders_qapp(test_path);
+
+    for (int i = 1; i <= 100; i++) {
+        QAppErrorCode err = qappLoader.loadApp(test_path);
+        assert(err == QAPP_OK);
+        assert(qappLoader.isRunning());
+
+        for (int f = 0; f < 3; f++) {
+            qappLoader.update(0.016f);
+            qappLoader.render();
+        }
+
+        qappLoader.unloadApp();
+        assert(!qappLoader.isRunning());
+        assert(qappLoader.getCodeAllocatedSize() == 0);
+        assert(qappLoader.getDataAllocatedSize() == 0);
+    }
+    printf("  [PASS] Completed 100 consecutive 007 Invaders allocation, relocation, execution & free cycles (0 bytes leaked).\n");
+    remove(test_path);
+}
+
+// -------------------------------------------------------------
+// Tactical Dice & RNG Relocatable Packager & Unit Tests
+// -------------------------------------------------------------
+static void create_relocatable_dice_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = {
+        0x58000040,
+        0xd65f03c0,
+        0x00000000,
+        0x00000000
+    };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = {
+        0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0,
+        0xc3
+    };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_dice_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED);
+    strncpy(fhdr.name, "Tactical Dice", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+
+    fclose(fp);
+}
+
+static void test_dice_dynamic_execution(void) {
+    printf("\n=== 9. Tactical Dice & RNG Dynamic Loading, Modes & Roll Physics ===\n");
+    const char* test_path = "./tests/test_reloc_dice.qapp";
+    create_relocatable_dice_qapp(test_path);
+
+    // 1. Inspect on-disk header
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(fhdr.magic == QAPP_MAGIC);
+    assert(fhdr.api_version == QAPP_API_VERSION);
+    assert(strcmp(fhdr.name, "Tactical Dice") == 0);
+    assert(fhdr.required_psram == 2048);
+    printf("  [PASS] Inspected Tactical Dice header: '%s' (caps=0x%03X, psram=%u B).\n",
+           fhdr.name, fhdr.required_caps, fhdr.required_psram);
+
+    // 2. Load into memory
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Tactical Dice") == 0);
+
+    // Verify initial D6 mode
+    assert(dice_get_mode() == DICE_MODE_D6);
+
+    // 3. Test Mode Cycling via Buttons
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+    assert(dice_get_mode() == DICE_MODE_D20);
+
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+    assert(dice_get_mode() == DICE_MODE_D100);
+
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+    assert(dice_get_mode() == DICE_MODE_COIN);
+
+    qappLoader.handleButton(QBTN_UP, QEVT_BTN_SHORT_CLICK);
+    assert(dice_get_mode() == DICE_MODE_D100);
+
+    // 4. Trigger Manual Roll via [OK]
+    assert(!dice_is_rolling());
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+    assert(dice_is_rolling());
+
+    // Advance tumble physics until finished
+    for (int f = 0; f < 80; f++) {
+        qappLoader.update(0.02f);
+    }
+    assert(!dice_is_rolling());
+    int res = dice_get_last_result();
+    assert(res >= 1 && res <= 100);
+    printf("  [PASS] Manual roll completed: mode=D100, result=%d.\n", res);
+
+    // 5. Test Shake-to-Roll Physics
+    QTelemetry telem;
+    memset(&telem, 0, sizeof(telem));
+    telem.accel_x = 1.8f;
+    telem.accel_y = 1.2f;
+    telem.accel_z = 0.9f; // High-G jerk > 1.85G
+    mock_set_telemetry(&telem);
+
+    qappLoader.update(0.02f);
+    assert(dice_is_rolling());
+    printf("  [PASS] Physical IMU shake detected and auto-triggered tumble roll.\n");
+
+    // Return to resting position (1G gravity)
+    telem.accel_x = 0.0f;
+    telem.accel_y = 0.0f;
+    telem.accel_z = 1.0f;
+    mock_set_telemetry(&telem);
+
+    for (int f = 0; f < 80; f++) {
+        qappLoader.update(0.02f);
+    }
+    assert(!dice_is_rolling());
+
+    // 6. Test Rendering
+    int flushes_before = mock_get_flush_count();
+    qappLoader.render();
+    assert(mock_get_flush_count() == flushes_before + 1);
+
+    uint8_t* fb = mock_get_display_buffer();
+    int lit_pixels = 0;
+    for (int i = 0; i < 1024; i++) {
+        lit_pixels += __builtin_popcount(fb[i]);
+    }
+    assert(lit_pixels > 40);
+    printf("  [PASS] Tactical Dice rendered %d active pixels for dice HUD.\n", lit_pixels);
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    remove(test_path);
+}
+
+static void test_dice_100_cycle_stress(void) {
+    printf("\n=== 10. Tactical Dice 100-Cycle Relocation & Dynamic Stress Test ===\n");
+    const char* test_path = "./tests/test_stress_dice.qapp";
+    create_relocatable_dice_qapp(test_path);
+
+    for (int i = 1; i <= 100; i++) {
+        QAppErrorCode err = qappLoader.loadApp(test_path);
+        assert(err == QAPP_OK);
+        assert(qappLoader.isRunning());
+
+        for (int f = 0; f < 3; f++) {
+            qappLoader.update(0.016f);
+            qappLoader.render();
+        }
+
+        qappLoader.unloadApp();
+        assert(!qappLoader.isRunning());
+        assert(qappLoader.getCodeAllocatedSize() == 0);
+        assert(qappLoader.getDataAllocatedSize() == 0);
+    }
+    printf("  [PASS] Completed 100 consecutive Tactical Dice allocation, relocation, execution & free cycles (0 bytes leaked).\n");
+    remove(test_path);
+}
+
 int main(void) {
     printf("====================================================\n");
     printf("   MICRO-ELF RELOCATABLE Q-APP DYNAMIC TEST HARNESS  \n");
@@ -528,6 +874,22 @@ int main(void) {
     printf("Running test_compass_hud_100_cycle_stress (Compass HUD)...\n");
     fflush(stdout);
     test_compass_hud_100_cycle_stress();
+
+    printf("Running test_invaders_dynamic_execution (007 Invaders)...\n");
+    fflush(stdout);
+    test_invaders_dynamic_execution();
+
+    printf("Running test_invaders_100_cycle_stress (007 Invaders)...\n");
+    fflush(stdout);
+    test_invaders_100_cycle_stress();
+
+    printf("Running test_dice_dynamic_execution (Tactical Dice)...\n");
+    fflush(stdout);
+    test_dice_dynamic_execution();
+
+    printf("Running test_dice_100_cycle_stress (Tactical Dice)...\n");
+    fflush(stdout);
+    test_dice_100_cycle_stress();
 
     printf("Running test_fault_injection...\n");
     fflush(stdout);
