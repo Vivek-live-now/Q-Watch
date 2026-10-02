@@ -107,19 +107,37 @@ fun MainAppScaffold() {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Q-LINK TACTICAL",
-                            color = TacticalCyan,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Devices,
+                                contentDescription = "Watch",
+                                tint = TacticalCyan,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Q-LINK // ESP32-S3",
+                                    color = TacticalCyan,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = "SUPERMINI EDITION v2.4",
+                                    color = TextMuted,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 8.sp,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
 
                         // Connection State Indicator
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(end = 12.dp)
+                            modifier = Modifier.padding(end = 8.dp)
                         ) {
                             val dotColor = when (connectionState) {
                                 ConnectionState.CONNECTED_WIFI, ConnectionState.CONNECTED_BLE -> TacticalGreen
@@ -128,13 +146,13 @@ fun MainAppScaffold() {
                             }
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
+                                    .size(7.dp)
                                     .background(dotColor, shape = androidx.compose.foundation.shape.CircleShape)
                             )
                             Text(
                                 text = connectionState.name.replace("CONNECTED_", ""),
                                 color = dotColor,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold
                             )

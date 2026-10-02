@@ -60,6 +60,7 @@ fun DashboardScreen(
         mutableStateOf(prefs.getString("wifi_host", QLinkConstants.DEFAULT_HOTSPOT_IP) ?: QLinkConstants.DEFAULT_HOTSPOT_IP)
     }
     var statusToast by remember { mutableStateOf<String?>(null) }
+    var selectedPhosphor by remember { mutableStateOf(PhosphorAmber) }
     val isConnected = client.isConnected()
     val isConnecting = connectionState == ConnectionState.CONNECTING
 
@@ -73,6 +74,56 @@ fun DashboardScreen(
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 0. Stitch Cockpit Telemetry Banner Strip
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(TacticalSurfaceLow)
+                .border(1.dp, TacticalBorder, RoundedCornerShape(4.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(if (isConnected) TacticalGreen else TacticalRed)
+                )
+                Text(
+                    text = if (isConnected) "BLE 5.0 ACTIVE" else "DISCONNECTED",
+                    color = if (isConnected) TacticalGreen else TacticalRed,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = "HOST: ${client.getTargetHost()}",
+                color = TextSecondary,
+                fontSize = 8.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "BAT: ${telemetry.batteryPct}% (${telemetry.batteryMv}mV)",
+                    color = TacticalAmber,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "BALANCED",
+                    color = TacticalCyan,
+                    fontSize = 8.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
         // 1. Connection & Battery Status Header
         TacticalCard(title = "SYSTEM STATUS", accentColor = TacticalCyan) {
             Row(
@@ -384,26 +435,75 @@ fun DashboardScreen(
             }
         }
 
-        // 3. Mini OLED Simulation Preview
-        TacticalCard(title = "LIVE OLED MIRROR", accentColor = TacticalAmber) {
+        // 3. Hero Section: Virtual OLED Display 128x64 & Hardware D-Pad Remote
+        TacticalCard(title = "VIRTUAL OLED MIRROR // SSD1306", accentColor = TacticalAmber) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "FRAME #${frame.frameNumber} · 20 FPS · 128x64 I2C",
+                    color = TextMuted,
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("AMBER" to PhosphorAmber, "CYAN" to PhosphorCyan, "GREEN" to PhosphorGreen).forEach { (label, col) ->
+                        val isSelected = selectedPhosphor == col
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (isSelected) col else TacticalSurfaceVariant)
+                                .border(1.dp, if (isSelected) col else TacticalBorder, RoundedCornerShape(3.dp))
+                                .clickable { selectedPhosphor = col }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) OledBlack else TextMuted,
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             VirtualOledDisplay(
                 frame = frame,
                 isStreaming = isConnected,
+                phosphorColor = selectedPhosphor,
                 modifier = Modifier.fillMaxWidth()
             )
+
             Spacer(modifier = Modifier.height(8.dp))
+
+            // Hardware D-Pad Directional Key Matrix
+            TacticalDPad(
+                onButtonAction = { btn, evt ->
+                    scope.launch { client.injectButton(btn, evt) }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             Button(
                 onClick = onNavigateToMirror,
                 colors = ButtonDefaults.buttonColors(containerColor = TacticalAmber),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "OPEN FULL VIRTUAL REMOTE",
+                    text = "OPEN FULL VIRTUAL REMOTE DECK",
                     color = OledBlack,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
+                    fontSize = 11.sp
                 )
             }
         }
