@@ -60,8 +60,8 @@ fun PowerGovernorScreen(onBack: (() -> Unit)? = null) {
     var oledDim by remember { mutableStateOf(false) }
     var statusFeedback by remember { mutableStateOf<String?>(null) }
 
-    val batteryPct = telemetry.battery.percent.coerceIn(0, 100)
-    val batteryV = telemetry.battery.voltageV
+    val batteryPct = telemetry.batteryPct.coerceIn(0, 100)
+    val batteryV = if (telemetry.batteryMv > 0) telemetry.batteryMv / 1000f else 3.92f
     val activeSegments = (batteryPct / 10).coerceIn(0, 10)
 
     val scrollState = rememberScrollState()
