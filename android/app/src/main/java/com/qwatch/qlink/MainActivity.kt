@@ -31,14 +31,17 @@ import com.qwatch.qlink.ui.screens.*
 import com.qwatch.qlink.ui.theme.*
 import kotlinx.coroutines.launch
 
-enum class Screen(val title: String, val icon: ImageVector) {
-    DASHBOARD("HOME", Icons.Default.Dashboard),
-    MIRROR("MIRROR", Icons.Default.Tv),
-    SENSORS("SENSORS", Icons.Default.Speed),
-    FILES("FILES", Icons.Default.Folder),
-    APPS("APPS", Icons.Default.Apps),
-    NOTIFICATIONS("ALERTS", Icons.Default.Notifications),
-    SETTINGS("CONFIG", Icons.Default.Settings)
+enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boolean = true) {
+    DASHBOARD("HOME", Icons.Default.Dashboard, true),
+    MIRROR("MIRROR", Icons.Default.Tv, true),
+    MOCHI("MOCHI", Icons.Default.Face, true),
+    SIGINT("SIGINT", Icons.Default.Radar, true),
+    POWER("POWER", Icons.Default.BatteryChargingFull, true),
+    SENSORS("SENSORS", Icons.Default.Speed, false),
+    APPS("APPS", Icons.Default.Apps, false),
+    FILES("FILES", Icons.Default.Folder, false),
+    NOTIFICATIONS("ALERTS", Icons.Default.Notifications, false),
+    SETTINGS("CONFIG", Icons.Default.Settings, false)
 }
 
 class MainActivity : ComponentActivity() {
@@ -148,7 +151,7 @@ fun MainAppScaffold() {
                 containerColor = TacticalSurface,
                 tonalElevation = 8.dp
             ) {
-                Screen.values().forEach { screen ->
+                Screen.values().filter { it.inBottomBar }.forEach { screen ->
                     val isSelected = currentScreen == screen
                     NavigationBarItem(
                         selected = isSelected,
@@ -190,9 +193,19 @@ fun MainAppScaffold() {
             when (currentScreen) {
                 Screen.DASHBOARD -> DashboardScreen(
                     onNavigateToMirror = { currentScreen = Screen.MIRROR },
-                    onNavigateToSensors = { currentScreen = Screen.SENSORS }
+                    onNavigateToSensors = { currentScreen = Screen.SENSORS },
+                    onNavigateToMochi = { currentScreen = Screen.MOCHI },
+                    onNavigateToPower = { currentScreen = Screen.POWER },
+                    onNavigateToSigint = { currentScreen = Screen.SIGINT },
+                    onNavigateToApps = { currentScreen = Screen.APPS },
+                    onNavigateToFiles = { currentScreen = Screen.FILES },
+                    onNavigateToNotifications = { currentScreen = Screen.NOTIFICATIONS },
+                    onNavigateToSettings = { currentScreen = Screen.SETTINGS }
                 )
                 Screen.MIRROR -> LiveMirrorScreen()
+                Screen.MOCHI -> MochiPetScreen(onBack = { currentScreen = Screen.DASHBOARD })
+                Screen.SIGINT -> SigintReconScreen(onBack = { currentScreen = Screen.DASHBOARD })
+                Screen.POWER -> PowerGovernorScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SENSORS -> SensorsScreen()
                 Screen.FILES -> FilesScreen()
                 Screen.APPS -> AppStoreScreen()

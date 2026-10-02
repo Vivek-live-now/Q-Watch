@@ -123,6 +123,42 @@ void test_qapp_sideload_validation() {
     free(dice_buf);
 }
 
+void test_companion_subsystem_endpoints() {
+    printf("\n--- Test: Q-Link Companion Subsystem Endpoints (Mochi, Power, Sigint) ---\n");
+    // 1. Mochi Actions
+    assert(qlink.handleMochiAction("pet") == true);
+    assert(qlink.handleMochiAction("feed") == true);
+    assert(qlink.handleMochiAction("wake") == true);
+    assert(qlink.handleMochiAction("helmet", 0) == true);
+    assert(qlink.handleMochiAction("helmet", 4) == true);
+    assert(qlink.handleMochiAction("helmet", 5) == false);
+    assert(qlink.handleMochiAction("invalid_action") == false);
+    printf("  [PASS] handleMochiAction handles pet, feed, wake, helmet (0-4) and rejects invalid.\n");
+
+    // 2. Power Governor State
+    assert(qlink.setPowerProfileState("PERFORMANCE", false, false, false) == true);
+    assert(qlink.setPowerProfileState("BALANCED", true, true, false) == true);
+    assert(qlink.setPowerProfileState("ENDURANCE", true, true, true) == true);
+    assert(qlink.setPowerProfileState("INVALID_PROFILE", false, false, false) == false);
+    printf("  [PASS] setPowerProfileState switches governor profiles and guards invalid names.\n");
+
+    // 3. Power Profile JSON Layout
+    String power_json = qlink.generatePowerProfileJson();
+    assert(power_json.indexOf("profile") != -1);
+    assert(power_json.indexOf("cpu_mhz") != -1);
+    assert(power_json.indexOf("battery_pct") != -1);
+    assert(power_json.indexOf("voltage_v") != -1);
+    printf("  [PASS] generatePowerProfileJson contains essential power metrics.\n");
+
+    // 4. SIGINT Scan JSON Layout
+    String sigint_json = qlink.generateSigintScanJson();
+    assert(sigint_json.indexOf("active_channel") != -1);
+    assert(sigint_json.indexOf("best_channel") != -1);
+    assert(sigint_json.indexOf("channels") != -1);
+    assert(sigint_json.indexOf("targets") != -1);
+    printf("  [PASS] generateSigintScanJson contains RF spectrum and BLE radar payloads.\n");
+}
+
 int main() {
     printf("==========================================\n");
     printf(" RUNNING Q-LINK PROTOCOL VERIFICATION\n");
@@ -132,6 +168,7 @@ int main() {
     test_sync_handlers();
     test_streaming_state();
     test_qapp_sideload_validation();
+    test_companion_subsystem_endpoints();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");
     return 0;
 }

@@ -14,6 +14,9 @@
 #include "file_manager.h"
 #include "weather.h"
 #include "config.h"
+#include "mochi_pet.h"
+#include "power_manager.h"
+#include "wireless_recon.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
@@ -480,5 +483,159 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             server.send(500, "application/json", "{\"error\":\"write_failed\"}");
         }
     });
+
+    // 13. Mochi Pet Action API
+    server.on("/api/v1/mochi/action", HTTP_POST, [&server, this]() {
+        if (server.hasArg("plain")) {
+            JsonDocument doc;
+            if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+                String action = doc["action"] | "";
+                int helmet = doc["helmet"] | -1;
+                if (handleMochiAction(action, helmet)) {
+                    server.send(200, "application/json", "{\"status\":\"ok\"}");
+                    return;
+                }
+            }
+        }
+        server.send(400, "application/json", "{\"error\":\"bad_request\"}");
+    });
+
+    // 14. Power Profile & Governor API
+    server.on("/api/v1/power/profile", HTTP_GET, [&server, this]() {
+        server.send(200, "application/json", generatePowerProfileJson());
+    });
+    server.on("/api/v1/power/profile", HTTP_POST, [&server, this]() {
+        if (server.hasArg("plain")) {
+            JsonDocument doc;
+            if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+                String profile = doc["profile"] | "BALANCED";
+                bool ulp = doc["ulp"] | true;
+                bool eco_led = doc["eco_led"] | false;
+                bool eco_radio = doc["eco_radio"] | false;
+                if (setPowerProfileState(profile, ulp, eco_led, eco_radio)) {
+                    server.send(200, "application/json", "{\"status\":\"ok\"}");
+                    return;
+                }
+            }
+        }
+        server.send(400, "application/json", "{\"error\":\"bad_profile\"}");
+    });
+
+    // 15. SIGINT Recon Scan API
+    server.on("/api/v1/sigint/scan", HTTP_GET, [&server, this]() {
+        server.send(200, "application/json", generateSigintScanJson());
+    });
 }
 #endif
+
+bool QLinkEngine::handleMochiAction(const String& action, int helmet_id) {
+    if (action == "pet") {
+#ifdef ARDUINO
+        mochiPet.pet();
+#endif
+        return true;
+    } else if (action == "feed") {
+#ifdef ARDUINO
+        mochiPet.feed();
+#endif
+        return true;
+    } else if (action == "wake") {
+#ifdef ARDUINO
+        mochiPet.wakeUp();
+#endif
+        return true;
+    } else if (action == "helmet") {
+        if (helmet_id >= 0 && helmet_id < 5) {
+#ifdef ARDUINO
+            mochiPet.setHelmet((MochiHelmet)helmet_id);
+#endif
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+bool QLinkEngine::setPowerProfileState(const String& profile_str, bool ulp, bool eco_led, bool eco_radio) {
+    int p = -1;
+    if (profile_str == "PERFORMANCE") p = 0;
+    else if (profile_str == "BALANCED") p = 1;
+    else if (profile_str == "ENDURANCE") p = 2;
+    else if (profile_str == "CUSTOM") p = 3;
+
+    if (p < 0) return false;
+#ifdef ARDUINO
+    powerManager.setProfile((PowerProfile)p);
+    powerManager.setUlpEnabled(ulp);
+    powerManager.setEcoLedBlockEnabled(eco_led);
+    powerManager.setEcoRadioCutEnabled(eco_radio);
+#endif
+    return true;
+}
+
+String QLinkEngine::generatePowerProfileJson() {
+    String json;
+    json.reserve(256);
+#ifdef ARDUINO
+    PowerProfile prof = powerManager.getProfile();
+    float v = battery.readVoltage();
+    int pct = battery.readPercentage();
+    float current_ma = powerManager.getEstimatedCurrentMa();
+    float runtime_h = powerManager.calculateEstimatedRuntimeHours(v, pct);
+    bool ulp = powerManager.isUlpEnabled();
+    bool eco_led = powerManager.isEcoLedBlockEnabled();
+    bool eco_radio = powerManager.isEcoRadioCutEnabled();
+
+    json = "{\"profile\":\"" + String(powerManager.getProfileNameCStr(prof)) + "\",";
+    json += "\"cpu_mhz\":" + String(powerManager.getTargetCpuFreqMhz()) + ",";
+    json += "\"battery_pct\":" + String(pct) + ",";
+    json += "\"voltage_v\":" + String(v, 2) + ",";
+    json += "\"current_ma\":" + String(current_ma, 1) + ",";
+    json += "\"runtime_hours\":" + String(runtime_h, 1) + ",";
+    json += "\"ulp_active\":" + String(ulp ? "true" : "false") + ",";
+    json += "\"eco_led\":" + String(eco_led ? "true" : "false") + ",";
+    json += "\"eco_radio\":" + String(eco_radio ? "true" : "false") + "}";
+#else
+    json = "{\"profile\":\"BALANCED\",\"cpu_mhz\":160,\"battery_pct\":84,\"voltage_v\":3.92,\"current_ma\":2.8,\"runtime_hours\":36.5,\"ulp_active\":true,\"eco_led\":false,\"eco_radio\":false}";
+#endif
+    return json;
+}
+
+String QLinkEngine::generateSigintScanJson() {
+    String json;
+    json.reserve(1024);
+#ifdef ARDUINO
+    const WifiChannelStat* ch_stats = wirelessRecon.getChannelStats();
+    json = "{\"active_channel\":" + String(wirelessRecon.getActiveChannel()) + ",";
+    json += "\"best_channel\":" + String(wirelessRecon.getBestChannel()) + ",";
+    json += "\"packet_rate_pps\":" + String(wirelessRecon.getCurrentPacketRate()) + ",";
+    json += "\"total_packets\":" + String(wirelessRecon.getTotalPackets()) + ",";
+    json += "\"total_aps\":" + String(wirelessRecon.getTotalApsFound()) + ",";
+    json += "\"deauth_count\":" + String(wirelessRecon.getDeauthCount()) + ",";
+    json += "\"attack_detected\":" + String(wirelessRecon.isAttackDetected() ? "true" : "false") + ",";
+    
+    // Channel AP distribution
+    json += "\"channels\":[";
+    for (int i = 1; i <= 13; i++) {
+        if (i > 1) json += ",";
+        json += "{\"ch\":" + String(i) + ",\"aps\":" + String(ch_stats[i].ap_count) + ",\"rssi\":" + String(ch_stats[i].max_rssi) + "}";
+    }
+    json += "],";
+
+    // BLE Targets
+    int ble_count = wirelessRecon.getBleTargetCount();
+    json += "\"targets\":[";
+    for (int i = 0; i < ble_count && i < 8; i++) {
+        const BleTarget* t = wirelessRecon.getBleTarget(i);
+        if (t && t->active) {
+            if (i > 0) json += ",";
+            float d = wirelessRecon.getTargetEstimatedDistance(t->rssi);
+            json += "{\"name\":\"" + String(t->name) + "\",\"mac\":\"" + String(t->mac) + "\",\"rssi\":" + String(t->rssi) + ",\"dist_m\":" + String(d, 2) + "}";
+        }
+    }
+    json += "]}";
+#else
+    json = "{\"active_channel\":6,\"best_channel\":11,\"packet_rate_pps\":142,\"total_packets\":8920,\"total_aps\":14,\"deauth_count\":0,\"attack_detected\":false,\"channels\":[{\"ch\":1,\"aps\":3,\"rssi\":-72},{\"ch\":6,\"aps\":6,\"rssi\":-58},{\"ch\":11,\"aps\":1,\"rssi\":-80}],\"targets\":[{\"name\":\"TARGET_ALPHA\",\"mac\":\"DC:54:75:A1:02:11\",\"rssi\":-48,\"dist_m\":1.8}]}";
+#endif
+    return json;
+}

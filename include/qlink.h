@@ -125,6 +125,12 @@ public:
     // App Sideloading & Verification APIs
     bool validateQAppHeader(const uint8_t* data, size_t len, String& out_app_name, String& out_version, size_t& out_size, String* out_error = nullptr);
 
+    // Companion Advanced Subsystem Controls (Mochi, Power, Sigint)
+    bool handleMochiAction(const String& action, int helmet_id = -1);
+    bool setPowerProfileState(const String& profile_str, bool ulp, bool eco_led, bool eco_radio);
+    String generatePowerProfileJson();
+    String generateSigintScanJson();
+
 #ifdef ARDUINO
     void registerHttpRoutes(WebServer& server);
 #endif

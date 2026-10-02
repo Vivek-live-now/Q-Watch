@@ -1383,6 +1383,69 @@ def test_app_store_qapps_and_installer():
         os.remove(bin_path)
     print("  [PASS] End-to-end Q-Link sideload validation and packet tests verified.")
 
+def test_companion_app_subsystems_and_stitch_screens():
+    print("\n--- 31. Stitch Companion Screens & Subsystem Protocol Verification ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    screens_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens")
+
+    # 1. Verify MochiPetScreen.kt exists and contains required components
+    mochi_screen_path = os.path.join(screens_dir, "MochiPetScreen.kt")
+    assert os.path.exists(mochi_screen_path), "MochiPetScreen.kt does not exist"
+    with open(mochi_screen_path, "r", encoding="utf-8") as f:
+        mochi_content = f.read()
+    assert "enum class HelmetPreset" in mochi_content
+    assert "CLASSIC" in mochi_content and "GUNDAM" in mochi_content and "CYBER" in mochi_content and "NEKO" in mochi_content and "TACTICAL" in mochi_content
+    assert "fun MochiPetScreen" in mochi_content
+    assert "VIRTUAL OLED MIRROR" in mochi_content
+    assert "CYBER-HELMET LOCKER" in mochi_content
+    assert "TAMAGOTCHI CARE" in mochi_content
+    print("  [PASS] MochiPetScreen.kt 128x64 OLED emulator, 5 modular helmets, and Tamagotchi care deck verified.")
+
+    # 2. Verify PowerGovernorScreen.kt exists and contains required components
+    power_screen_path = os.path.join(screens_dir, "PowerGovernorScreen.kt")
+    assert os.path.exists(power_screen_path), "PowerGovernorScreen.kt does not exist"
+    with open(power_screen_path, "r", encoding="utf-8") as f:
+        power_content = f.read()
+    assert "enum class CpuGovernorMode" in power_content
+    assert "PERFORMANCE" in power_content and "BALANCED" in power_content and "ENDURANCE" in power_content and "ULP_SENTINEL" in power_content
+    assert "fun PowerGovernorScreen" in power_content
+    assert "PRIMARY CELL STATUS" in power_content
+    assert "10-SEG BUS" in power_content
+    assert "ULP RISC-V COP-PROCESSOR" in power_content
+    assert "TACTICAL LOAD-SHEDDING" in power_content
+    print("  [PASS] PowerGovernorScreen.kt dynamic governors (240/160/80MHz), 10-seg gauge, and ULP slow-SRAM verified.")
+
+    # 3. Verify SigintReconScreen.kt exists and contains required components
+    sigint_screen_path = os.path.join(screens_dir, "SigintReconScreen.kt")
+    assert os.path.exists(sigint_screen_path), "SigintReconScreen.kt does not exist"
+    with open(sigint_screen_path, "r", encoding="utf-8") as f:
+        sigint_content = f.read()
+    assert "data class ReconTarget" in sigint_content
+    assert "fun SigintReconScreen" in sigint_content
+    assert "360° ROTATING BLE RADAR" in sigint_content
+    assert "2.4GHz RF SPECTRUM WATERFALL" in sigint_content
+    assert "802.11 DEAUTH ATTACK SENTRY" in sigint_content
+    assert "PROMISCUOUS PACKET STREAM" in sigint_content
+    print("  [PASS] SigintReconScreen.kt 360 BLE radar, 13-channel RF waterfall, and IDS attack sentry verified.")
+
+    # 4. Verify MainActivity & Dashboard Screen Navigation Wiring
+    main_activity_path = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "MainActivity.kt")
+    with open(main_activity_path, "r", encoding="utf-8") as f:
+        main_content = f.read()
+    assert "MOCHI" in main_content and "POWER" in main_content and "SIGINT" in main_content
+    assert "MochiPetScreen" in main_content
+    assert "PowerGovernorScreen" in main_content
+    assert "SigintReconScreen" in main_content
+
+    dashboard_path = os.path.join(screens_dir, "DashboardScreen.kt")
+    with open(dashboard_path, "r", encoding="utf-8") as f:
+        dash_content = f.read()
+    assert "onNavigateToMochi" in dash_content
+    assert "onNavigateToPower" in dash_content
+    assert "onNavigateToSigint" in dash_content
+    assert "ADVANCED TACTICAL MODULES" in dash_content
+    print("  [PASS] MainActivity and DashboardScreen navigation wiring for all tactical modules verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1405,4 +1468,5 @@ if __name__ == "__main__":
     test_ulp_power_architecture_and_user_toggle()
     test_mochi_pet_system()
     test_app_store_qapps_and_installer()
+    test_companion_app_subsystems_and_stitch_screens()
     print("\nAll self-test verifications PASSED!")

@@ -36,7 +36,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun DashboardScreen(
     onNavigateToMirror: () -> Unit,
-    onNavigateToSensors: () -> Unit
+    onNavigateToSensors: () -> Unit,
+    onNavigateToMochi: () -> Unit = {},
+    onNavigateToPower: () -> Unit = {},
+    onNavigateToSigint: () -> Unit = {},
+    onNavigateToApps: () -> Unit = {},
+    onNavigateToFiles: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val client = QLinkClient.instance
     val connectionState by client.connectionState.collectAsState()
@@ -466,6 +473,107 @@ fun DashboardScreen(
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
+            }
+        }
+
+        // 6. Advanced Tactical Subsystems & Operations Cockpit
+        TacticalCard(title = "ADVANCED TACTICAL MODULES", accentColor = TacticalCyan) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Mochi Companion
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToMochi)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("DASAI MOCHI // CYBER-PET", color = TacticalCyan, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("128x64 OLED Emulator, IMU Gaze & Helmets", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("LAUNCH >", color = TacticalCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // Power Governor & ULP Sentinel
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToPower)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("POWER GOVERNOR // ULP SENTINEL", color = TacticalAmber, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("240/160/80MHz Scaling, ULP Slow-SRAM Lab", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("MANAGE >", color = TacticalAmber, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // SIGINT Recon & Electronic Warfare
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToSigint)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("TACTICAL SIGINT // RF WARFARE", color = TacticalGreen, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("360° Rotating Radar, 2.4GHz Waterfall & IDS", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("ENGAGE >", color = TacticalGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // Secondary row: APPS, FILES, CONFIG, ALERTS
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = onNavigateToApps,
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("APPS", color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    Button(
+                        onClick = onNavigateToFiles,
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("FILES", color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    Button(
+                        onClick = onNavigateToNotifications,
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("ALERTS", color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    Button(
+                        onClick = onNavigateToSettings,
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("CONFIG", color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
             }
         }
     }
