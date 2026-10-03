@@ -124,6 +124,15 @@ void WifiPortal::startPortal() {
     Serial.println("Portal running.");
 }
 
+void WifiPortal::stopPortal() {
+    if (state != WifiState::PORTAL) return;
+    Serial.println("Stopping Captive Portal / Hotspot...");
+    dnsServer.stop();
+    server.stop();
+    WiFi.softAPdisconnect(true);
+    enableWifi();
+}
+
 void WifiPortal::setupRoutes() {
     server.on("/", HTTP_GET, std::bind(&WifiPortal::handleRoot, this));
     server.on("/save", HTTP_POST, std::bind(&WifiPortal::handleSave, this));
@@ -253,6 +262,9 @@ const char* WifiPortal::getDetailedStatusStr() {
 }
 
 String WifiPortal::getSSID() {
+    if (state == WifiState::PORTAL) {
+        return "Q-Watch-Setup";
+    }
     if (state == WifiState::CONNECTED) {
         return WiFi.SSID();
     }

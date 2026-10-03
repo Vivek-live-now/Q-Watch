@@ -152,6 +152,7 @@ void DisplayManager::drawAppSettings() {
     } else if (sub == SettingsSubmenu::CONNECTIVITY) {
         const char* vals[UICore::CONNECTIVITY_ITEM_COUNT] = {
             s.wifi_enabled ? "ON" : "OFF",
+            wifiPortal.isHotspotActive() ? "ON" : "OFF",
             "",
             s.ble_enabled ? "ON" : "OFF",
             s.fileserver_enabled ? "ON" : "OFF"
@@ -320,10 +321,7 @@ void DisplayManager::drawResetConfirm() {
 }
 
 void DisplayManager::drawTacticalOverlay() {
-    oled.drawLine(0, 0, 6, 0); oled.drawLine(0, 0, 0, 6);
-    oled.drawLine(127, 0, 121, 0); oled.drawLine(127, 0, 127, 6);
-    oled.drawLine(0, 63, 6, 63); oled.drawLine(0, 63, 0, 57);
-    oled.drawLine(127, 63, 121, 63); oled.drawLine(127, 63, 127, 57);
+    // Corner four lines removed per user preference
 }
 
 void DisplayManager::drawTopStatusBar() {
@@ -1753,7 +1751,6 @@ void DisplayManager::drawAppMotionOrientation3D() {
 
 
 void DisplayManager::drawAppIR() {
-    drawTopStatusBar();
     IrSubmenu sub = ui.getIrSubmenu();
 
     switch (sub) {
@@ -2036,6 +2033,10 @@ void DisplayManager::drawBatteryPageHud() {
     snprintf(vol_buf, sizeof(vol_buf), "%.2fV", vol);
     oled.drawStr(58, 34, vol_buf);
 
+    char temp_buf[16];
+    snprintf(temp_buf, sizeof(temp_buf), "%.1f\260C", battery.getCoreTemperature());
+    oled.drawStr(94, 34, temp_buf);
+
     // Profile & Runtime estimate
     oled.setFont(u8g2_font_6x10_tr);
     char est_buf[24];
@@ -2159,7 +2160,6 @@ void DisplayManager::drawAppBattery() {
 }
 
 void DisplayManager::drawAppLED() {
-    drawTopStatusBar();
     String vals[UICore::LED_MENU_ITEM_COUNT];
     vals[0] = ledManager.isMasterSwitchOn() ? "ON" : "OFF";
     LedMode m = ledManager.getMode();
@@ -3093,7 +3093,6 @@ void DisplayManager::drawAppAudio() {
         oled.drawStr(10, 54, "OK:   CUSTOM TEXT");
     }
 
-    drawTopStatusBar();
     drawToastOverlay();
 }
 
@@ -3126,7 +3125,6 @@ void DisplayManager::drawAppWireless() {
 
 void DisplayManager::drawReconMainMenu() {
     drawStandardMenu("TACTICAL RECON", ui.recon_main_items, UICore::RECON_MAIN_ITEM_COUNT, ui.getReconSelection(), ui.getReconScrollOffset());
-    drawTopStatusBar();
 }
 
 void DisplayManager::drawBleList() {

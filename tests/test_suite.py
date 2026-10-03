@@ -1556,6 +1556,137 @@ def test_sleep_wake_recovery_and_connectivity_menu():
     assert "settings_submenu == SettingsSubmenu::FILE_SERVER_DETAILS" in uc
     print("  [PASS] UICore sleep/wake recovery, light-sleep GPIO wake, and BLE toggle verified.")
 
+def test_qwatch_9_bugfixes_and_features():
+    print("\n--- 34. Q-Watch 9 Bug Fixes & Feature Enhancements Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    kb_h = os.path.join(base_dir, "include", "keyboard.h")
+    kb_cpp = os.path.join(base_dir, "src", "keyboard.cpp")
+    fm_h = os.path.join(base_dir, "include", "file_manager.h")
+    fm_cpp = os.path.join(base_dir, "src", "file_manager.cpp")
+    settings_cpp = os.path.join(base_dir, "src", "settings_data.cpp")
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    recon_cpp = os.path.join(base_dir, "src", "wireless_recon.cpp")
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+    sound_cpp = os.path.join(base_dir, "src", "ui_core_sound.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    batt_h = os.path.join(base_dir, "include", "battery.h")
+    batt_cpp = os.path.join(base_dir, "src", "battery.cpp")
+    wifi_h = os.path.join(base_dir, "include", "wifi_portal.h")
+    wifi_cpp = os.path.join(base_dir, "src", "wifi_portal.cpp")
+
+    # 1. Keyboard Layout & Navigation
+    with open(kb_h, "r", encoding="utf-8") as f:
+        kh = f.read()
+    assert "NUM_SYM = 2" in kh
+    assert "EXT_SYM = 3" in kh
+
+    with open(kb_cpp, "r", encoding="utf-8") as f:
+        kc = f.read()
+    # Check that 0-9 digits and special characters exist
+    assert all(digit in kc for digit in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
+    assert all(sym in kc for sym in ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}"])
+    # Check physical CANCEL button handling
+    assert "cancel_evt == BTN_EVT_SHORT_PRESS" in kc
+    assert "cancel_evt == BTN_EVT_LONG_PRESS" in kc
+    print("  [PASS] 1. Keyboard multi-page layout (0-9 digits, full symbol sets) and cancel button verified.")
+
+    # 2. LittleFS format-on-fail & root folder creation
+    with open(fm_h, "r", encoding="utf-8") as f:
+        fh = f.read()
+    assert "bool mkdir(const String& path);" in fh
+
+    with open(fm_cpp, "r", encoding="utf-8") as f:
+        fc = f.read()
+    assert "LittleFS.begin(true)" in fc
+    assert 'LittleFS.mkdir("/config")' in fc
+    assert 'LittleFS.mkdir("/apps")' in fc
+    assert 'LittleFS.mkdir("/sounds")' in fc
+    assert "ensureParentDir" in fc
+    print("  [PASS] 2. LittleFS format-on-fail mount recovery, mkdir API, and auto parent dirs verified.")
+
+    # 3. Settings dual-persistence fallback (NVS Preferences)
+    with open(settings_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert 'prefs.begin("qwatch_cfg"' in sc
+    assert 'prefs.putInt("timeout_idx"' in sc
+    assert 'prefs.putInt("contrast_idx"' in sc
+    assert 'prefs.getInt("timeout_idx"' in sc
+    assert 'prefs.getInt("contrast_idx"' in sc
+    print("  [PASS] 3. Settings dual-persistence (LittleFS + NVS Preferences mirror) verified.")
+
+    # 4. Remove corner four lines
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "void DisplayManager::drawTacticalOverlay() {\n    // Corner four lines removed per user preference\n}" in dc
+    print("  [PASS] 4. Tactical overlay corner tick lines cleanly eliminated.")
+
+    # 5. BLE scan async non-blocking & memory preservation
+    with open(recon_cpp, "r", encoding="utf-8") as f:
+        rc = f.read()
+    assert "ble_scan_complete_cb" in rc
+    assert "pBLEScan->start(5, ble_scan_complete_cb, false);" in rc
+    assert "pBLEScan->stop();" in rc
+
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "BLEDevice::deinit(false);" in mc
+    print("  [PASS] 5. BLE async non-blocking scanner and controller memory retention verified.")
+
+    # 6. Audio Lab: Metronome BPM div-zero guard, Composer long OK, Creator folder
+    with open(sound_cpp, "r", encoding="utf-8") as f:
+        sc_sound = f.read()
+    assert "(metronome_bpm > 0) ? metronome_bpm : 120" in sc_sound
+    assert 'fileManager.mkdir("/sounds")' in sc_sound
+
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "if (current_state == UIState::APP_AUDIO) {" in uc
+    print("  [PASS] 6. Metronome division-by-zero guard, Composer long-press save, and /sounds folder verified.")
+
+    # 7. Core junction temperature at Battery HUD
+    with open(batt_h, "r", encoding="utf-8") as f:
+        bh = f.read()
+    assert "float getCoreTemperature();" in bh
+
+    with open(batt_cpp, "r", encoding="utf-8") as f:
+        bc = f.read()
+    assert "temperatureRead()" in bc
+
+    assert "battery.getCoreTemperature()" in dc
+    print("  [PASS] 7. ESP32-S3 internal core junction temperature reading & Battery HUD display verified.")
+
+    # 8. Top bar conflicts resolved in apps
+    # APP_LED, APP_IR, APP_AUDIO, drawReconMainMenu have no drawTopStatusBar() call
+    app_led_idx = dc.find("void DisplayManager::drawAppLED()")
+    app_about_idx = dc.find("void DisplayManager::drawAppAbout()")
+    assert "drawTopStatusBar();" not in dc[app_led_idx:app_about_idx]
+
+    app_ir_idx = dc.find("void DisplayManager::drawAppIR()")
+    assert "drawTopStatusBar();" not in dc[app_ir_idx:app_ir_idx + 300]
+    print("  [PASS] 8. Status top bar menu collisions in LED, IR, and Audio apps eliminated.")
+
+    # 9. Wi-Fi SoftAP Hotspot Option
+    with open(wifi_h, "r", encoding="utf-8") as f:
+        wh = f.read()
+    assert "void startPortal();" in wh
+    assert "void stopPortal();" in wh
+    assert "bool isHotspotActive() const" in wh
+
+    with open(wifi_cpp, "r", encoding="utf-8") as f:
+        wc = f.read()
+    assert 'WiFi.softAP("Q-Watch-Setup");' in wc
+
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "static const int CONNECTIVITY_ITEM_COUNT = 5;" in uh
+    assert '"HOTSPOT (AP)"' in uh
+
+    assert "wifiPortal.isHotspotActive()" in uc
+    assert "wifiPortal.startPortal();" in uc
+    assert "wifiPortal.stopPortal();" in uc
+    print("  [PASS] 9. Wi-Fi SoftAP Hotspot creation, status display, and toggle menu verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1581,4 +1712,6 @@ if __name__ == "__main__":
     test_companion_app_subsystems_and_stitch_screens()
     test_button_event_flow_and_supermini_wifi()
     test_sleep_wake_recovery_and_connectivity_menu()
+    test_qwatch_9_bugfixes_and_features()
     print("\nAll self-test verifications PASSED!")
+

@@ -19,7 +19,8 @@ static uint16_t getComposerFreq(int note_idx, int octave) {
 
 void UICore::handleSoundInput() {
     if (sound_submenu == SoundSubmenu::METRONOME && metronome_active) {
-        uint32_t interval = 60000 / metronome_bpm;
+        int bpm = (metronome_bpm > 0) ? metronome_bpm : 120;
+        uint32_t interval = 60000 / bpm;
         if (millis() - last_metronome_tick >= interval) {
             last_metronome_tick = millis();
             metronome_beat = (metronome_beat % 4) + 1;
@@ -84,7 +85,7 @@ void UICore::handleSoundMainInput() {
             case 0: sound_submenu = SoundSubmenu::SETTINGS; sound_selection = 0; sound_scroll_offset = 0; break;
             case 1: sound_submenu = SoundSubmenu::EFFECTS; sound_selection = 0; sound_scroll_offset = 0; break;
             case 2:
-                fileManager.create("/sounds");
+                fileManager.mkdir("/sounds");
                 sound_submenu = SoundSubmenu::CREATOR_LIST;
                 sound_selection = 0;
                 sound_scroll_offset = 0;
@@ -174,6 +175,7 @@ void UICore::handleSoundEffectsInput() {
 static void onMelodyNameEntered(bool success, const String& name) {
     if (success && name.length() > 0) {
         ui.setActiveMelodyName(name);
+        fileManager.mkdir("/sounds");
         String path = "/sounds/" + name + ".mel";
         if (!fileManager.exists(path)) {
             fileManager.write(path, "2700,200\n0,50\n2400,200\n");
@@ -196,6 +198,12 @@ static void onMelodyNameEntered(bool success, const String& name) {
                 uint16_t dur = line.substring(comma + 1).toInt();
                 notes[count++] = { freq, dur };
             }
+        }
+        if (count == 0) {
+            notes[0] = { 2700, 200 };
+            notes[1] = { 0, 50 };
+            notes[2] = { 2400, 200 };
+            count = 3;
         }
         ui.loadCreatorNotes(notes, count);
         ui.setSoundSubmenu(SoundSubmenu::CREATOR_EDIT);
@@ -493,6 +501,8 @@ void UICore::handleMetronomeInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (metronome_bpm <= 0) metronome_bpm = 120;
 
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
         if (metronome_bpm < 240) metronome_bpm += 5;

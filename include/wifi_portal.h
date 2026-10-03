@@ -42,6 +42,11 @@ public:
     int getScannedNetworkCount() const { return scanned_count; }
     const ScannedNetwork* getScannedNetworks() const { return scanned_networks; }
 
+    // Hotspot / SoftAP Portal API
+    void startPortal();
+    void stopPortal();
+    bool isHotspotActive() const { return state == WifiState::PORTAL; }
+
     // Direct Connection API
     void connectToNetwork(const String& ssid, const String& password);
 
@@ -59,7 +64,6 @@ private:
     ScannedNetwork scanned_networks[16];
     int scanned_count;
 
-    void startPortal();
     void setupRoutes();
     void handleRoot();
     void handleSave();

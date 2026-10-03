@@ -1,5 +1,8 @@
 #include "settings_data.h"
 #include "file_manager.h"
+#ifdef ARDUINO
+#include <Preferences.h>
+#endif
 
 SettingsManager settingsManager;
 
@@ -10,31 +13,29 @@ void SettingsManager::begin() {
 }
 
 void SettingsManager::load() {
-    if (!fileManager.exists("/config/settings")) {
-        save(); // Write default settings file if missing
-        return;
-    }
+    bool loaded_from_fs = false;
+    if (fileManager.exists("/config/settings")) {
+        String content = fileManager.read("/config/settings");
+        if (content.length() > 0) {
+            loaded_from_fs = true;
+            int pos = 0;
+            while (pos < content.length()) {
+                int next_nl = content.indexOf('\n', pos);
+                if (next_nl == -1) next_nl = content.length();
+                String line = content.substring(pos, next_nl);
+                line.trim();
+                pos = next_nl + 1;
 
-    String content = fileManager.read("/config/settings");
-    if (content.length() == 0) return;
+                if (line.length() == 0 || line.startsWith("#")) continue;
 
-    int pos = 0;
-    while (pos < content.length()) {
-        int next_nl = content.indexOf('\n', pos);
-        if (next_nl == -1) next_nl = content.length();
-        String line = content.substring(pos, next_nl);
-        line.trim();
-        pos = next_nl + 1;
+                int eq = line.indexOf('=');
+                if (eq == -1) continue;
 
-        if (line.length() == 0 || line.startsWith("#")) continue;
+                String key = line.substring(0, eq);
+                String val = line.substring(eq + 1);
+                key.trim();
+                val.trim();
 
-        int eq = line.indexOf('=');
-        if (eq == -1) continue;
-
-        String key = line.substring(0, eq);
-        String val = line.substring(eq + 1);
-        key.trim();
-        val.trim();
 
         if (key == "wifi_enabled") settings.wifi_enabled = (val == "1");
         else if (key == "wifi_tx_power_idx") settings.wifi_tx_power_idx = val.toInt();
@@ -76,6 +77,25 @@ void SettingsManager::load() {
         else if (key == "hourly_chime_enabled") settings.hourly_chime_enabled = (val == "1");
         else if (key == "world_clock_tz_idx") settings.world_clock_tz_idx = val.toInt();
         else if (key == "step_goal") settings.step_goal = (uint32_t)val.toInt();
+    }
+
+#ifdef ARDUINO
+    // NVS Preferences fallback / mirror for core hardware settings
+    Preferences prefs;
+    if (prefs.begin("qwatch_cfg", true)) {
+        if (prefs.isKey("timeout_idx")) settings.display_timeout_idx = prefs.getInt("timeout_idx", settings.display_timeout_idx);
+        if (prefs.isKey("contrast_idx")) settings.contrast_idx = prefs.getInt("contrast_idx", settings.contrast_idx);
+        if (prefs.isKey("sleep_idx")) settings.sleep_time_idx = prefs.getInt("sleep_idx", settings.sleep_time_idx);
+        if (prefs.isKey("profile_idx")) settings.power_profile_idx = prefs.getInt("profile_idx", settings.power_profile_idx);
+        if (prefs.isKey("tz_idx")) settings.timezone_idx = prefs.getInt("tz_idx", settings.timezone_idx);
+        if (prefs.isKey("face_style")) settings.watch_face_style = prefs.getInt("face_style", settings.watch_face_style);
+        if (prefs.isKey("raise_wake")) settings.raise_to_wake = prefs.getBool("raise_wake", settings.raise_to_wake);
+        prefs.end();
+    }
+#endif
+
+    if (!loaded_from_fs) {
+        save(); // Write default/restored settings file to LittleFS
     }
 }
 
@@ -123,4 +143,18 @@ void SettingsManager::save() {
     out += "step_goal=" + String(settings.step_goal) + "\n";
 
     fileManager.write("/config/settings", out);
+
+#ifdef ARDUINO
+    Preferences prefs;
+    if (prefs.begin("qwatch_cfg", false)) {
+        prefs.putInt("timeout_idx", settings.display_timeout_idx);
+        prefs.putInt("contrast_idx", settings.contrast_idx);
+        prefs.putInt("sleep_idx", settings.sleep_time_idx);
+        prefs.putInt("profile_idx", settings.power_profile_idx);
+        prefs.putInt("tz_idx", settings.timezone_idx);
+        prefs.putInt("face_style", settings.watch_face_style);
+        prefs.putBool("raise_wake", settings.raise_to_wake);
+        prefs.end();
+    }
+#endif
 }

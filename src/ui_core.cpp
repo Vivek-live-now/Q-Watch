@@ -87,7 +87,19 @@ UICore::UICore() :
     ble_list_selection(0),
     ble_list_scroll_offset(0),
     last_radar_tick_time(0),
-    radar_sweep_angle(0.0f) {
+    radar_sweep_angle(0.0f),
+    creator_count(0),
+    creator_cursor(0),
+    creator_edit_field(0),
+    metronome_bpm(120),
+    metronome_active(false),
+    metronome_beat(0),
+    last_metronome_tick(0),
+    lab_freq(2700),
+    lab_duty(50),
+    lab_sweep_active(false),
+    lab_sweep_freq(2000),
+    last_sweep_time(0) {
     toast_msg[0] = '\0';
 }
 
@@ -561,7 +573,7 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI)) {
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT)))) {
             if (cancel_evt == BTN_EVT_LONG_PRESS) {
                 btnManager.getEvent(BTN_ID_CANCEL);
             } else {
@@ -1591,16 +1603,24 @@ void UICore::handleConnectivityInput() {
             settings_selection = 0;
             settings_scroll_offset = 0;
         } else if (settings_selection == 1) {
+            if (wifiPortal.isHotspotActive()) {
+                wifiPortal.stopPortal();
+                showToast("[HOTSPOT: OFF]", 1500);
+            } else {
+                wifiPortal.startPortal();
+                showToast("[HOTSPOT: ON 192.168.4.1]", 2000);
+            }
+        } else if (settings_selection == 2) {
             settings_submenu = SettingsSubmenu::WIFI_SCAN;
             settings_selection = 0;
             settings_scroll_offset = 0;
             wifiPortal.startScan();
-        } else if (settings_selection == 2) {
+        } else if (settings_selection == 3) {
             SettingsData& s = settingsManager.get();
             s.ble_enabled = !s.ble_enabled;
             settingsManager.save();
             showToast(s.ble_enabled ? "[BLE: ON]" : "[BLE: OFF]", 1500);
-        } else if (settings_selection == 3) {
+        } else if (settings_selection == 4) {
             settings_submenu = SettingsSubmenu::FILE_SERVER_DETAILS;
             settings_selection = 0;
             settings_scroll_offset = 0;
@@ -3356,6 +3376,23 @@ void UICore::handleMochiInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (mochiPet.isPlayingAnim()) {
+        if (cancel_evt == BTN_EVT_LONG_PRESS) {
+            mochiPet.stopAnim();
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 14;
+            menu_scroll_offset = 11;
+            needs_redraw = true;
+            return;
+        }
+        if (up_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE || ok_evt != BTN_EVT_NONE || cancel_evt != BTN_EVT_NONE) {
+            mochiPet.stopAnim();
+            needs_redraw = true;
+            return;
+        }
+    }
 
     MochiSubmode sub = mochiPet.getSubmode();
 

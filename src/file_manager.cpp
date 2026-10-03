@@ -5,14 +5,37 @@ FileManager fileManager;
 FileManager::FileManager() {
 }
 
-bool FileManager::begin() {
-    // begin(formatOnFail, basePath, maxOpenFiles, partitionLabel)
-    // formatOnFail = false
-    if (!LittleFS.begin(false)) {
-        Serial.println("LittleFS Mount Failed");
-        return false;
+static void ensureParentDir(const String& path) {
+    int lastSlash = path.lastIndexOf('/');
+    if (lastSlash > 0) {
+        String dir = path.substring(0, lastSlash);
+        if (!LittleFS.exists(dir)) {
+            LittleFS.mkdir(dir);
+        }
     }
-    Serial.println("LittleFS Mounted successfully");
+}
+
+bool FileManager::begin() {
+    // Attempt mount without formatting first; if failed (unformatted partition), format and mount
+    if (!LittleFS.begin(false)) {
+        Serial.println("LittleFS Mount Failed. Formatting partition...");
+        if (!LittleFS.begin(true)) {
+            Serial.println("LittleFS Mount Failed after format");
+            return false;
+        }
+        Serial.println("LittleFS Formatted & Mounted successfully");
+    } else {
+        Serial.println("LittleFS Mounted successfully");
+    }
+
+    // Ensure standard directories exist
+    LittleFS.mkdir("/config");
+    LittleFS.mkdir("/apps");
+    LittleFS.mkdir("/anim");
+    LittleFS.mkdir("/boot");
+    LittleFS.mkdir("/ir");
+    LittleFS.mkdir("/mochi");
+    LittleFS.mkdir("/sounds");
     return true;
 }
 
@@ -54,6 +77,7 @@ bool FileManager::create(const String& path) {
     if (!isPathSafe(path)) return false;
     String p = normalizePath(path);
     if (LittleFS.exists(p)) return true; // Already exists
+    ensureParentDir(p);
     File file = LittleFS.open(p, FILE_WRITE);
     if (!file) return false;
     file.close();
@@ -109,7 +133,9 @@ size_t FileManager::readSeek(const String& path, size_t offset, uint8_t* buffer,
 
 bool FileManager::write(const String& path, const String& data) {
     if (!isPathSafe(path)) return false;
-    File file = LittleFS.open(normalizePath(path), FILE_WRITE);
+    String p = normalizePath(path);
+    ensureParentDir(p);
+    File file = LittleFS.open(p, FILE_WRITE);
     if (!file) return false;
 
     size_t bytesWritten = file.print(data);
@@ -121,7 +147,9 @@ bool FileManager::write(const String& path, const uint8_t* data, size_t size) {
     if (!isPathSafe(path)) return false;
     if (!data || size == 0) return create(path); // Create empty file if no data
 
-    File file = LittleFS.open(normalizePath(path), FILE_WRITE);
+    String p = normalizePath(path);
+    ensureParentDir(p);
+    File file = LittleFS.open(p, FILE_WRITE);
     if (!file) return false;
 
     size_t bytesWritten = file.write(data, size);
@@ -131,7 +159,9 @@ bool FileManager::write(const String& path, const uint8_t* data, size_t size) {
 
 bool FileManager::append(const String& path, const String& data) {
     if (!isPathSafe(path)) return false;
-    File file = LittleFS.open(normalizePath(path), FILE_APPEND);
+    String p = normalizePath(path);
+    ensureParentDir(p);
+    File file = LittleFS.open(p, FILE_APPEND);
     if (!file) return false;
 
     size_t bytesWritten = file.print(data);
@@ -149,6 +179,14 @@ bool FileManager::append(const String& path, const uint8_t* data, size_t size) {
     size_t bytesWritten = file.write(data, size);
     file.close();
     return bytesWritten == size;
+}
+
+bool FileManager::mkdir(const String& path) {
+    if (!isPathSafe(path)) return false;
+    String p = normalizePath(path);
+    if (LittleFS.exists(p)) return true;
+    ensureParentDir(p);
+    return LittleFS.mkdir(p);
 }
 
 size_t FileManager::listDir(const String& path, FileInfo* results, size_t maxResults) {

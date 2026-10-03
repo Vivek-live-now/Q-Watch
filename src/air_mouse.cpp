@@ -130,7 +130,7 @@ void AirMouseManager::stop() {
         }
     }
 
-    BLEDevice::deinit(true);
+    BLEDevice::deinit(false);
 
     pServer = nullptr;
     hid = nullptr;

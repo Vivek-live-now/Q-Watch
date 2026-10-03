@@ -38,6 +38,7 @@ public:
     bool append(const String& path, const uint8_t* data, size_t size);
 
     // Directory operations
+    bool mkdir(const String& path);
     size_t listDir(const String& path, FileInfo* results, size_t maxResults);
 
     // Storage info

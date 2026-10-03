@@ -320,9 +320,9 @@ public:
         "CONNECTIVITY", "TIME", "POWER", "DISPLAY", "SENSORS", "SYSTEM"
     };
 
-    static const int CONNECTIVITY_ITEM_COUNT = 4;
+    static const int CONNECTIVITY_ITEM_COUNT = 5;
     const char* connectivity_items[CONNECTIVITY_ITEM_COUNT] = {
-        "Wi-Fi", "SCAN NETWORKS", "BLE", "FILE SERVER"
+        "Wi-Fi", "HOTSPOT (AP)", "SCAN NETWORKS", "BLE", "FILE SERVER"
     };
 
     static const int WIFI_DETAILS_ITEM_COUNT = 6;
@@ -421,12 +421,22 @@ private:
 public:
     void setActiveMelodyName(const String& n) { active_melody_name = n; }
     void setCreatorCount(int c) { creator_count = c; }
-    void loadCreatorNotes(const SoundNote* notes, int count) { creator_count = min(count, 64); for (int i = 0; i < creator_count; i++) creator_notes[i] = notes[i]; creator_cursor = 0; creator_edit_field = 0; }
+    void loadCreatorNotes(const SoundNote* notes, int count) {
+        if (count <= 0 || !notes) {
+            creator_notes[0] = { 2700, 200 };
+            creator_count = 1;
+        } else {
+            creator_count = min(count, 64);
+            for (int i = 0; i < creator_count; i++) creator_notes[i] = notes[i];
+        }
+        creator_cursor = 0;
+        creator_edit_field = 0;
+    }
 
-    int metronome_bpm;
-    bool metronome_active;
-    int metronome_beat;
-    uint32_t last_metronome_tick;
+    int metronome_bpm = 120;
+    bool metronome_active = false;
+    int metronome_beat = 0;
+    uint32_t last_metronome_tick = 0;
 
     uint16_t lab_freq;
     uint8_t lab_duty;

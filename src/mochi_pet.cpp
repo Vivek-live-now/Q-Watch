@@ -57,7 +57,9 @@ MochiPet::MochiPet()
       petting_timer(0.0f),
       emote_override_timer(0.0f),
       picker_selection(0),
-      picker_offset(0)
+      picker_offset(0),
+      is_playing_anim(false),
+      auto_play_timer(0.0f)
 {
     wind_line_x[0] = 128.0f;
     wind_line_x[1] = 96.0f;
@@ -68,6 +70,39 @@ MochiPet::MochiPet()
 void MochiPet::begin() {
     updateMoodLed();
     triggerSound(MochiSound::HAPPY_CHIRP);
+}
+
+bool MochiPet::playAnim(const char* name, bool loop) {
+    if (!name || strlen(name) == 0) return false;
+    char path[64];
+    snprintf(path, sizeof(path), "/mochi/%s.anim", name);
+    return playAnimFile(path, loop);
+}
+
+bool MochiPet::playAnimFile(const char* filepath, bool loop) {
+#ifdef ARDUINO
+    if (animEngine.open(filepath)) {
+        animEngine.setLoop(loop);
+        animEngine.play();
+        is_playing_anim = true;
+        return true;
+    }
+#else
+    (void)filepath; (void)loop;
+    is_playing_anim = true;
+    return true;
+#endif
+    return false;
+}
+
+void MochiPet::stopAnim() {
+#ifdef ARDUINO
+    if (is_playing_anim) {
+        animEngine.stop();
+        animEngine.close();
+    }
+#endif
+    is_playing_anim = false;
 }
 
 const char* MochiPet::getEmoteName(MochiEmote emote) const {
@@ -100,12 +135,16 @@ void MochiPet::setEmote(MochiEmote emote, uint32_t duration_ms) {
 void MochiPet::nextEmote() {
     uint8_t next = (static_cast<uint8_t>(current_emote) + 1) % static_cast<uint8_t>(MochiEmote::COUNT);
     setEmote(static_cast<MochiEmote>(next));
+    auto_play_timer = 0.0f;
+    stopAnim();
 }
 
 void MochiPet::prevEmote() {
     uint8_t total = static_cast<uint8_t>(MochiEmote::COUNT);
     uint8_t prev = (static_cast<uint8_t>(current_emote) + total - 1) % total;
     setEmote(static_cast<MochiEmote>(prev));
+    auto_play_timer = 0.0f;
+    stopAnim();
 }
 
 void MochiPet::setHelmet(MochiHelmet helmet) {
@@ -146,6 +185,7 @@ void MochiPet::pet() {
     }
     petting_active = true;
     petting_timer = 1.8f;
+    auto_play_timer = 0.0f;
     happiness = (happiness + 15 > 100) ? 100 : (happiness + 15);
     friendship_xp += 10;
     if (friendship_xp >= static_cast<uint16_t>(friendship_level * 100)) {
@@ -153,6 +193,7 @@ void MochiPet::pet() {
         if (friendship_level < 10) friendship_level++;
     }
 
+    playAnim("love");
     setEmote(MochiEmote::LOVE, 1800);
     triggerSound(MochiSound::LOVE_CHIME);
 }
@@ -164,9 +205,11 @@ void MochiPet::feed() {
     }
     feeding_active = true;
     feeding_timer = 2.5f;
+    auto_play_timer = 0.0f;
     snack_x = 118.0f;
     snack_y = 38.0f;
     chew_counter = 0;
+    playAnim("sushi");
     setEmote(MochiEmote::EXCITED, 2500);
     triggerSound(MochiSound::HAPPY_CHIRP);
 }
@@ -176,6 +219,8 @@ void MochiPet::toggleSleep() {
         wakeUp();
     } else {
         is_sleeping = true;
+        auto_play_timer = 0.0f;
+        stopAnim();
         setEmote(MochiEmote::SLEEPING);
         triggerSound(MochiSound::SNORE);
     }
@@ -185,6 +230,7 @@ void MochiPet::wakeUp() {
     if (is_sleeping) {
         is_sleeping = false;
         idle_timer = 0.0f;
+        auto_play_timer = 0.0f;
         setEmote(MochiEmote::HAPPY, 1500);
         triggerSound(MochiSound::WAKEUP);
     }
@@ -209,6 +255,7 @@ void MochiPet::updatePhysics(float pitch, float roll, float ax, float ay, float 
             wakeUp();
         }
         idle_timer = 0.0f;
+        auto_play_timer = 0.0f;
     }
 
     // 3. Shake Detection (triggers Dizzy mode)
@@ -216,6 +263,8 @@ void MochiPet::updatePhysics(float pitch, float roll, float ax, float ay, float 
     if (accel_mag > 2.2f && !is_dizzy && !is_sleeping) {
         is_dizzy = true;
         dizzy_timer = 3.5f;
+        auto_play_timer = 0.0f;
+        playAnim("dizzy");
         setEmote(MochiEmote::DIZZY, 3500);
         triggerSound(MochiSound::DIZZY_STUMBLE);
     }
@@ -229,6 +278,15 @@ void MochiPet::updatePhysics(float pitch, float roll, float ax, float ay, float 
 void MochiPet::update(float dt) {
     if (dt <= 0.0f) dt = 0.033f;
     anim_timer += dt;
+
+#ifdef ARDUINO
+    // 0. Update Animation Engine if playing .anim file
+    if (is_playing_anim) {
+        if (!animEngine.update() || !animEngine.isPlaying()) {
+            stopAnim();
+        }
+    }
+#endif
 
     // 1. Breathing Cycle (~0.8 Hz)
     breath_phase = sinf(anim_timer * 3.5f) * 1.5f;
@@ -327,9 +385,18 @@ void MochiPet::update(float dt) {
         }
     }
 
-    // 12. Idle Timer -> Auto Sleep
+    // 12. Idle Timer -> Auto Sleep & Idle Animations
     if (!is_sleeping && !feeding_active && !petting_active) {
         idle_timer += dt;
+        auto_play_timer += dt;
+        if (auto_play_timer > 25.0f && !is_playing_anim && submode == MochiSubmode::INTERACTIVE) {
+            auto_play_timer = 0.0f;
+            static const char* const idle_anims[] = {
+                "wink", "smile", "sparkle", "giggle", "playful", "relaxed", "hello", "dancing"
+            };
+            int idx = static_cast<int>(anim_timer) % 8;
+            playAnim(idle_anims[idx]);
+        }
         if (idle_timer > 22.0f && current_emote != MochiEmote::SLEEPY) {
             setEmote(MochiEmote::SLEEPY);
         }
@@ -379,9 +446,22 @@ void MochiPet::pickerSelect() {
         setEmote(static_cast<MochiEmote>(picker_selection));
         submode = MochiSubmode::INTERACTIVE;
         triggerSound(MochiSound::HAPPY_CHIRP);
+        auto_play_timer = 0.0f;
+        static const char* const anim_map[] = {
+            "happy", "love", "laughing", "wink", "serene",
+            "smile", "handsome", "angry", "irritated", "distracted",
+            "shy", "drowsy", "sleepy", "dizzy", "speed", "sparkle", "gundam"
+        };
+        if (picker_selection < 17) {
+            playAnim(anim_map[picker_selection]);
+        }
     } else if (submode == MochiSubmode::HELMET_PICKER) {
         setHelmet(static_cast<MochiHelmet>(picker_selection));
         submode = MochiSubmode::INTERACTIVE;
+        auto_play_timer = 0.0f;
+        if (picker_selection == 1) { // GUNDAM
+            playAnim("gundam");
+        }
     }
 }
 
@@ -504,6 +584,11 @@ void MochiPet::updateMoodLed() {
 // ARDUINO OLED PROCEDURAL VECTOR RENDERING ENGINE
 // -------------------------------------------------------------
 void MochiPet::render(U8G2& display) {
+    if (is_playing_anim) {
+        animEngine.drawFrame(0, 0);
+        return;
+    }
+
     if (submode == MochiSubmode::STATS_HUD) {
         // === STATS & TAMAGOTCHI COCKPIT ===
         display.setFont(u8g2_font_6x10_tf);
@@ -568,7 +653,9 @@ void MochiPet::render(U8G2& display) {
         // Mini preview box on right
         display.drawFrame(92, 16, 34, 45);
         display.drawStr(95, 26, "PREV");
-        display.drawCircle(109, 44, 10);
+        display.drawRFrame(96, 32, 26, 24, 4);
+        display.drawBox(101, 38, 4, 8);
+        display.drawBox(113, 38, 4, 8);
         return;
     }
 
@@ -634,248 +721,189 @@ void MochiPet::render(U8G2& display) {
             break;
     }
 
-    // 2. Eyes & Pupils
-    int16_t lx = cx - 18 + static_cast<int16_t>(pupil_dx);
-    int16_t rx = cx + 18 + static_cast<int16_t>(pupil_dx);
-    int16_t ey = cy - 2 + static_cast<int16_t>(pupil_dy);
+    // 2. Authentic Dasai Mochi Eyes & Pupils
+    int16_t lx = cx - 38 + static_cast<int16_t>(pupil_dx);
+    int16_t rx = cx + 14 + static_cast<int16_t>(pupil_dx);
+    int16_t ey = cy - 13 + static_cast<int16_t>(pupil_dy);
+    int16_t my = cy + 11;
 
     if (is_blinking) {
-        // Natural eye blink slit
-        display.drawLine(lx - 8, ey, lx + 8, ey);
-        display.drawLine(rx - 8, ey, rx + 8, ey);
+        // Natural multi-stage organic squashing blink
+        if (blink_phase < 0.25f || blink_phase >= 0.70f) {
+            mochi_draw_u8g2(display, lx, ey + 6, MOCHI_EYE_BLINK_HALF_W, MOCHI_EYE_BLINK_HALF_H, mochi_eye_blink_half);
+            mochi_draw_u8g2(display, rx, ey + 6, MOCHI_EYE_BLINK_HALF_W, MOCHI_EYE_BLINK_HALF_H, mochi_eye_blink_half);
+        } else {
+            mochi_draw_u8g2(display, lx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+            mochi_draw_u8g2(display, rx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+        }
     } else {
         switch (current_emote) {
             case MochiEmote::HAPPY:
-                // Smiling curved arcs ^ ^
-                display.drawLine(lx - 8, ey + 2, lx, ey - 5);
-                display.drawLine(lx, ey - 5, lx + 8, ey + 2);
-                display.drawLine(rx - 8, ey + 2, rx, ey - 5);
-                display.drawLine(rx, ey - 5, rx + 8, ey + 2);
+                mochi_draw_u8g2(display, cx - 39 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_L_W, MOCHI_EYE_HAPPY_L_H, mochi_eye_happy_l);
+                mochi_draw_u8g2(display, cx + 13 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_R_W, MOCHI_EYE_HAPPY_R_H, mochi_eye_happy_r);
+                mochi_draw_u8g2(display, cx - 10, my, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+                // Cute blush marks
+                display.drawLine(cx - 28, cy + 9, cx - 24, cy + 13);
+                display.drawLine(cx - 24, cy + 9, cx - 20, cy + 13);
+                display.drawLine(cx + 20, cy + 9, cx + 24, cy + 13);
+                display.drawLine(cx + 24, cy + 9, cx + 28, cy + 13);
                 break;
 
             case MochiEmote::LOVE: {
-                // Pulsing Heart Eyes
-                int r = static_cast<int>(3.5f * heart_pulse);
-                display.drawDisc(lx - r, ey - 2, r);
-                display.drawDisc(lx + r, ey - 2, r);
-                display.drawTriangle(lx - 2 * r, ey - 1, lx + 2 * r, ey - 1, lx, ey + 2 * r + 2);
-
-                display.drawDisc(rx - r, ey - 2, r);
-                display.drawDisc(rx + r, ey - 2, r);
-                display.drawTriangle(rx - 2 * r, ey - 1, rx + 2 * r, ey - 1, rx, ey + 2 * r + 2);
+                int pulse_shift = (heart_pulse > 1.1f) ? -1 : 0;
+                mochi_draw_u8g2(display, cx - 37 + static_cast<int16_t>(pupil_dx), ey + 3 + pulse_shift, MOCHI_EYE_LOVE_W, MOCHI_EYE_LOVE_H, mochi_eye_love);
+                mochi_draw_u8g2(display, cx + 15 + static_cast<int16_t>(pupil_dx), ey + 3 + pulse_shift, MOCHI_EYE_LOVE_W, MOCHI_EYE_LOVE_H, mochi_eye_love);
+                mochi_draw_u8g2(display, cx - 10, my, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+                // Cute blush marks
+                display.drawLine(cx - 28, cy + 9, cx - 24, cy + 13);
+                display.drawLine(cx - 24, cy + 9, cx - 20, cy + 13);
+                display.drawLine(cx + 20, cy + 9, cx + 24, cy + 13);
+                display.drawLine(cx + 24, cy + 9, cx + 28, cy + 13);
                 break;
             }
 
             case MochiEmote::LAUGH:
-                // Squinting chevrons ><
-                display.drawLine(lx - 7, ey - 5, lx + 3, ey);
-                display.drawLine(lx + 3, ey, lx - 7, ey + 5);
-                display.drawLine(rx + 7, ey - 5, rx - 3, ey);
-                display.drawLine(rx - 3, ey, rx + 7, ey + 5);
+                mochi_draw_u8g2(display, cx - 38 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_LAUGH_L_W, MOCHI_EYE_LAUGH_L_H, mochi_eye_laugh_l);
+                mochi_draw_u8g2(display, cx + 14 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_LAUGH_R_W, MOCHI_EYE_LAUGH_R_H, mochi_eye_laugh_r);
+                mochi_draw_u8g2(display, cx - 12, my, MOCHI_MOUTH_LAUGH_W, MOCHI_MOUTH_LAUGH_H, mochi_mouth_laugh);
+                // Cheeks
+                display.drawLine(cx - 28, cy + 9, cx - 24, cy + 13);
+                display.drawLine(cx - 24, cy + 9, cx - 20, cy + 13);
+                display.drawLine(cx + 20, cy + 9, cx + 24, cy + 13);
+                display.drawLine(cx + 24, cy + 9, cx + 28, cy + 13);
                 break;
 
             case MochiEmote::EXCITED:
-                // Winking Left Chevron, Wide Right Eye
-                display.drawLine(lx - 6, ey - 4, lx + 2, ey);
-                display.drawLine(lx + 2, ey, lx - 6, ey + 4);
-                display.drawDisc(rx, ey, 6);
-                display.setDrawColor(0);
-                display.drawDisc(rx - 1, ey - 1, 2); // highlight
-                display.setDrawColor(1);
-                break;
-
-            case MochiEmote::RELAXED:
-                // Gentle wavy eyes ~ ~
-                display.drawLine(lx - 7, ey, lx - 3, ey - 2);
-                display.drawLine(lx - 3, ey - 2, lx + 2, ey + 2);
-                display.drawLine(lx + 2, ey + 2, lx + 7, ey);
-                display.drawLine(rx - 7, ey, rx - 3, ey - 2);
-                display.drawLine(rx - 3, ey - 2, rx + 2, ey + 2);
-                display.drawLine(rx + 2, ey + 2, rx + 7, ey);
-                break;
-
-            case MochiEmote::CONTENT:
-                display.drawDisc(lx, ey, 5);
-                display.drawDisc(rx, ey, 5);
-                display.setDrawColor(0);
-                display.drawPixel(lx + 1, ey - 1);
-                display.drawPixel(rx + 1, ey - 1);
-                display.setDrawColor(1);
-                break;
-
-            case MochiEmote::PROUD:
-                // Raised tilted eyebrows
-                display.drawLine(lx - 8, ey - 6, lx + 6, ey - 8);
-                display.drawLine(rx - 6, ey - 8, rx + 8, ey - 6);
-                display.drawDisc(lx, ey, 4);
-                display.drawDisc(rx, ey, 4);
+                // Wink: Left squint, Right wide open surprised eye
+                mochi_draw_u8g2(display, cx - 38 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_LAUGH_L_W, MOCHI_EYE_LAUGH_L_H, mochi_eye_laugh_l);
+                mochi_draw_u8g2(display, rx, ey - 3, MOCHI_EYE_SURPRISED_W, MOCHI_EYE_SURPRISED_H, mochi_eye_surprised);
+                mochi_draw_u8g2(display, cx - 10, my, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
                 break;
 
             case MochiEmote::ANGRY:
-                // Slanted sharp eyebrows \ /
-                display.drawLine(lx - 9, ey - 8, lx + 7, ey - 2);
-                display.drawLine(rx - 7, ey - 2, rx + 9, ey - 8);
-                display.drawBox(lx - 5, ey - 2, 10, 4);
-                display.drawBox(rx - 5, ey - 2, 10, 4);
-                break;
-
-            case MochiEmote::FRUSTRATED:
-                display.drawHLine(lx - 7, ey - 4, 14);
-                display.drawHLine(rx - 7, ey - 4, 14);
-                display.drawDisc(lx, ey + 1, 3);
-                display.drawDisc(rx, ey + 1, 3);
-                // Dripping sweat bead
-                display.drawDisc(cx - 30, cy - 8, 2);
-                display.drawLine(cx - 30, cy - 11, cx - 30, cy - 8);
-                break;
-
-            case MochiEmote::CONFUSED:
-                // Big left eye, tiny right eye
-                display.drawCircle(lx, ey, 7);
-                display.drawDisc(lx, ey, 3);
-                display.drawDisc(rx, ey + 2, 2);
-                // Question mark
-                display.drawStr(rx + 8, cy - 6, "?");
-                break;
-
-            case MochiEmote::EMBARRASSED:
-                display.drawDisc(lx - 2, ey + 2, 4);
-                display.drawDisc(rx - 2, ey + 2, 4);
-                // Heavy blushing hatching ///
-                display.drawLine(cx - 32, cy + 4, cx - 28, cy + 9);
-                display.drawLine(cx - 28, cy + 4, cx - 24, cy + 9);
-                display.drawLine(cx + 24, cy + 4, cx + 28, cy + 9);
-                display.drawLine(cx + 28, cy + 4, cx + 32, cy + 9);
+                mochi_draw_u8g2(display, cx - 38 + static_cast<int16_t>(pupil_dx), ey + 1, MOCHI_EYE_ANGRY_L_W, MOCHI_EYE_ANGRY_L_H, mochi_eye_angry_l);
+                mochi_draw_u8g2(display, cx + 14 + static_cast<int16_t>(pupil_dx), ey + 1, MOCHI_EYE_ANGRY_R_W, MOCHI_EYE_ANGRY_R_H, mochi_eye_angry_r);
+                mochi_draw_u8g2(display, cx - 8, my + 1, MOCHI_MOUTH_ANGRY_W, MOCHI_MOUTH_ANGRY_H, mochi_mouth_angry);
                 break;
 
             case MochiEmote::SLEEPY:
-                // Drooping 70% closed eyelids
-                display.drawDisc(lx, ey, 5);
-                display.drawDisc(rx, ey, 5);
-                display.setDrawColor(0);
-                display.drawBox(lx - 6, ey - 6, 12, 6);
-                display.drawBox(rx - 6, ey - 6, 12, 6);
-                display.setDrawColor(1);
-                display.drawHLine(lx - 6, ey, 12);
-                display.drawHLine(rx - 6, ey, 12);
+                mochi_draw_u8g2(display, lx, ey + 8, MOCHI_EYE_SLEEPY_W, MOCHI_EYE_SLEEPY_H, mochi_eye_sleepy);
+                mochi_draw_u8g2(display, rx, ey + 8, MOCHI_EYE_SLEEPY_W, MOCHI_EYE_SLEEPY_H, mochi_eye_sleepy);
+                mochi_draw_u8g2(display, cx - 8, my - 2, MOCHI_MOUTH_YAWN_W, MOCHI_MOUTH_YAWN_H, mochi_mouth_yawn);
                 break;
 
             case MochiEmote::SLEEPING:
-                // Closed curved eye lines - -
-                display.drawLine(lx - 7, ey, lx + 7, ey);
-                display.drawLine(rx - 7, ey, rx + 7, ey);
+                mochi_draw_u8g2(display, lx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+                mochi_draw_u8g2(display, rx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
                 // Floating Zzz
-                display.drawStr(cx + 18, cy - 10 - static_cast<int>(zzz_offset), "z");
-                display.drawStr(cx + 25, cy - 16 - static_cast<int>(zzz_offset), "Z");
+                display.drawStr(cx + 20, cy - 10 - static_cast<int>(zzz_offset), "z");
+                display.drawStr(cx + 28, cy - 16 - static_cast<int>(zzz_offset), "Z");
                 break;
 
             case MochiEmote::DIZZY: {
-                // Spinning Spiral Eyes & Orbiting Stars
-                display.drawCircle(lx, ey, 5);
-                display.drawCircle(lx, ey, 2);
-                display.drawCircle(rx, ey, 5);
-                display.drawCircle(rx, ey, 2);
-
+                mochi_draw_u8g2(display, cx - 37 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_DIZZY_W, MOCHI_EYE_DIZZY_H, mochi_eye_dizzy);
+                mochi_draw_u8g2(display, cx + 15 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_DIZZY_W, MOCHI_EYE_DIZZY_H, mochi_eye_dizzy);
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
                 // Orbiting Stars
-                int16_t star1_x = cx + static_cast<int16_t>(cosf(star_orbit_angle) * 22.0f);
-                int16_t star1_y = cy - 14 + static_cast<int16_t>(sinf(star_orbit_angle) * 6.0f);
-                display.drawPixel(star1_x, star1_y);
-                display.drawPixel(star1_x - 1, star1_y);
-                display.drawPixel(star1_x + 1, star1_y);
-                display.drawPixel(star1_x, star1_y - 1);
-                display.drawPixel(star1_x, star1_y + 1);
+                int16_t s1x = cx + static_cast<int16_t>(cosf(star_orbit_angle) * 24.0f);
+                int16_t s1y = cy - 18 + static_cast<int16_t>(sinf(star_orbit_angle) * 6.0f);
+                display.drawPixel(s1x, s1y); display.drawPixel(s1x - 1, s1y); display.drawPixel(s1x + 1, s1y);
+                display.drawPixel(s1x, s1y - 1); display.drawPixel(s1x, s1y + 1);
+                int16_t s2x = cx - static_cast<int16_t>(cosf(star_orbit_angle) * 24.0f);
+                int16_t s2y = cy - 18 - static_cast<int16_t>(sinf(star_orbit_angle) * 6.0f);
+                display.drawPixel(s2x, s2y); display.drawPixel(s2x - 1, s2y); display.drawPixel(s2x + 1, s2y);
+                display.drawPixel(s2x, s2y - 1); display.drawPixel(s2x, s2y + 1);
                 break;
             }
 
+            case MochiEmote::CONFUSED:
+                mochi_draw_u8g2(display, lx, ey - 3, MOCHI_EYE_SURPRISED_W, MOCHI_EYE_SURPRISED_H, mochi_eye_surprised);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                display.drawStr(rx + 26, cy - 6, "?");
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
+                break;
+
+            case MochiEmote::PROUD:
+                mochi_draw_u8g2(display, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                display.drawLine(lx - 2, ey - 4, lx + 22, ey - 7);
+                display.drawLine(rx + 2, ey - 7, rx + 26, ey - 4);
+                mochi_draw_u8g2(display, cx - 10, my, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+                break;
+
+            case MochiEmote::FRUSTRATED:
+                mochi_draw_u8g2(display, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                display.drawHLine(lx, ey - 4, 24);
+                display.drawHLine(rx, ey - 4, 24);
+                // Dripping sweat bead
+                display.drawDisc(cx - 32, cy - 8, 2);
+                display.drawLine(cx - 32, cy - 11, cx - 32, cy - 8);
+                mochi_draw_u8g2(display, cx - 8, my + 1, MOCHI_MOUTH_ANGRY_W, MOCHI_MOUTH_ANGRY_H, mochi_mouth_angry);
+                break;
+
+            case MochiEmote::EMBARRASSED:
+                mochi_draw_u8g2(display, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                display.drawLine(cx - 32, cy + 6, cx - 28, cy + 11);
+                display.drawLine(cx - 28, cy + 6, cx - 24, cy + 11);
+                display.drawLine(cx + 24, cy + 6, cx + 28, cy + 11);
+                display.drawLine(cx + 28, cy + 6, cx + 32, cy + 11);
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
+                break;
+
             case MochiEmote::DRIVING:
-                // Narrow racing eyes with visor sheen
-                display.drawBox(lx - 7, ey - 2, 14, 5);
-                display.drawBox(rx - 7, ey - 2, 14, 5);
-                // Wind streaks
+                mochi_draw_u8g2(display, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
                 for (int i = 0; i < 4; i++) {
                     int16_t wx = static_cast<int16_t>(wind_line_x[i]);
-                    display.drawHLine(wx, 8 + i * 14, 18);
+                    display.drawHLine(wx, 8 + i * 14, 20);
                 }
                 break;
 
             case MochiEmote::MUSIC:
-                display.drawDisc(lx, ey, 5);
-                display.drawDisc(rx, ey, 5);
-                // Floating Eighth Note
-                display.drawDisc(cx + 26, cy - static_cast<int16_t>(note_float_y), 2);
-                display.drawVLine(cx + 28, cy - static_cast<int16_t>(note_float_y) - 6, 6);
-                display.drawHLine(cx + 28, cy - static_cast<int16_t>(note_float_y) - 6, 4);
+                mochi_draw_u8g2(display, cx - 39 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_L_W, MOCHI_EYE_HAPPY_L_H, mochi_eye_happy_l);
+                mochi_draw_u8g2(display, cx + 13 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_R_W, MOCHI_EYE_HAPPY_R_H, mochi_eye_happy_r);
+                mochi_draw_u8g2(display, cx - 10, my, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+                {
+                    int16_t ny = cy - static_cast<int16_t>(note_float_y);
+                    display.drawDisc(cx + 28, ny, 2);
+                    display.drawVLine(cx + 30, ny - 6, 6);
+                    display.drawHLine(cx + 30, ny - 6, 4);
+                }
                 break;
 
             case MochiEmote::GUNDAM:
-                // Mech Visor Optics
-                display.drawBox(lx - 6, ey - 3, 12, 6);
-                display.drawBox(rx - 6, ey - 3, 12, 6);
-                display.drawLine(cx - 30, cy, cx + 30, cy);
+                display.drawBox(lx, ey + 8, 24, 8);
+                display.drawBox(rx, ey + 8, 24, 8);
+                display.drawLine(cx - 38, cy + 12, cx + 38, cy + 12);
                 break;
 
             default:
-                display.drawDisc(lx, ey, 5);
-                display.drawDisc(rx, ey, 5);
+                mochi_draw_u8g2(display, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+                mochi_draw_u8g2(display, cx - 7, my, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
                 break;
         }
     }
 
-    // 3. Cute Cheeks (Blush)
-    if (current_emote == MochiEmote::HAPPY || current_emote == MochiEmote::LOVE || current_emote == MochiEmote::LAUGH) {
-        display.drawLine(cx - 26, cy + 8, cx - 22, cy + 12);
-        display.drawLine(cx - 22, cy + 8, cx - 18, cy + 12);
-        display.drawLine(cx + 18, cy + 8, cx + 22, cy + 12);
-        display.drawLine(cx + 22, cy + 8, cx + 26, cy + 12);
-    }
-
-    // 4. Mouth
-    int16_t my = cy + 10;
+    // 3. Feeding Snack Sprite & Munching
     if (feeding_active) {
-        // Munching animation
-        if ((chew_counter / 4) % 2 == 0) {
-            display.drawDisc(cx, my, 4); // open mouth
-        } else {
-            display.drawLine(cx - 4, my, cx + 4, my); // closed mouth
+        if (snack_x <= 68.0f && (chew_counter / 4) % 2 == 0) {
+            display.drawDisc(cx, my + 2, 4); // open chewing mouth
         }
-    } else {
-        switch (current_emote) {
-            case MochiEmote::HAPPY:
-            case MochiEmote::LOVE:
-            case MochiEmote::CONTENT:
-                display.drawLine(cx - 3, my, cx, my + 2);
-                display.drawLine(cx, my + 2, cx + 3, my);
-                break;
-            case MochiEmote::LAUGH:
-            case MochiEmote::EXCITED:
-                display.drawTriangle(cx - 4, my, cx + 4, my, cx, my + 4);
-                break;
-            case MochiEmote::ANGRY:
-                display.drawLine(cx - 4, my + 2, cx, my);
-                display.drawLine(cx, my, cx + 4, my + 2);
-                break;
-            case MochiEmote::SLEEPY:
-                display.drawCircle(cx, my + 1, 3); // yawn
-                break;
-            default:
-                display.drawHLine(cx - 3, my, 6);
-                break;
-        }
-    }
-
-    // 5. Feeding Snack Sprite
-    if (feeding_active) {
         int16_t sx = static_cast<int16_t>(snack_x);
         int16_t sy = static_cast<int16_t>(snack_y);
-        // Onigiri triangle with nori
-        display.drawTriangle(sx, sy - 4, sx - 4, sy + 3, sx + 4, sy + 3);
-        display.drawBox(sx - 1, sy + 1, 3, 2);
+        display.drawTriangle(sx, sy - 5, sx - 5, sy + 4, sx + 5, sy + 4);
+        display.drawBox(sx - 2, sy + 1, 4, 3);
     }
 
-    // 6. Petting Floating Hearts
+    // 4. Petting Floating Hearts
     if (petting_active) {
-        int16_t hx = cx - 20 + static_cast<int16_t>(sinf(anim_timer * 10.0f) * 6.0f);
-        int16_t hy = cy - 22;
+        int16_t hx = cx - 18 + static_cast<int16_t>(sinf(anim_timer * 10.0f) * 6.0f);
+        int16_t hy = cy - 24;
         display.drawDisc(hx - 2, hy, 2);
         display.drawDisc(hx + 2, hy, 2);
         display.drawTriangle(hx - 4, hy + 1, hx + 4, hy + 1, hx, hy + 5);
@@ -893,7 +921,7 @@ void MochiPet::renderToBuffer(uint8_t* buffer, int width, int height) {
     auto set_pixel = [buffer, width, height](int x, int y) {
         if (x >= 0 && x < width && y >= 0 && y < height) {
             int byte_idx = (y * (width / 8)) + (x / 8);
-            buffer[byte_idx] |= (1 << (x % 8));
+            buffer[byte_idx] |= (1 << (7 - (x % 8)));
         }
     };
 
@@ -910,15 +938,50 @@ void MochiPet::renderToBuffer(uint8_t* buffer, int width, int height) {
         set_pixel(cx + 40, y);
     }
 
-    // Draw eyes
-    int16_t lx = cx - 18 + static_cast<int16_t>(pupil_dx);
-    int16_t rx = cx + 18 + static_cast<int16_t>(pupil_dx);
-    int16_t ey = cy - 2 + static_cast<int16_t>(pupil_dy);
+    int16_t lx = cx - 38 + static_cast<int16_t>(pupil_dx);
+    int16_t rx = cx + 14 + static_cast<int16_t>(pupil_dx);
+    int16_t ey = cy - 13 + static_cast<int16_t>(pupil_dy);
 
-    for (int dx = -3; dx <= 3; dx++) {
-        for (int dy = -3; dy <= 3; dy++) {
-            set_pixel(lx + dx, ey + dy);
-            set_pixel(rx + dx, ey + dy);
-        }
+    switch (current_emote) {
+        case MochiEmote::HAPPY:
+            mochi_blit_mono(buffer, width, height, cx - 39 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_L_W, MOCHI_EYE_HAPPY_L_H, mochi_eye_happy_l);
+            mochi_blit_mono(buffer, width, height, cx + 13 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_HAPPY_R_W, MOCHI_EYE_HAPPY_R_H, mochi_eye_happy_r);
+            mochi_blit_mono(buffer, width, height, cx - 10, cy + 11, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+            break;
+        case MochiEmote::LOVE:
+            mochi_blit_mono(buffer, width, height, cx - 37 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_LOVE_W, MOCHI_EYE_LOVE_H, mochi_eye_love);
+            mochi_blit_mono(buffer, width, height, cx + 15 + static_cast<int16_t>(pupil_dx), ey + 3, MOCHI_EYE_LOVE_W, MOCHI_EYE_LOVE_H, mochi_eye_love);
+            mochi_blit_mono(buffer, width, height, cx - 10, cy + 11, MOCHI_MOUTH_HAPPY_W, MOCHI_MOUTH_HAPPY_H, mochi_mouth_happy);
+            break;
+        case MochiEmote::LAUGH:
+            mochi_blit_mono(buffer, width, height, cx - 38 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_LAUGH_L_W, MOCHI_EYE_LAUGH_L_H, mochi_eye_laugh_l);
+            mochi_blit_mono(buffer, width, height, cx + 14 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_LAUGH_R_W, MOCHI_EYE_LAUGH_R_H, mochi_eye_laugh_r);
+            mochi_blit_mono(buffer, width, height, cx - 12, cy + 11, MOCHI_MOUTH_LAUGH_W, MOCHI_MOUTH_LAUGH_H, mochi_mouth_laugh);
+            break;
+        case MochiEmote::ANGRY:
+            mochi_blit_mono(buffer, width, height, cx - 38 + static_cast<int16_t>(pupil_dx), ey + 1, MOCHI_EYE_ANGRY_L_W, MOCHI_EYE_ANGRY_L_H, mochi_eye_angry_l);
+            mochi_blit_mono(buffer, width, height, cx + 14 + static_cast<int16_t>(pupil_dx), ey + 1, MOCHI_EYE_ANGRY_R_W, MOCHI_EYE_ANGRY_R_H, mochi_eye_angry_r);
+            mochi_blit_mono(buffer, width, height, cx - 8, cy + 12, MOCHI_MOUTH_ANGRY_W, MOCHI_MOUTH_ANGRY_H, mochi_mouth_angry);
+            break;
+        case MochiEmote::SLEEPY:
+            mochi_blit_mono(buffer, width, height, lx, ey + 8, MOCHI_EYE_SLEEPY_W, MOCHI_EYE_SLEEPY_H, mochi_eye_sleepy);
+            mochi_blit_mono(buffer, width, height, rx, ey + 8, MOCHI_EYE_SLEEPY_W, MOCHI_EYE_SLEEPY_H, mochi_eye_sleepy);
+            mochi_blit_mono(buffer, width, height, cx - 8, cy + 9, MOCHI_MOUTH_YAWN_W, MOCHI_MOUTH_YAWN_H, mochi_mouth_yawn);
+            break;
+        case MochiEmote::SLEEPING:
+            mochi_blit_mono(buffer, width, height, lx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+            mochi_blit_mono(buffer, width, height, rx, ey + 11, MOCHI_EYE_BLINK_SLIT_W, MOCHI_EYE_BLINK_SLIT_H, mochi_eye_blink_slit);
+            mochi_blit_mono(buffer, width, height, cx - 7, cy + 11, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
+            break;
+        case MochiEmote::DIZZY:
+            mochi_blit_mono(buffer, width, height, cx - 37 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_DIZZY_W, MOCHI_EYE_DIZZY_H, mochi_eye_dizzy);
+            mochi_blit_mono(buffer, width, height, cx + 15 + static_cast<int16_t>(pupil_dx), ey + 2, MOCHI_EYE_DIZZY_W, MOCHI_EYE_DIZZY_H, mochi_eye_dizzy);
+            mochi_blit_mono(buffer, width, height, cx - 7, cy + 11, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
+            break;
+        default:
+            mochi_blit_mono(buffer, width, height, lx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+            mochi_blit_mono(buffer, width, height, rx, ey, MOCHI_EYE_CAPSULE_W, MOCHI_EYE_CAPSULE_H, mochi_eye_capsule);
+            mochi_blit_mono(buffer, width, height, cx - 7, cy + 11, MOCHI_MOUTH_RESTING_W, MOCHI_MOUTH_RESTING_H, mochi_mouth_resting);
+            break;
     }
 }

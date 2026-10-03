@@ -9,16 +9,29 @@ KeyboardManager keyboardManager;
 // Row 1: Symbols / Letters
 // Row 2: Control keys (OK, CAP, DEL, SPC, CANCEL)
 
+// Page 0: Lowercase letters
 static const char* const ALPHA_ROW0_LOWER[] = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"};
-static const char* const ALPHA_ROW0_UPPER[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
-
 static const char* const ALPHA_ROW1_LOWER[] = {"a", "s", "d", "f", "g", "h", "j", "k", "l", "@"};
-static const char* const ALPHA_ROW1_UPPER[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L", "_"};
+static const char* const ALPHA_ROW2_LOWER[] = {"z", "x", "c", "v", "b", "n", "m", ".", "-", "_"};
+static const char* const ALPHA_ROW3_LOWER[] = {"OK", "CAP", "123", "DEL", "SPC", "ESC"};
 
-static const char* const ALPHA_ROW2_LOWER[] = {"z", "x", "c", "v", "b", "n", "m", ".", "-", "/"};
-static const char* const ALPHA_ROW2_UPPER[] = {"Z", "X", "C", "V", "B", "N", "M", "1", "2", "3"};
+// Page 1: Uppercase letters
+static const char* const ALPHA_ROW0_UPPER[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
+static const char* const ALPHA_ROW1_UPPER[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L", "@"};
+static const char* const ALPHA_ROW2_UPPER[] = {"Z", "X", "C", "V", "B", "N", "M", ".", "-", "_"};
+static const char* const ALPHA_ROW3_UPPER[] = {"OK", "cap", "123", "DEL", "SPC", "ESC"};
 
-static const char* const ALPHA_ROW3_CTRL[]  = {"OK", "CAP", "DEL", "SPC", "ESC"};
+// Page 2: Numbers & Core Symbols
+static const char* const ALPHA_ROW0_NUM[]   = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+static const char* const ALPHA_ROW1_SYM1[]  = {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"};
+static const char* const ALPHA_ROW2_SYM1[]  = {"-", "_", "+", "=", "/", "\\", "?", ":", ";", "~"};
+static const char* const ALPHA_ROW3_NUM[]   = {"OK", "ABC", "#+=", "DEL", "SPC", "ESC"};
+
+// Page 3: Extended Symbols
+static const char* const ALPHA_ROW0_SYM2[]  = {"[", "]", "{", "}", "<", ">", "\"", "'", "`", "|"};
+static const char* const ALPHA_ROW1_SYM2[]  = {",", ".", ";", ":", "!", "?", "/", "\\", "*", "&"};
+static const char* const ALPHA_ROW2_SYM2[]  = {"$", "%", "^", "+", "=", "_", "-", "@", "#", "~"};
+static const char* const ALPHA_ROW3_SYM2[]  = {"OK", "ABC", "123", "DEL", "SPC", "ESC"};
 
 // Numeric layout
 static const char* const NUM_ROW0[] = {"1", "2", "3", "4", "5"};
@@ -34,25 +47,25 @@ KeyboardManager::KeyboardManager() :
     active(false),
     result(KeyboardResult::EDITING),
     mode(KeyboardMode::ALPHA),
+    page(KeyboardPage::LOWER),
     text_buffer(""),
     title(""),
     mask_input(false),
     max_len(32),
     cursor_row(0),
-    cursor_col(0),
-    caps(false) {}
+    cursor_col(0) {}
 
 void KeyboardManager::open(const String& initial_text, const String& t, KeyboardMode m, bool mask, int len) {
     text_buffer = initial_text;
     title = t;
     mode = m;
+    page = KeyboardPage::LOWER;
     mask_input = mask;
     max_len = len;
     active = true;
     result = KeyboardResult::EDITING;
     cursor_row = 0;
     cursor_col = 0;
-    caps = false;
 }
 
 int KeyboardManager::getRowCount() const {
@@ -62,7 +75,7 @@ int KeyboardManager::getRowCount() const {
 
 int KeyboardManager::getColCount(int row) const {
     if (mode == KeyboardMode::ALPHA) {
-        if (row == 3) return 5;
+        if (row == 3) return 6;
         return 10;
     } else if (mode == KeyboardMode::NUMERIC) {
         return 5;
@@ -75,10 +88,27 @@ int KeyboardManager::getColCount(int row) const {
 
 const char* KeyboardManager::getKeyLabel(int row, int col) const {
     if (mode == KeyboardMode::ALPHA) {
-        if (row == 0) return caps ? ALPHA_ROW0_UPPER[col] : ALPHA_ROW0_LOWER[col];
-        if (row == 1) return caps ? ALPHA_ROW1_UPPER[col] : ALPHA_ROW1_LOWER[col];
-        if (row == 2) return caps ? ALPHA_ROW2_UPPER[col] : ALPHA_ROW2_LOWER[col];
-        if (row == 3) return ALPHA_ROW3_CTRL[col];
+        if (page == KeyboardPage::LOWER) {
+            if (row == 0) return ALPHA_ROW0_LOWER[col];
+            if (row == 1) return ALPHA_ROW1_LOWER[col];
+            if (row == 2) return ALPHA_ROW2_LOWER[col];
+            if (row == 3) return ALPHA_ROW3_LOWER[col];
+        } else if (page == KeyboardPage::UPPER) {
+            if (row == 0) return ALPHA_ROW0_UPPER[col];
+            if (row == 1) return ALPHA_ROW1_UPPER[col];
+            if (row == 2) return ALPHA_ROW2_UPPER[col];
+            if (row == 3) return ALPHA_ROW3_UPPER[col];
+        } else if (page == KeyboardPage::NUM_SYM) {
+            if (row == 0) return ALPHA_ROW0_NUM[col];
+            if (row == 1) return ALPHA_ROW1_SYM1[col];
+            if (row == 2) return ALPHA_ROW2_SYM1[col];
+            if (row == 3) return ALPHA_ROW3_NUM[col];
+        } else if (page == KeyboardPage::EXT_SYM) {
+            if (row == 0) return ALPHA_ROW0_SYM2[col];
+            if (row == 1) return ALPHA_ROW1_SYM2[col];
+            if (row == 2) return ALPHA_ROW2_SYM2[col];
+            if (row == 3) return ALPHA_ROW3_SYM2[col];
+        }
     } else if (mode == KeyboardMode::NUMERIC) {
         if (row == 0) return NUM_ROW0[col];
         if (row == 1) return NUM_ROW1[col];
@@ -97,6 +127,24 @@ void KeyboardManager::handleInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent sel_evt = btnManager.getEvent(BTN_ID_SEL);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    // Cancel button: short = backspace/cancel, long = exit
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        if (text_buffer.length() > 0) {
+            text_buffer.remove(text_buffer.length() - 1);
+        } else {
+            result = KeyboardResult::CANCELLED;
+            active = false;
+        }
+        return;
+    } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        result = KeyboardResult::CANCELLED;
+        active = false;
+        return;
+    }
 
     // UP button short = previous col; repeat/long = previous row
     if (up_evt == BTN_EVT_SHORT_PRESS) {
@@ -152,7 +200,18 @@ void KeyboardManager::processKeyAction(int row, int col) {
         result = KeyboardResult::CONFIRMED;
         active = false;
     } else if (strcmp(label, "CAP") == 0) {
-        caps = !caps;
+        page = KeyboardPage::UPPER;
+    } else if (strcmp(label, "cap") == 0) {
+        page = KeyboardPage::LOWER;
+    } else if (strcmp(label, "123") == 0) {
+        page = KeyboardPage::NUM_SYM;
+        if (cursor_col >= getColCount(cursor_row)) cursor_col = getColCount(cursor_row) - 1;
+    } else if (strcmp(label, "ABC") == 0) {
+        page = KeyboardPage::LOWER;
+        if (cursor_col >= getColCount(cursor_row)) cursor_col = getColCount(cursor_row) - 1;
+    } else if (strcmp(label, "#+=") == 0) {
+        page = KeyboardPage::EXT_SYM;
+        if (cursor_col >= getColCount(cursor_row)) cursor_col = getColCount(cursor_row) - 1;
     } else if (strcmp(label, "DEL") == 0) {
         if (text_buffer.length() > 0) {
             text_buffer.remove(text_buffer.length() - 1);
@@ -172,3 +231,4 @@ void KeyboardManager::processKeyAction(int row, int col) {
         }
     }
 }
+

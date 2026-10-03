@@ -6,7 +6,14 @@
 enum class KeyboardMode {
     ALPHA,      // QWERTY / Alpha-numeric
     NUMERIC,    // Numpad 0-9, dot
-    HEX_MODE         // Hex 0-9, A-F
+    HEX_MODE    // Hex 0-9, A-F
+};
+
+enum class KeyboardPage {
+    LOWER = 0,
+    UPPER = 1,
+    NUM_SYM = 2,
+    EXT_SYM = 3
 };
 
 enum class KeyboardResult {
@@ -29,9 +36,10 @@ public:
     bool isMasked() const { return mask_input; }
 
     KeyboardMode getMode() const { return mode; }
+    KeyboardPage getPage() const { return page; }
     int getSelectedRow() const { return cursor_row; }
     int getSelectedCol() const { return cursor_col; }
-    bool isCaps() const { return caps; }
+    bool isCaps() const { return page == KeyboardPage::UPPER; }
 
     // Grid details
     int getRowCount() const;
@@ -42,6 +50,7 @@ private:
     bool active;
     KeyboardResult result;
     KeyboardMode mode;
+    KeyboardPage page;
     String text_buffer;
     String title;
     bool mask_input;
@@ -49,7 +58,6 @@ private:
 
     int cursor_row;
     int cursor_col;
-    bool caps;
 
     void processKeyAction(int row, int col);
 };
@@ -57,3 +65,4 @@ private:
 extern KeyboardManager keyboardManager;
 
 #endif
+

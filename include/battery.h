@@ -13,6 +13,9 @@ public:
     // Returns an estimated 0-100% value based on standard LiPo discharge curves
     int readPercentage();
 
+    // Returns internal ESP32-S3 CPU junction/core temperature in degrees Celsius
+    float getCoreTemperature();
+
 private:
     float cached_voltage = 0.0f;
     uint32_t last_read_time = 0;

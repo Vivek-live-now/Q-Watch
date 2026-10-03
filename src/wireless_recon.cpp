@@ -29,15 +29,27 @@ static void wifi_promiscuous_cb(void* buf, wifi_promiscuous_pkt_type_t type) {
     wirelessRecon.handlePromiscuousPacket(pkt->payload, pkt->rx_ctrl.sig_len, pkt->rx_ctrl.rssi);
 }
 
+static void ble_scan_complete_cb(BLEScanResults results) {
+    // Non-blocking scan completed; restart another scan slice if still in scanning state
+    if (wirelessRecon.isBleScanning()) {
+        BLEScan* scan = BLEDevice::getScan();
+        if (scan) {
+            scan->start(5, ble_scan_complete_cb, false);
+        }
+    }
+}
+
 class QWatchAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-        String nameStr = advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : "";
-        String macStr = advertisedDevice.getAddress().toString().c_str();
+        std::string n = advertisedDevice.haveName() ? advertisedDevice.getName() : "";
+        std::string m = advertisedDevice.getAddress().toString();
         int8_t rssi = (int8_t)advertisedDevice.getRSSI();
 
-        wirelessRecon.testInjectBleTarget(nameStr.c_str(), macStr.c_str(), rssi);
+        wirelessRecon.testInjectBleTarget(n.c_str(), m.c_str(), rssi);
     }
 };
+
+static QWatchAdvertisedDeviceCallbacks s_bleCallbacks;
 #endif
 
 WirelessRecon::WirelessRecon() :
@@ -115,11 +127,12 @@ void WirelessRecon::startBleScan() {
     }
     pBLEScan = BLEDevice::getScan();
     if (pBLEScan) {
-        pBLEScan->setAdvertisedDeviceCallbacks(new QWatchAdvertisedDeviceCallbacks(), true);
+        pBLEScan->setAdvertisedDeviceCallbacks(&s_bleCallbacks, false);
         pBLEScan->setActiveScan(true);
         pBLEScan->setInterval(100);
         pBLEScan->setWindow(99);
-        pBLEScan->start(0, nullptr, false); // continuous background scan
+        // Non-blocking asynchronous scan slice with callback! Prevents watchdog crash.
+        pBLEScan->start(5, ble_scan_complete_cb, false);
     }
 #endif
 }
@@ -132,7 +145,6 @@ void WirelessRecon::stopBleScan() {
     if (pBLEScan) {
         pBLEScan->stop();
         pBLEScan->clearResults();
-        pBLEScan = nullptr;
     }
 #endif
 }

@@ -13,12 +13,14 @@
 #include "led_manager.h"
 #include "file_manager.h"
 #include "anim_engine.h"
+#include "mochi_faces.h"
 #else
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "mochi_faces.h"
 #endif
 
 // -------------------------------------------------------------
@@ -155,6 +157,12 @@ public:
     float getHeartPulse() const { return heart_pulse; }
     float getStarAngle() const { return star_orbit_angle; }
 
+    // Authentic Animation Playback (.anim files from /mochi/ or /anim/)
+    bool playAnim(const char* name, bool loop = false);
+    bool playAnimFile(const char* filepath, bool loop = false);
+    void stopAnim();
+    bool isPlayingAnim() const { return is_playing_anim; }
+
     // Rendering Interface
 #ifdef ARDUINO
     void render(U8G2& display);
@@ -212,6 +220,10 @@ private:
 
     // Emote override timer
     float emote_override_timer;
+
+    // Authentic animation playback state
+    bool is_playing_anim;
+    float auto_play_timer;
 
     // Pickers
     int picker_selection;

@@ -59,3 +59,11 @@ int BatteryMonitor::readPercentage() {
 
     return 0;
 }
+
+float BatteryMonitor::getCoreTemperature() {
+#ifdef ARDUINO
+    return temperatureRead();
+#else
+    return 42.0f;
+#endif
+}
