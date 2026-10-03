@@ -1523,6 +1523,39 @@ def test_button_event_flow_and_supermini_wifi():
     assert "WIFI_TX_POWER_OPTIONS[s.wifi_tx_power_idx]" in dc
     print("  [PASS] Wi-Fi TX power settings UI selection and persistence verified.")
 
+def test_sleep_wake_recovery_and_connectivity_menu():
+    print("\n--- 33. Sleep/Wake Recovery & Connectivity Page Fixes ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    display_cpp = os.path.join(base_dir, "src", "display.cpp")
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+
+    # 1. Display guard against drawing during sleep / display_off
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "if (ui.isDisplayOff() || ui.getState() == UIState::SLEEPING) {\n        return;\n    }" in dc
+    assert "if (ui.getState() != UIState::APP_ANIM_PLAYER && ui.getState() != UIState::SLEEPING) {\n            drawTacticalOverlay();\n        }" in dc
+    assert "const char* vals[UICore::CONNECTIVITY_ITEM_COUNT] = {" in dc
+    assert "oled.clearDisplay();" in dc
+    print("  [PASS] DisplayManager sleep/power-save guards and CONNECTIVITY array bounds verified.")
+
+    # 2. Main loop display update guard
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "if (!ui.isDisplayOff() && ui.getState() != UIState::SLEEPING)" in mc
+    print("  [PASS] Main loop display update power-save guard verified.")
+
+    # 3. UICore wake recovery and connectivity navigation
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "if (display_off || current_state == UIState::SLEEPING)" in uc
+    assert "current_state = UIState::APP_HOME;" in uc
+    assert "gpio_wakeup_enable((gpio_num_t)BTN_OK, GPIO_INTR_LOW_LEVEL);" in uc
+    assert "gpio_wakeup_enable((gpio_num_t)BTN_CANCEL, GPIO_INTR_LOW_LEVEL);" in uc
+    assert "showToast(s.ble_enabled ? \"[BLE: ON]\" : \"[BLE: OFF]\", 1500);" in uc
+    assert "settings_submenu == SettingsSubmenu::FILE_SERVER_DETAILS" in uc
+    print("  [PASS] UICore sleep/wake recovery, light-sleep GPIO wake, and BLE toggle verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1547,4 +1580,5 @@ if __name__ == "__main__":
     test_app_store_qapps_and_installer()
     test_companion_app_subsystems_and_stitch_screens()
     test_button_event_flow_and_supermini_wifi()
+    test_sleep_wake_recovery_and_connectivity_menu()
     print("\nAll self-test verifications PASSED!")

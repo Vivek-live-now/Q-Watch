@@ -72,6 +72,10 @@ void DisplayManager::orBuffer(const uint8_t* mask) {
 }
 
 void DisplayManager::update() {
+    if (ui.isDisplayOff() || ui.getState() == UIState::SLEEPING) {
+        return;
+    }
+
     oled.clearBuffer();
 
     if (wifiPortal.getState() == WifiState::PORTAL && ui.getState() != UIState::APP_SETTINGS) {
@@ -113,7 +117,7 @@ void DisplayManager::update() {
                 break;
         }
 
-        if (ui.getState() != UIState::APP_ANIM_PLAYER) {
+        if (ui.getState() != UIState::APP_ANIM_PLAYER && ui.getState() != UIState::SLEEPING) {
             drawTacticalOverlay();
         }
         drawToastOverlay();
@@ -146,8 +150,9 @@ void DisplayManager::drawAppSettings() {
     if (sub == SettingsSubmenu::MAIN) {
         drawStandardMenu("SETTINGS", ui.settings_main_items, UICore::SETTINGS_MAIN_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::CONNECTIVITY) {
-        const char* vals[3] = {
+        const char* vals[UICore::CONNECTIVITY_ITEM_COUNT] = {
             s.wifi_enabled ? "ON" : "OFF",
+            "",
             s.ble_enabled ? "ON" : "OFF",
             s.fileserver_enabled ? "ON" : "OFF"
         };
@@ -2782,6 +2787,9 @@ void DisplayManager::applyDisplaySettings() {
 }
 
 void DisplayManager::setPowerSave(bool enable) {
+    if (enable) {
+        oled.clearDisplay();
+    }
     oled.setPowerSave(enable ? 1 : 0);
 }
 

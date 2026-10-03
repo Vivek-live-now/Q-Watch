@@ -264,11 +264,15 @@ void UICore::loop() {
     bool any_button = btnManager.hasAnyEvent();
 
     if (any_button) {
-        if (display_off) {
+        if (display_off || current_state == UIState::SLEEPING) {
             display_off = false;
             displayManager.setPowerSave(false);
+            if (current_state == UIState::SLEEPING) {
+                current_state = UIState::APP_HOME;
+            }
             btnManager.flushEvents();
             last_activity_time = millis();
+            display_off_time = 0;
             needs_redraw = true;
             return;
         }
@@ -286,21 +290,25 @@ void UICore::loop() {
         }
     }
 
-    if (display_off) {
+    if (display_off || current_state == UIState::SLEEPING) {
         if (s.raise_to_wake) {
             OrientationData o = sensors.getOrientation();
             // Wrist raise detection: typical watch viewing angle
             if (o.pitch >= 15.0f && o.pitch <= 65.0f && fabsf(o.roll) <= 35.0f) {
                 display_off = false;
                 displayManager.setPowerSave(false);
+                if (current_state == UIState::SLEEPING) {
+                    current_state = UIState::APP_HOME;
+                }
                 last_activity_time = millis();
+                display_off_time = 0;
                 needs_redraw = true;
                 return;
             }
         }
 
         // 10 seconds after display is turned off, enter deep sleep
-        if (millis() - display_off_time >= 10000) {
+        if (display_off && display_off_time > 0 && millis() - display_off_time >= 10000) {
             enterDeepSleep();
             return;
         }
@@ -371,10 +379,18 @@ void UICore::loop() {
                 current_state = UIState::MAIN_MENU;
                 menu_selection = 16;
                 menu_scroll_offset = 13;
-            } else if (settings_submenu == SettingsSubmenu::WIFI_DETAILS || settings_submenu == SettingsSubmenu::WIFI_SCAN || settings_submenu == SettingsSubmenu::FILE_SERVER_DETAILS) {
+            } else if (settings_submenu == SettingsSubmenu::WIFI_DETAILS) {
                 settings_submenu = SettingsSubmenu::CONNECTIVITY;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
+            } else if (settings_submenu == SettingsSubmenu::WIFI_SCAN) {
+                settings_submenu = SettingsSubmenu::CONNECTIVITY;
+                settings_selection = 1;
+                settings_scroll_offset = 0;
+            } else if (settings_submenu == SettingsSubmenu::FILE_SERVER_DETAILS) {
+                settings_submenu = SettingsSubmenu::CONNECTIVITY;
+                settings_selection = 3;
+                settings_scroll_offset = 1;
             } else if (settings_submenu == SettingsSubmenu::TIME_SYNC_STATUS) {
                 settings_submenu = SettingsSubmenu::TIME;
                 settings_selection = 1;
@@ -1583,8 +1599,11 @@ void UICore::handleConnectivityInput() {
             SettingsData& s = settingsManager.get();
             s.ble_enabled = !s.ble_enabled;
             settingsManager.save();
+            showToast(s.ble_enabled ? "[BLE: ON]" : "[BLE: OFF]", 1500);
         } else if (settings_selection == 3) {
             settings_submenu = SettingsSubmenu::FILE_SERVER_DETAILS;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
         }
         needs_redraw = true;
     }
@@ -2552,8 +2571,11 @@ void UICore::handleValueEditInput() {
 }
 
 void UICore::enterDeepSleep() {
+    UIState prev_state = (current_state != UIState::SLEEPING) ? current_state : UIState::APP_HOME;
     current_state = UIState::SLEEPING;
-    delay(100);
+    display_off = true;
+    displayManager.setPowerSave(true);
+    delay(50);
 
     SettingsData& sleep_s = settingsManager.get();
 
@@ -2570,7 +2592,14 @@ void UICore::enterDeepSleep() {
         sensors.clearMpuInterrupt();
     }
 
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    gpio_wakeup_enable((gpio_num_t)BTN_OK, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)BTN_UP, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)BTN_DN, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)BTN_CANCEL, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+#endif
 
     Preferences sched_prefs;
     sched_prefs.begin("sched", false);
@@ -2593,6 +2622,35 @@ void UICore::enterDeepSleep() {
     sched_prefs.end();
 
     powerManager.executeSleep(sleep_sec, sleep_s.raise_to_wake, wake_mask);
+
+    // Resumed from Light Sleep / Display Off
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+        sched_prefs.begin("sched", false);
+        uint32_t wake_now = qclock.getEpoch();
+        if (wake_now == 0) wake_now = millis() / 1000;
+        uint32_t last_bme = sched_prefs.getUInt("last_bme", 0);
+        uint32_t last_hlth = sched_prefs.getUInt("last_health", 0);
+        if (last_bme == 0 || wake_now >= last_bme + bme_sec) {
+            sensors.logBmeSample();
+            sched_prefs.putUInt("last_bme", wake_now);
+        }
+        if (sleep_s.health_bg_enabled && (last_hlth == 0 || wake_now >= last_hlth + health_sec)) {
+            if (max30102Manager.takeSampleAndSave(7000)) {
+                sched_prefs.putUInt("last_health", wake_now);
+            }
+        }
+        sched_prefs.end();
+    } else {
+        display_off = false;
+        displayManager.setPowerSave(false);
+        current_state = (prev_state != UIState::SLEEPING) ? prev_state : UIState::APP_HOME;
+        last_activity_time = millis();
+        display_off_time = 0;
+        btnManager.flushEvents();
+        soundManager.playWake();
+        needs_redraw = true;
+    }
 }
 
 void UICore::handleBatteryInput() {

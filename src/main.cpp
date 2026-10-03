@@ -76,12 +76,14 @@ void loop() {
   bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || clock_active || anim_active || wireless_active)
                             && millis() - last_ui_draw >= 20);
 
-  if (time_changed || portal_update_due || ui.needsRedraw() || active_app_update) {
-      displayManager.update();
-      ui.clearRedrawFlag();
-      last_drawn_sec = current_sec;
-      last_ui_draw = millis();
-      if (wifiPortal.getState() == WifiState::PORTAL) last_portal_draw = millis();
+  if (!ui.isDisplayOff() && ui.getState() != UIState::SLEEPING) {
+      if (time_changed || portal_update_due || ui.needsRedraw() || active_app_update) {
+          displayManager.update();
+          ui.clearRedrawFlag();
+          last_drawn_sec = current_sec;
+          last_ui_draw = millis();
+          if (wifiPortal.getState() == WifiState::PORTAL) last_portal_draw = millis();
+      }
   }
 
   // Yield to FreeRTOS scheduler to allow idle core power saving and avoid 100% spinlock
