@@ -1479,16 +1479,49 @@ def test_button_event_flow_and_supermini_wifi():
     assert "btnManager.peekEvent(BTN_ID_OK);" in uc
     print("  [PASS] UICore non-destructive wake check and event preservation verified.")
 
-    # 3. SuperMini Wi-Fi RF optimization
+    # 3. SuperMini Wi-Fi RF optimization & user-configurable TX power
     with open(wifi_cpp, "r", encoding="utf-8") as f:
         wc = f.read()
     assert "#include <esp_wifi.h>" in wc
     assert "WiFi.setSleep(false);" in wc
-    assert "WiFi.setTxPower(WIFI_POWER_19_5dBm);" in wc
+    assert "void WifiPortal::applyTxPower()" in wc
+    assert "WIFI_POWER_19_5dBm" in wc
     assert "esp_wifi_set_ps(WIFI_PS_NONE);" in wc
-    assert "esp_wifi_set_max_tx_power(78);" in wc
+    assert "esp_wifi_set_max_tx_power(esp_powers[idx]);" in wc
     assert "esp_wifi_set_protocol(WIFI_IF_STA" in wc
-    print("  [PASS] ESP32-S3 SuperMini max TX power (19.5 dBm), modem sleep disabled & 802.11b/g/n verified.")
+    print("  [PASS] ESP32-S3 SuperMini TX power control, modem sleep disabled & 802.11b/g/n verified.")
+
+    # 4. Settings Wi-Fi TX Power & UI Integration
+    settings_h = os.path.join(base_dir, "include", "settings_data.h")
+    settings_cpp = os.path.join(base_dir, "src", "settings_data.cpp")
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    display_cpp = os.path.join(base_dir, "src", "display.cpp")
+
+    with open(settings_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "int wifi_tx_power_idx = 0;" in sh
+    assert "WIFI_TX_POWER_OPTIONS" in sh
+    assert "WIFI_TX_POWER_TOASTS" in sh
+
+    with open(settings_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "wifi_tx_power_idx" in sc
+
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "WIFI_DETAILS_ITEM_COUNT = 6;" in uh
+    assert "wifi_details_items" in uh
+
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "s.wifi_tx_power_idx = (s.wifi_tx_power_idx + 1) % WIFI_TX_POWER_COUNT;" in uc
+    assert "wifiPortal.applyTxPower();" in uc
+
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "drawSettingsMenuWithValues(\"WI-FI SETTINGS\"" in dc
+    assert "WIFI_TX_POWER_OPTIONS[s.wifi_tx_power_idx]" in dc
+    print("  [PASS] Wi-Fi TX power settings UI selection and persistence verified.")
 
 if __name__ == "__main__":
     test_protocol_variants()

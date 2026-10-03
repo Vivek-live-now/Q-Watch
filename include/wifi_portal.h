@@ -31,6 +31,7 @@ public:
 
     void enableWifi();
     void disableWifi();
+    void applyTxPower();
     const char* getDetailedStatusStr();
     String getSSID();
     String getIP();

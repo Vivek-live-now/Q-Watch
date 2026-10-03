@@ -37,6 +37,7 @@ void SettingsManager::load() {
         val.trim();
 
         if (key == "wifi_enabled") settings.wifi_enabled = (val == "1");
+        else if (key == "wifi_tx_power_idx") settings.wifi_tx_power_idx = val.toInt();
         else if (key == "ble_enabled") settings.ble_enabled = (val == "1");
         else if (key == "fileserver_enabled") settings.fileserver_enabled = (val == "1");
         else if (key == "auto_sync") settings.auto_sync = (val == "1");
@@ -81,6 +82,7 @@ void SettingsManager::load() {
 void SettingsManager::save() {
     String out = "";
     out += "wifi_enabled=" + String(settings.wifi_enabled ? "1" : "0") + "\n";
+    out += "wifi_tx_power_idx=" + String(settings.wifi_tx_power_idx) + "\n";
     out += "ble_enabled=" + String(settings.ble_enabled ? "1" : "0") + "\n";
     out += "fileserver_enabled=" + String(settings.fileserver_enabled ? "1" : "0") + "\n";
     out += "auto_sync=" + String(settings.auto_sync ? "1" : "0") + "\n";

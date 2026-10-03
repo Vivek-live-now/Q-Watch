@@ -371,6 +371,18 @@ void UICore::loop() {
                 current_state = UIState::MAIN_MENU;
                 menu_selection = 16;
                 menu_scroll_offset = 13;
+            } else if (settings_submenu == SettingsSubmenu::WIFI_DETAILS || settings_submenu == SettingsSubmenu::WIFI_SCAN || settings_submenu == SettingsSubmenu::FILE_SERVER_DETAILS) {
+                settings_submenu = SettingsSubmenu::CONNECTIVITY;
+                settings_selection = 0;
+                settings_scroll_offset = 0;
+            } else if (settings_submenu == SettingsSubmenu::TIME_SYNC_STATUS) {
+                settings_submenu = SettingsSubmenu::TIME;
+                settings_selection = 1;
+                settings_scroll_offset = 0;
+            } else if (settings_submenu == SettingsSubmenu::RESET_CONFIRM) {
+                settings_submenu = SettingsSubmenu::SYSTEM;
+                settings_selection = 1;
+                settings_scroll_offset = 0;
             } else {
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
@@ -1560,6 +1572,8 @@ void UICore::handleConnectivityInput() {
         soundManager.playNavSelect();
         if (settings_selection == 0) {
             settings_submenu = SettingsSubmenu::WIFI_DETAILS;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
         } else if (settings_selection == 1) {
             settings_submenu = SettingsSubmenu::WIFI_SCAN;
             settings_selection = 0;
@@ -1619,20 +1633,60 @@ void UICore::handleWifiScanInput() {
                 wifiPortal.connectToNetwork(target.ssid, "");
                 showToast("[CONNECTING...]", 2000);
                 settings_submenu = SettingsSubmenu::WIFI_DETAILS;
+                settings_selection = 0;
+                settings_scroll_offset = 0;
             }
         }
     }
 }
 
 void UICore::handleWifiDetailsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        settings_selection--;
+        if (settings_selection < 0) settings_selection = 0;
+        if (settings_selection < settings_scroll_offset) settings_scroll_offset = settings_selection;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        settings_selection++;
+        if (settings_selection >= WIFI_DETAILS_ITEM_COUNT) settings_selection = WIFI_DETAILS_ITEM_COUNT - 1;
+        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    }
+
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
-        s.wifi_enabled = !s.wifi_enabled;
-        settingsManager.save();
-        if (s.wifi_enabled) wifiPortal.enableWifi();
-        else wifiPortal.disableWifi();
+        if (settings_selection == 0) {
+            s.wifi_enabled = !s.wifi_enabled;
+            settingsManager.save();
+            if (s.wifi_enabled) wifiPortal.enableWifi();
+            else wifiPortal.disableWifi();
+        } else if (settings_selection == 1) {
+            s.wifi_tx_power_idx = (s.wifi_tx_power_idx + 1) % WIFI_TX_POWER_COUNT;
+            settingsManager.save();
+            wifiPortal.applyTxPower();
+            showToast(WIFI_TX_POWER_TOASTS[s.wifi_tx_power_idx], 2000);
+        } else if (settings_selection == 2) {
+            showToast(wifiPortal.getDetailedStatusStr(), 2000);
+        } else if (settings_selection == 3) {
+            String ssid = wifiPortal.getSSID();
+            showToast(ssid.length() > 0 ? ssid.c_str() : "NO SSID", 2000);
+        } else if (settings_selection == 4) {
+            String ip = wifiPortal.getIP();
+            showToast(ip.length() > 0 ? ip.c_str() : "0.0.0.0", 2000);
+        } else if (settings_selection == 5) {
+            settings_submenu = SettingsSubmenu::WIFI_SCAN;
+            settings_selection = 0;
+            settings_scroll_offset = 0;
+            wifiPortal.startScan();
+        }
         needs_redraw = true;
     }
 }

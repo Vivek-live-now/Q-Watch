@@ -203,22 +203,20 @@ void DisplayManager::drawAppSettings() {
 }
 
 void DisplayManager::drawWifiDetailsScreen() {
-    oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, "WI-FI");
-    oled.drawLine(0, 9, 128, 9);
-
-    oled.setFont(u8g2_font_6x10_tr);
-
     SettingsData& s = settingsManager.get();
-    String pwrStr = "Power : " + String(s.wifi_enabled ? "ON" : "OFF");
-    String stStr  = "Status: " + String(wifiPortal.getDetailedStatusStr());
-    String ssidStr= "SSID  : " + wifiPortal.getSSID();
-    String ipStr  = "IP    : " + wifiPortal.getIP();
-
-    oled.drawStr(2, 22, pwrStr.c_str());
-    oled.drawStr(2, 34, stStr.c_str());
-    oled.drawStr(2, 46, ssidStr.c_str());
-    oled.drawStr(2, 58, ipStr.c_str());
+    String pwrVal = s.wifi_enabled ? "ON" : "OFF";
+    String txVal = (s.wifi_tx_power_idx >= 0 && s.wifi_tx_power_idx < WIFI_TX_POWER_COUNT) 
+                   ? WIFI_TX_POWER_OPTIONS[s.wifi_tx_power_idx] : "19.5dBm";
+    String stVal = wifiPortal.getDetailedStatusStr();
+    String rawSsid = wifiPortal.getSSID();
+    String ssidVal = rawSsid.length() > 0 ? rawSsid : "NONE";
+    if (ssidVal.length() > 9) {
+        ssidVal = ssidVal.substring(0, 8) + "..";
+    }
+    String ipVal = wifiPortal.getIP().length() > 0 ? wifiPortal.getIP() : "0.0.0.0";
+    String scanVal = "[SCAN]";
+    String vals[UICore::WIFI_DETAILS_ITEM_COUNT] = { pwrVal, txVal, stVal, ssidVal, ipVal, scanVal };
+    drawSettingsMenuWithValues("WI-FI SETTINGS", ui.wifi_details_items, vals, UICore::WIFI_DETAILS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
 }
 
 void DisplayManager::drawScrollBar(int offset, int item_count) {

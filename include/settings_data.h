@@ -6,6 +6,7 @@
 struct SettingsData {
     // CONNECTIVITY
     bool wifi_enabled = true;
+    int wifi_tx_power_idx = 0; // 0: MAX 19.5dBm, 1: HIGH 15dBm, 2: MID 11dBm, 3: LOW 7dBm, 4: MIN 2dBm
     bool ble_enabled = false;
     bool fileserver_enabled = false;
 
@@ -106,6 +107,17 @@ static const int UI_OPTIONS_COUNT = 3;
 
 static const char* const SOUND_STYLE_OPTIONS[] = {"SILENT", "MODERN", "TACTICAL", "RETRO"};
 static const int SOUND_STYLE_COUNT = 4;
+
+static const char* const WIFI_TX_POWER_OPTIONS[] = {"19.5dBm", "15.0dBm", "11.0dBm", "7.0dBm", "2.0dBm"};
+static const int WIFI_TX_POWER_COUNT = 5;
+
+static const char* const WIFI_TX_POWER_TOASTS[] = {
+    "[TX: MAX 19.5dBm]",
+    "[TX: HIGH 15dBm]",
+    "[TX: MID 11dBm]",
+    "[TX: LOW 7dBm]",
+    "[TX: MIN 2dBm]"
+};
 
 class SettingsManager {
 public:

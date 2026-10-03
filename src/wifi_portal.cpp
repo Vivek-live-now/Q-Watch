@@ -25,6 +25,22 @@ void WifiPortal::begin() {
     enableWifi();
 }
 
+void WifiPortal::applyTxPower() {
+    int idx = settingsManager.get().wifi_tx_power_idx;
+    static const int8_t esp_powers[] = {78, 60, 44, 28, 8};
+    static const wifi_power_t wifi_powers[] = {
+        WIFI_POWER_19_5dBm,
+        WIFI_POWER_15dBm,
+        WIFI_POWER_11dBm,
+        WIFI_POWER_7dBm,
+        WIFI_POWER_2dBm
+    };
+    if (idx < 0 || idx >= 5) idx = 0;
+
+    WiFi.setTxPower(wifi_powers[idx]);
+    esp_wifi_set_max_tx_power(esp_powers[idx]);
+}
+
 void WifiPortal::enableWifi() {
     AppConfig& cfg = configManager.get();
     WiFi.hostname("Q-Watch");
@@ -34,11 +50,10 @@ void WifiPortal::enableWifi() {
         Serial.println(cfg.wifi_ssid);
         WiFi.mode(WIFI_STA);
 
-        // Maximize Wi-Fi TX power and disable modem sleep for ESP32-S3 SuperMini
+        // Configure Wi-Fi TX power and disable modem sleep for ESP32-S3 SuperMini
         WiFi.setSleep(false);
-        WiFi.setTxPower(WIFI_POWER_19_5dBm);
+        applyTxPower();
         esp_wifi_set_ps(WIFI_PS_NONE);
-        esp_wifi_set_max_tx_power(78);
         esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
 
         WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_password.c_str());
@@ -48,9 +63,8 @@ void WifiPortal::enableWifi() {
         Serial.println("Wi-Fi enabled but no credentials found.");
         WiFi.mode(WIFI_STA);
         WiFi.setSleep(false);
-        WiFi.setTxPower(WIFI_POWER_19_5dBm);
+        applyTxPower();
         esp_wifi_set_ps(WIFI_PS_NONE);
-        esp_wifi_set_max_tx_power(78);
         state = WifiState::NO_CREDS;
     }
 }
@@ -70,9 +84,8 @@ void WifiPortal::startScan() {
 
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    applyTxPower();
     esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_wifi_set_max_tx_power(78);
 
     WiFi.scanDelete();
     int res = WiFi.scanNetworks(true);
@@ -102,9 +115,8 @@ void WifiPortal::startPortal() {
     WiFi.softAP("Q-Watch-Setup");
 
     WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    applyTxPower();
     esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_wifi_set_max_tx_power(78);
 
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     setupRoutes();

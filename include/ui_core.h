@@ -325,6 +325,11 @@ public:
         "Wi-Fi", "SCAN NETWORKS", "BLE", "FILE SERVER"
     };
 
+    static const int WIFI_DETAILS_ITEM_COUNT = 6;
+    const char* wifi_details_items[WIFI_DETAILS_ITEM_COUNT] = {
+        "Radio", "TX Power", "Status", "SSID", "IP", "Scan"
+    };
+
     static const int TIME_ITEM_COUNT = 5;
     const char* time_items[TIME_ITEM_COUNT] = {
         "SYNC NOW", "SYNC STATUS", "AUTO SYNC", "TIMEZONE", "24 HOUR"
