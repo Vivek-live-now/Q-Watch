@@ -5,3 +5,5 @@ __pycache__/
 *_bin
 tests/output.txt
 ANIM_MARKET_PLAN.md
+android_build/
+*.apk
