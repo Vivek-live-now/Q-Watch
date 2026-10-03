@@ -143,4 +143,79 @@ class QLinkProtocolTest {
         assertEquals("/apps/games", files[1].path)
         assertTrue(files[1].isDirectory)
     }
+
+    @Test
+    fun testAnimParserValidation() {
+        // 1. Buffer too short
+        val shortBuf = ByteArray(10)
+        val shortRes = com.qwatch.qlink.anim.AnimParser.validateQanm(shortBuf)
+        assertFalse(shortRes.isValid)
+        assertTrue(shortRes.error?.contains("smaller than 16-byte header") == true)
+
+        // 2. Corrupt magic
+        val badMagic = ByteArray(16)
+        val badRes = com.qwatch.qlink.anim.AnimParser.validateQanm(badMagic)
+        assertFalse(badRes.isValid)
+        assertTrue(badRes.error?.contains("Invalid QANM magic") == true)
+
+        // 3. Valid synthetic 1-frame animation (16 + 1024 = 1040 bytes)
+        val buffer = ByteBuffer.allocate(1040).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(com.qwatch.qlink.anim.AnimParser.ANIM_MAGIC.toInt())
+        buffer.putShort(1.toShort())  // version
+        buffer.put(128.toByte())      // width
+        buffer.put(64.toByte())       // height
+        buffer.putShort(1.toShort())  // frame count = 1
+        buffer.putShort(50.toShort()) // 50ms delay (20 FPS)
+        buffer.putShort(1.toShort())  // loop flag
+        buffer.putShort(0.toShort())  // reserved
+        // 1024 bytes of frame data with pixel at (0, 0)
+        buffer.put(0x01.toByte())
+        for (i in 1 until 1024) {
+            buffer.put(0.toByte())
+        }
+
+        val validBytes = buffer.array()
+        val validRes = com.qwatch.qlink.anim.AnimParser.validateQanm(validBytes)
+        assertTrue(validRes.isValid)
+        assertNull(validRes.error)
+        assertEquals(1, validRes.header?.frameCount)
+        assertEquals(50, validRes.header?.frameDelayMs)
+        assertEquals(20, validRes.header?.fps)
+        assertTrue(validRes.header?.isLooping == true)
+
+        // 4. Test frame pixel decoding
+        val frameBytes = validBytes.copyOfRange(16, 1040)
+        val pixels = com.qwatch.qlink.anim.AnimParser.decodeFramePixels(frameBytes)
+        assertEquals(128 * 64, pixels.size)
+        assertTrue(pixels[0])  // (0,0) was set
+        assertFalse(pixels[1]) // (1,0) was not set
+    }
+
+    @Test
+    fun testAnimClassifierAndFormatting() {
+        assertEquals(com.qwatch.qlink.anim.AnimCategory.MOODS, com.qwatch.qlink.anim.AnimClassifier.classify("adore.anim"))
+        assertEquals(com.qwatch.qlink.anim.AnimCategory.MOODS, com.qwatch.qlink.anim.AnimClassifier.classify("scared.anim"))
+        assertEquals(com.qwatch.qlink.anim.AnimCategory.MECHA, com.qwatch.qlink.anim.AnimClassifier.classify("police.anim"))
+        assertEquals(com.qwatch.qlink.anim.AnimCategory.MECHA, com.qwatch.qlink.anim.AnimClassifier.classify("gundam_visor.anim"))
+        assertEquals(com.qwatch.qlink.anim.AnimCategory.ACTIONS, com.qwatch.qlink.anim.AnimClassifier.classify("dancing.anim"))
+        assertEquals("FAST RUSH", com.qwatch.qlink.anim.AnimClassifier.formatDisplayName("fast_rush.anim"))
+    }
+
+    @Test
+    fun testStorageTelemetryModel() {
+        val st = com.qwatch.qlink.model.StorageTelemetry(
+            fsTotalBytes = 917504,
+            fsUsedBytes = 491520,
+            fsFreeBytes = 425984,
+            freePct = 46.4f,
+            animCount = 27,
+            freeAnimSlots = 20
+        )
+        assertEquals(917504L, st.fsTotalBytes)
+        assertEquals(491520L, st.fsUsedBytes)
+        assertEquals(425984L, st.fsFreeBytes)
+        assertEquals(46.4f, st.freePct, 0.01f)
+        assertEquals(27, st.animCount)
+        assertEquals(20, st.freeAnimSlots)
+    }
 }

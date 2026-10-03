@@ -27,6 +27,12 @@ interface QLinkTransport {
     suspend fun listFiles(path: String): Result<List<WatchFile>>
     suspend fun downloadFile(path: String): Result<ByteArray>
     suspend fun uploadFile(path: String, data: ByteArray): Result<Boolean>
+    suspend fun uploadFileWithProgress(
+        path: String,
+        data: ByteArray,
+        onProgress: (com.qwatch.qlink.anim.TransferProgress) -> Unit
+    ): Result<Boolean> = uploadFile(path, data)
+    suspend fun getStorageTelemetry(): Result<StorageTelemetry>
     suspend fun deleteFile(path: String): Result<Boolean>
     suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean>
 }

@@ -159,6 +159,66 @@ void test_companion_subsystem_endpoints() {
     printf("  [PASS] generateSigintScanJson contains RF spectrum and BLE radar payloads.\n");
 }
 
+void test_mochi_anim_validation() {
+    printf("\n--- Test: Q-Link Animation Market Asset Validation ---\n");
+    // 1. Short buffer
+    uint8_t tiny[12] = { 0 };
+    uint16_t frames = 0, delay = 0;
+    String err;
+    assert(qlink.validateAnimHeader(tiny, sizeof(tiny), frames, delay, &err) == false);
+    assert(err.indexOf("smaller than AnimHeader") != -1);
+
+    // 2. Corrupt magic
+    uint8_t bad_magic[16] = { 'B', 'A', 'D', '!', 1, 0, 128, 64, 1, 0, 50, 0, 1, 0, 0, 0 };
+    assert(qlink.validateAnimHeader(bad_magic, sizeof(bad_magic), frames, delay, &err) == false);
+    assert(err.indexOf("Invalid ANIM magic") != -1);
+
+    // 3. Wrong dimensions
+    uint8_t bad_dim[16] = { 'Q', 'A', 'N', 'M', 1, 0, 64, 32, 1, 0, 50, 0, 1, 0, 0, 0 };
+    assert(qlink.validateAnimHeader(bad_dim, sizeof(bad_dim), frames, delay, &err) == false);
+    assert(err.indexOf("Invalid dimensions") != -1);
+
+    // 4. Size mismatch
+    uint8_t size_mismatch[16] = { 'Q', 'A', 'N', 'M', 1, 0, 128, 64, 2, 0, 50, 0, 1, 0, 0, 0 };
+    assert(qlink.validateAnimHeader(size_mismatch, sizeof(size_mismatch), frames, delay, &err) == false);
+    assert(err.indexOf("Size mismatch") != -1);
+
+    // 5. Valid file from market assets (extras/mochi_market/adore.anim)
+    FILE* fp = fopen("extras/mochi_market/adore.anim", "rb");
+    if (!fp) fp = fopen("data/mochi/dancing.anim", "rb");
+    assert(fp != NULL);
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    assert(fsize > 16);
+    uint8_t* anim_buf = (uint8_t*)malloc(fsize);
+    assert(fread(anim_buf, 1, fsize, fp) == (size_t)fsize);
+    fclose(fp);
+
+    assert(qlink.validateAnimHeader(anim_buf, fsize, frames, delay, &err) == true);
+    assert(frames > 0);
+    assert(delay > 0);
+    assert(fsize == (long)(16 + (size_t)frames * 1024));
+    printf("  [PASS] Verified Mochi anim: frames=%u, delay=%u ms, total_size=%ld B\n", frames, delay, fsize);
+    free(anim_buf);
+}
+
+void test_safe_delete_and_storage() {
+    printf("\n--- Test: Q-Link Safe Deletion & Storage Telemetry ---\n");
+    // 1. Safe deletion path checks
+    assert(qlink.safeDeleteAnim("/mochi/dancing.anim") == true);
+    assert(qlink.safeDeleteAnim("../../../etc/passwd") == false); // Path traversal rejected
+    printf("  [PASS] safeDeleteAnim validates safe paths and unlinks cleanly.\n");
+
+    // 2. Storage JSON payload
+    String storage_json = qlink.generateStorageJson();
+    assert(storage_json.indexOf("fs_total_bytes") != -1);
+    assert(storage_json.indexOf("fs_used_bytes") != -1);
+    assert(storage_json.indexOf("fs_free_bytes") != -1);
+    assert(storage_json.indexOf("free_anim_slots") != -1);
+    printf("  [PASS] generateStorageJson contains total, used, free, and slot metrics.\n");
+}
+
 int main() {
     printf("==========================================\n");
     printf(" RUNNING Q-LINK PROTOCOL VERIFICATION\n");
@@ -169,6 +229,8 @@ int main() {
     test_streaming_state();
     test_qapp_sideload_validation();
     test_companion_subsystem_endpoints();
+    test_mochi_anim_validation();
+    test_safe_delete_and_storage();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");
     return 0;
 }

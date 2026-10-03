@@ -225,6 +225,10 @@ class QLinkBleTransport(
         return Result.failure(UnsupportedOperationException("File deletion uses Wi-Fi transport"))
     }
 
+    override suspend fun getStorageTelemetry(): Result<StorageTelemetry> {
+        return Result.success(StorageTelemetry())
+    }
+
     override suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> {
         return Result.failure(UnsupportedOperationException("Use Wi-Fi transport for .qapp installation"))
     }

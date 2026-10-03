@@ -314,22 +314,94 @@ class QLinkWifiTransport(
         }
     }
 
-    override suspend fun uploadFile(path: String, data: ByteArray): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun uploadFile(path: String, data: ByteArray): Result<Boolean> {
+        return uploadFileWithProgress(path, data) {}
+    }
+
+    override suspend fun uploadFileWithProgress(
+        path: String,
+        data: ByteArray,
+        onProgress: (com.qwatch.qlink.anim.TransferProgress) -> Unit
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            val totalBytes = data.size.toLong()
+            val countedBody = object : RequestBody() {
+                override fun contentType(): MediaType? = "application/octet-stream".toMediaType()
+                override fun contentLength(): Long = totalBytes
+                override fun writeTo(sink: okio.BufferedSink) {
+                    val bufferSize = 2048
+                    var written = 0L
+                    var offset = 0
+                    while (offset < data.size) {
+                        val count = (data.size - offset).coerceAtMost(bufferSize)
+                        sink.write(data, offset, count)
+                        sink.flush()
+                        offset += count
+                        written += count
+                        val pct = if (totalBytes > 0) ((written.toFloat() / totalBytes) * 100).toInt() else 100
+                        onProgress(
+                            com.qwatch.qlink.anim.TransferProgress(
+                                progress = if (totalBytes > 0) (written.toFloat() / totalBytes) else 1f,
+                                percent = pct,
+                                bytesTransferred = written,
+                                totalBytes = totalBytes
+                            )
+                        )
+                    }
+                }
+            }
+
             val formBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart(
-                    "file",
-                    path.substringAfterLast('/'),
-                    data.toRequestBody("application/octet-stream".toMediaType())
-                )
+                .addFormDataPart("file", path.substringAfterLast('/'), countedBody)
                 .build()
+
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=$path")
                 .post(formBody)
                 .build()
+
             client.newCall(req).execute().use { res ->
-                Result.success(res.isSuccessful)
+                if (res.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    // Failed-transfer recovery: Purge corrupt/truncated file from watch
+                    deleteFile(path)
+                    Result.failure(IOException("Upload failed with HTTP ${res.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            // Failed-transfer recovery: Clean up any partial state
+            try { deleteFile(path) } catch (_: Exception) {}
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getStorageTelemetry(): Result<StorageTelemetry> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_STORAGE}")
+                .build()
+            client.newCall(req).execute().use { res ->
+                val body = res.body?.string() ?: ""
+                val json = JSONObject(body)
+                val total = json.optLong("fs_total_bytes", 896L * 1024L)
+                val used = json.optLong("fs_used_bytes", 0L)
+                val free = json.optLong("fs_free_bytes", total - used)
+                val pct = json.optDouble("free_pct", 100.0).toFloat()
+                val animCount = json.optInt("anim_count", 0)
+                val freeSlots = json.optInt("free_anim_slots", (free / (20 * 1024)).toInt())
+
+                Result.success(
+                    StorageTelemetry(
+                        fsTotalBytes = total,
+                        fsUsedBytes = used,
+                        fsFreeBytes = free,
+                        freePct = pct,
+                        animCount = animCount,
+                        freeAnimSlots = freeSlots
+                    )
+                )
             }
         } catch (e: Exception) {
             Result.failure(e)

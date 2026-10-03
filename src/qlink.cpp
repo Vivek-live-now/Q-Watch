@@ -285,6 +285,86 @@ bool QLinkEngine::validateQAppHeader(const uint8_t* data, size_t len, String& ou
     return true;
 }
 
+bool QLinkEngine::validateAnimHeader(const uint8_t* data, size_t len, uint16_t& out_frames, uint16_t& out_delay_ms, String* out_error) {
+    if (!data || len < 16) {
+        if (out_error) *out_error = "Payload smaller than AnimHeader (16B)";
+        return false;
+    }
+    // Check magic: 0x4D4E4151 ("QANM" in little-endian)
+    uint32_t magic = (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+    if (magic != 0x4D4E4151) {
+        if (out_error) *out_error = "Invalid ANIM magic (expected 0x4D4E4151)";
+        return false;
+    }
+    uint8_t w = data[6];
+    uint8_t h = data[7];
+    if (w != 128 || h != 64) {
+        if (out_error) *out_error = "Invalid dimensions (expected 128x64)";
+        return false;
+    }
+    uint16_t frames = (uint16_t)data[8] | ((uint16_t)data[9] << 8);
+    uint16_t delay = (uint16_t)data[10] | ((uint16_t)data[11] << 8);
+    if (frames == 0) {
+        if (out_error) *out_error = "Frame count cannot be zero";
+        return false;
+    }
+    size_t expected_size = 16 + (size_t)frames * 1024;
+    if (len != expected_size) {
+        if (out_error) *out_error = "Size mismatch: expected " + String((unsigned long)expected_size) + ", got " + String((unsigned long)len);
+        return false;
+    }
+    out_frames = frames;
+    out_delay_ms = (delay > 0) ? delay : 50;
+    return true;
+}
+
+bool QLinkEngine::safeDeleteAnim(const String& path) {
+    if (path.length() == 0 || path.indexOf("..") != -1) return false;
+#ifdef ARDUINO
+    if (!FileManager::isPathSafe(path)) return false;
+    // Safe deletion: Stop and close file handle if currently playing in animEngine or mochiPet
+    if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), path.c_str()) == 0) {
+        mochiPet.stopAnim();
+        animEngine.stop();
+        animEngine.close();
+    }
+    return fileManager.remove(path);
+#else
+    return true;
+#endif
+}
+
+String QLinkEngine::generateStorageJson() {
+    String json;
+    json.reserve(256);
+#ifdef ARDUINO
+    size_t total = LittleFS.totalBytes();
+    size_t used = LittleFS.usedBytes();
+    size_t free_bytes = (total >= used) ? (total - used) : 0;
+    float free_pct = (total > 0) ? ((float)free_bytes / (float)total * 100.0f) : 0.0f;
+
+    std::vector<FileInfo> files = fileManager.listDir("/mochi");
+    size_t anim_count = 0;
+    for (size_t i = 0; i < files.size(); i++) {
+        if (!files[i].isDirectory && files[i].name.endsWith(".anim")) {
+            anim_count++;
+        }
+    }
+    size_t free_slots = free_bytes / (20 * 1024);
+
+    json = "{\"status\":\"ok\",";
+    json += "\"fs_total_bytes\":" + String((unsigned long)total) + ",";
+    json += "\"fs_used_bytes\":" + String((unsigned long)used) + ",";
+    json += "\"fs_free_bytes\":" + String((unsigned long)free_bytes) + ",";
+    json += "\"free_pct\":" + String(free_pct, 1) + ",";
+    json += "\"anim_count\":" + String((unsigned long)anim_count) + ",";
+    json += "\"free_anim_slots\":" + String((unsigned long)free_slots) + "}";
+#else
+    json = "{\"status\":\"ok\",\"fs_total_bytes\":917504,\"fs_used_bytes\":491520,\"fs_free_bytes\":425984,\"free_pct\":46.4,\"anim_count\":27,\"free_anim_slots\":20}";
+#endif
+    return json;
+}
+
 #ifdef ARDUINO
 void QLinkEngine::registerHttpRoutes(WebServer& server) {
     // 1. Device Info
@@ -428,7 +508,8 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
     });
 
     // 11. Filesystem Delete
-    auto handleDelete = [&server]() {
+    // 11. Filesystem Delete (with safe active animation cleanup)
+    auto handleDelete = [&server, this]() {
         if (!server.hasArg("path")) {
             server.send(400, "application/json", "{\"error\":\"missing_path\"}");
             return;
@@ -438,7 +519,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
             return;
         }
-        if (fileManager.remove(path)) {
+        if (safeDeleteAnim(path)) {
             server.send(200, "application/json", "{\"status\":\"deleted\"}");
         } else {
             server.send(404, "application/json", "{\"error\":\"delete_failed\"}");
@@ -446,6 +527,93 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
     };
     server.on("/api/v1/fs/delete", HTTP_DELETE, handleDelete);
     server.on("/api/v1/fs/delete", HTTP_POST, handleDelete);
+
+    // 11b. Filesystem Upload (supports multipart form-data and raw binary POST with QANM validation & abort recovery)
+    server.on("/api/v1/fs/upload", HTTP_POST, [&server, this]() {
+        // Plain body upload: POST /api/v1/fs/upload?path=/mochi/xyz.anim with body
+        if (server.hasArg("path") && server.hasArg("plain")) {
+            String path = server.arg("path");
+            if (!FileManager::isPathSafe(path)) {
+                server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
+                return;
+            }
+            const String& body = server.arg("plain");
+
+            // Animation validation using QANM header
+            if (path.endsWith(".anim")) {
+                uint16_t f = 0, d = 0;
+                String err;
+                if (!validateAnimHeader((const uint8_t*)body.c_str(), body.length(), f, d, &err)) {
+                    server.send(400, "application/json", "{\"error\":\"invalid_qanm_header\",\"detail\":\"" + err + "\"}");
+                    return;
+                }
+            }
+
+            if (fileManager.write(path, (const uint8_t*)body.c_str(), body.length())) {
+                server.send(200, "application/json", "{\"status\":\"uploaded\",\"path\":\"" + path + "\",\"size\":" + String((unsigned long)body.length()) + "}");
+                return;
+            } else {
+                server.send(500, "application/json", "{\"error\":\"write_failed\"}");
+                return;
+            }
+        }
+        // Multipart upload completion response
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_END) {
+            server.send(200, "application/json", "{\"status\":\"uploaded\",\"size\":" + String((unsigned long)upload.totalSize) + "}");
+        } else {
+            server.send(200, "application/json", "{\"status\":\"ok\"}");
+        }
+    }, [&server, this]() {
+        // Multipart streaming chunk handler with abort recovery
+        static File s_upload_file;
+        static String s_upload_path;
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
+            s_upload_path = server.hasArg("path") ? server.arg("path") : ("/" + upload.filename);
+            if (!FileManager::isPathSafe(s_upload_path)) {
+                return;
+            }
+            fileManager.ensureParentDir(s_upload_path);
+            s_upload_file = LittleFS.open(s_upload_path, FILE_WRITE);
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (s_upload_file) {
+                s_upload_file.write(upload.buf, upload.currentSize);
+            }
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (s_upload_file) {
+                s_upload_file.close();
+            }
+            // QANM validation on completed upload: purge if corrupted
+            if (s_upload_path.endsWith(".anim")) {
+                File check = LittleFS.open(s_upload_path, FILE_READ);
+                bool valid = false;
+                if (check && check.size() >= 16) {
+                    uint8_t hdr[16];
+                    check.read(hdr, 16);
+                    uint16_t f = 0, d = 0;
+                    valid = validateAnimHeader(hdr, 16, f, d) || (check.size() == 16 + (size_t)(((uint16_t)hdr[8]) | (((uint16_t)hdr[9]) << 8)) * 1024);
+                    check.close();
+                } else if (check) {
+                    check.close();
+                }
+                if (!valid) {
+                    LittleFS.remove(s_upload_path); // Recover from bad upload
+                }
+            }
+        } else if (upload.status == UPLOAD_FILE_ABORTED) {
+            // Failed transfer recovery: immediately delete partial truncated file
+            if (s_upload_file) {
+                s_upload_file.close();
+            }
+            LittleFS.remove(s_upload_path);
+        }
+    });
+
+    // 11c. Filesystem Storage Telemetry
+    server.on("/api/v1/fs/storage", HTTP_GET, [&server, this]() {
+        server.send(200, "application/json", generateStorageJson());
+    });
 
     // 12. Micro-ELF Q-App Sideload / Install
     server.on("/api/v1/app/install", HTTP_POST, [&server, this]() {

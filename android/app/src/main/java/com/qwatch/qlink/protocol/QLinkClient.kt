@@ -138,6 +138,18 @@ class QLinkClient private constructor() {
         return currentTransport?.uploadFile(path, data) ?: Result.failure(IllegalStateException("Not connected"))
     }
 
+    suspend fun uploadFileWithProgress(
+        path: String,
+        data: ByteArray,
+        onProgress: (com.qwatch.qlink.anim.TransferProgress) -> Unit
+    ): Result<Boolean> {
+        return currentTransport?.uploadFileWithProgress(path, data, onProgress) ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
+    suspend fun getStorageTelemetry(): Result<StorageTelemetry> {
+        return currentTransport?.getStorageTelemetry() ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
     suspend fun deleteFile(path: String): Result<Boolean> {
         return currentTransport?.deleteFile(path) ?: Result.failure(IllegalStateException("Not connected"))
     }

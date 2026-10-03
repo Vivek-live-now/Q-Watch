@@ -39,6 +39,7 @@ enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boo
     POWER("POWER", Icons.Default.BatteryChargingFull, true),
     SENSORS("SENSORS", Icons.Default.Speed, false),
     APPS("APPS", Icons.Default.Apps, false),
+    ANIM_MARKET("MARKET", Icons.Default.Storefront, false),
     FILES("FILES", Icons.Default.Folder, false),
     NOTIFICATIONS("ALERTS", Icons.Default.Notifications, false),
     SETTINGS("CONFIG", Icons.Default.Settings, false)
@@ -216,12 +217,17 @@ fun MainAppScaffold() {
                     onNavigateToPower = { currentScreen = Screen.POWER },
                     onNavigateToSigint = { currentScreen = Screen.SIGINT },
                     onNavigateToApps = { currentScreen = Screen.APPS },
+                    onNavigateToAnimMarket = { currentScreen = Screen.ANIM_MARKET },
                     onNavigateToFiles = { currentScreen = Screen.FILES },
                     onNavigateToNotifications = { currentScreen = Screen.NOTIFICATIONS },
                     onNavigateToSettings = { currentScreen = Screen.SETTINGS }
                 )
                 Screen.MIRROR -> LiveMirrorScreen()
-                Screen.MOCHI -> MochiPetScreen(onBack = { currentScreen = Screen.DASHBOARD })
+                Screen.MOCHI -> MochiPetScreen(
+                    onBack = { currentScreen = Screen.DASHBOARD },
+                    onNavigateToMarket = { currentScreen = Screen.ANIM_MARKET }
+                )
+                Screen.ANIM_MARKET -> AnimMarketScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SIGINT -> SigintReconScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.POWER -> PowerGovernorScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SENSORS -> SensorsScreen()

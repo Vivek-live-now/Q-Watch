@@ -38,5 +38,6 @@ object QLinkConstants {
     const val PATH_FS_DOWNLOAD = "/api/v1/fs/download"
     const val PATH_FS_UPLOAD = "/api/v1/fs/upload"
     const val PATH_FS_DELETE = "/api/v1/fs/delete"
+    const val PATH_FS_STORAGE = "/api/v1/fs/storage"
     const val PATH_APP_INSTALL = "/api/v1/app/install"
 }

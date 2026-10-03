@@ -124,6 +124,11 @@ public:
 
     // App Sideloading & Verification APIs
     bool validateQAppHeader(const uint8_t* data, size_t len, String& out_app_name, String& out_version, size_t& out_size, String* out_error = nullptr);
+    bool validateAnimHeader(const uint8_t* data, size_t len, uint16_t& out_frames, uint16_t& out_delay_ms, String* out_error = nullptr);
+
+    // Filesystem Storage & Safe Deletion APIs
+    bool safeDeleteAnim(const String& path);
+    String generateStorageJson();
 
     // Companion Advanced Subsystem Controls (Mochi, Power, Sigint)
     bool handleMochiAction(const String& action, int helmet_id = -1);

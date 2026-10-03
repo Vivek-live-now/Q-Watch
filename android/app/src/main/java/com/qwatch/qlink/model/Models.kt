@@ -133,3 +133,12 @@ data class NotificationPayload(
     val ledColorHex: String = "#00E5FF",
     val timestampMs: Long = System.currentTimeMillis()
 )
+
+data class StorageTelemetry(
+    val fsTotalBytes: Long = 896L * 1024L,
+    val fsUsedBytes: Long = 0L,
+    val fsFreeBytes: Long = 896L * 1024L,
+    val freePct: Float = 100.0f,
+    val animCount: Int = 0,
+    val freeAnimSlots: Int = 40
+)

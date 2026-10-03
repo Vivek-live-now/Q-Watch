@@ -1428,11 +1428,64 @@ def test_companion_app_subsystems_and_stitch_screens():
     assert "PROMISCUOUS PACKET STREAM" in sigint_content
     print("  [PASS] SigintReconScreen.kt 360 BLE radar, 13-channel RF waterfall, and IDS attack sentry verified.")
 
-    # 4. Verify MainActivity & Dashboard Screen Navigation Wiring
+    # 4. Verify Mochi Animation Market Suite
+    anim_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "anim")
+    vm_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "viewmodel")
+    market_screen_path = os.path.join(screens_dir, "AnimMarketScreen.kt")
+    anim_parser_path = os.path.join(anim_dir, "AnimParser.kt")
+    anim_encoder_path = os.path.join(anim_dir, "AnimEncoder.kt")
+    anim_model_path = os.path.join(anim_dir, "AnimModel.kt")
+    anim_vm_path = os.path.join(vm_dir, "AnimMarketViewModel.kt")
+    market_assets_dir = os.path.join(base_dir, "android", "app", "src", "main", "assets", "mochi_market")
+
+    assert os.path.exists(market_screen_path), "AnimMarketScreen.kt does not exist"
+    assert os.path.exists(anim_parser_path), "AnimParser.kt does not exist"
+    assert os.path.exists(anim_encoder_path), "AnimEncoder.kt does not exist"
+    assert os.path.exists(anim_model_path), "AnimModel.kt does not exist"
+    assert os.path.exists(anim_vm_path), "AnimMarketViewModel.kt does not exist"
+
+    with open(market_screen_path, "r", encoding="utf-8") as f:
+        market_content = f.read()
+    assert "fun AnimMarketScreen" in market_content
+    assert "VIRTUAL OLED ANIMATION PREVIEWER" in market_content
+    assert "LITTLEFS STORAGE MANAGEMENT" in market_content
+    assert "DEPLOY TO WATCH" in market_content
+    assert "FAVORITES" in market_content
+    assert "REPLACE" in market_content
+    assert "CUSTOM ANIMATION STUDIO" in market_content
+
+    with open(anim_parser_path, "r", encoding="utf-8") as f:
+        parser_content = f.read()
+    assert "0x4D4E4151L" in parser_content
+    assert "validateQanm" in parser_content
+    assert "decodeFramePixels" in parser_content
+    assert "decodeFrameToBitmap" in parser_content
+
+    with open(anim_encoder_path, "r", encoding="utf-8") as f:
+        encoder_content = f.read()
+    assert "encodeBitmapToFrame" in encoder_content
+    assert "encodeAnimation" in encoder_content
+
+    with open(anim_vm_path, "r", encoding="utf-8") as f:
+        vm_content = f.read()
+    assert "favoriteNames" in vm_content
+    assert "uploadFileWithProgress" in vm_content
+    assert "validateQanm" in vm_content
+    assert "safeDeleteAnim" in vm_content or "deleteFile" in vm_content
+    assert "getStorageTelemetry" in vm_content
+
+    assert os.path.exists(market_assets_dir), "mochi_market assets dir does not exist"
+    anim_assets = [a for a in os.listdir(market_assets_dir) if a.endswith(".anim")]
+    assert len(anim_assets) >= 38, f"Expected at least 38 market animations, found {len(anim_assets)}"
+    print(f"  [PASS] Mochi Animation Market ({len(anim_assets)} assets, QANM validator, custom studio, favorites & storage telemetry) verified.")
+
+    # 5. Verify MainActivity & Dashboard Screen Navigation Wiring
     main_activity_path = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "MainActivity.kt")
     with open(main_activity_path, "r", encoding="utf-8") as f:
         main_content = f.read()
     assert "MOCHI" in main_content and "POWER" in main_content and "SIGINT" in main_content
+    assert "ANIM_MARKET" in main_content
+    assert "AnimMarketScreen" in main_content
     assert "MochiPetScreen" in main_content
     assert "PowerGovernorScreen" in main_content
     assert "SigintReconScreen" in main_content
@@ -1443,6 +1496,8 @@ def test_companion_app_subsystems_and_stitch_screens():
     assert "onNavigateToMochi" in dash_content
     assert "onNavigateToPower" in dash_content
     assert "onNavigateToSigint" in dash_content
+    assert "onNavigateToAnimMarket" in dash_content
+    assert "ANIMATION MARKET // 128x64 OLED" in dash_content
     assert "ADVANCED TACTICAL MODULES" in dash_content
     print("  [PASS] MainActivity and DashboardScreen navigation wiring for all tactical modules verified.")
 

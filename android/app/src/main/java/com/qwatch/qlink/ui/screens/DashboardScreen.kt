@@ -42,6 +42,7 @@ fun DashboardScreen(
     onNavigateToPower: () -> Unit = {},
     onNavigateToSigint: () -> Unit = {},
     onNavigateToApps: () -> Unit = {},
+    onNavigateToAnimMarket: () -> Unit = {},
     onNavigateToFiles: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {}
@@ -596,6 +597,24 @@ fun DashboardScreen(
                         Text("128x64 OLED Emulator, IMU Gaze & Helmets", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                     }
                     Text("LAUNCH >", color = TacticalCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // Mochi Animation Market
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToAnimMarket)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("ANIMATION MARKET // 128x64 OLED", color = TacticalAmber, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("38 Offline Animations, Live Canvas, 1-Tap Deploy & Delete", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("MARKET >", color = TacticalAmber, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
 
                 // Power Governor & ULP Sentinel

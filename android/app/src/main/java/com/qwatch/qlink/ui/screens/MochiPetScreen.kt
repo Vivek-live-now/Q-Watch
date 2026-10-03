@@ -50,7 +50,10 @@ enum class HelmetPreset(
 }
 
 @Composable
-fun MochiPetScreen(onBack: (() -> Unit)? = null) {
+fun MochiPetScreen(
+    onBack: (() -> Unit)? = null,
+    onNavigateToMarket: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = QLinkClient.instance
@@ -126,20 +129,41 @@ fun MochiPetScreen(onBack: (() -> Unit)? = null) {
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(TacticalGreenDim)
-                    .border(1.dp, TacticalGreen, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = if (isSleeping) "STATUS: DORMANT" else "STATUS: ACTIVE",
-                    color = TacticalGreen,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onNavigateToMarket != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(TacticalAmberDim)
+                            .border(1.dp, TacticalAmber, RoundedCornerShape(4.dp))
+                            .clickable { onNavigateToMarket() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "MARKET >",
+                            color = TacticalAmber,
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(TacticalGreenDim)
+                        .border(1.dp, TacticalGreen, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isSleeping) "STATUS: DORMANT" else "STATUS: ACTIVE",
+                        color = TacticalGreen,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
