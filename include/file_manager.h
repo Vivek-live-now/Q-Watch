@@ -49,6 +49,7 @@ public:
     // Path sanitization & normalization
     String normalizePath(const String& path);
     static bool isPathSafe(const String& path);
+    static void ensureParentDir(const String& path);
 };
 
 extern FileManager fileManager;

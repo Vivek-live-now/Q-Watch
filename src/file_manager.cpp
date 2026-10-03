@@ -5,7 +5,7 @@ FileManager fileManager;
 FileManager::FileManager() {
 }
 
-static void ensureParentDir(const String& path) {
+void FileManager::ensureParentDir(const String& path) {
     int lastSlash = path.lastIndexOf('/');
     if (lastSlash > 0) {
         String dir = path.substring(0, lastSlash);

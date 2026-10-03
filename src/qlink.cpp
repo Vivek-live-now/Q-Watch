@@ -343,12 +343,17 @@ String QLinkEngine::generateStorageJson() {
     size_t free_bytes = (total >= used) ? (total - used) : 0;
     float free_pct = (total > 0) ? ((float)free_bytes / (float)total * 100.0f) : 0.0f;
 
-    std::vector<FileInfo> files = fileManager.listDir("/mochi");
     size_t anim_count = 0;
-    for (size_t i = 0; i < files.size(); i++) {
-        if (!files[i].isDirectory && files[i].name.endsWith(".anim")) {
-            anim_count++;
+    File root = LittleFS.open("/mochi");
+    if (root && root.isDirectory()) {
+        File file = root.openNextFile();
+        while (file) {
+            if (!file.isDirectory() && String(file.name()).endsWith(".anim")) {
+                anim_count++;
+            }
+            file = root.openNextFile();
         }
+        root.close();
     }
     size_t free_slots = free_bytes / (20 * 1024);
 
@@ -574,7 +579,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             if (!FileManager::isPathSafe(s_upload_path)) {
                 return;
             }
-            fileManager.ensureParentDir(s_upload_path);
+            FileManager::ensureParentDir(s_upload_path);
             s_upload_file = LittleFS.open(s_upload_path, FILE_WRITE);
         } else if (upload.status == UPLOAD_FILE_WRITE) {
             if (s_upload_file) {
