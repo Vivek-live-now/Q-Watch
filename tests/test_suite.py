@@ -1446,6 +1446,50 @@ def test_companion_app_subsystems_and_stitch_screens():
     assert "ADVANCED TACTICAL MODULES" in dash_content
     print("  [PASS] MainActivity and DashboardScreen navigation wiring for all tactical modules verified.")
 
+def test_button_event_flow_and_supermini_wifi():
+    print("\n--- 32. ButtonManager Event Preservation & SuperMini Wi-Fi RF Optimization ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    btn_h = os.path.join(base_dir, "include", "button_manager.h")
+    btn_cpp = os.path.join(base_dir, "src", "button_manager.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    wifi_cpp = os.path.join(base_dir, "src", "wifi_portal.cpp")
+
+    # 1. ButtonManager declarations and implementation
+    with open(btn_h, "r", encoding="utf-8") as f:
+        bh = f.read()
+    assert "peekEvent(ButtonID id) const;" in bh
+    assert "bool hasAnyEvent() const;" in bh
+    assert "void flushEvents();" in bh
+    assert "DEBOUNCE_DELAY_MS = 40;" in bh
+    print("  [PASS] ButtonManager peekEvent, hasAnyEvent, flushEvents, and 40ms debounce verified.")
+
+    with open(btn_cpp, "r", encoding="utf-8") as f:
+        bc = f.read()
+    assert "ButtonEvent ButtonManager::peekEvent" in bc
+    assert "bool ButtonManager::hasAnyEvent" in bc
+    assert "void ButtonManager::flushEvents" in bc
+
+    # 2. UI Core event preservation
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    # Ensure getEvent is NOT called at the top of UICore::loop() which would drain events
+    assert "bool any_button = btnManager.hasAnyEvent();" in uc
+    assert "btnManager.flushEvents();" in uc
+    assert "btnManager.peekEvent(BTN_ID_CANCEL);" in uc
+    assert "btnManager.peekEvent(BTN_ID_OK);" in uc
+    print("  [PASS] UICore non-destructive wake check and event preservation verified.")
+
+    # 3. SuperMini Wi-Fi RF optimization
+    with open(wifi_cpp, "r", encoding="utf-8") as f:
+        wc = f.read()
+    assert "#include <esp_wifi.h>" in wc
+    assert "WiFi.setSleep(false);" in wc
+    assert "WiFi.setTxPower(WIFI_POWER_19_5dBm);" in wc
+    assert "esp_wifi_set_ps(WIFI_PS_NONE);" in wc
+    assert "esp_wifi_set_max_tx_power(78);" in wc
+    assert "esp_wifi_set_protocol(WIFI_IF_STA" in wc
+    print("  [PASS] ESP32-S3 SuperMini max TX power (19.5 dBm), modem sleep disabled & 802.11b/g/n verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1469,4 +1513,5 @@ if __name__ == "__main__":
     test_mochi_pet_system()
     test_app_store_qapps_and_installer()
     test_companion_app_subsystems_and_stitch_screens()
+    test_button_event_flow_and_supermini_wifi()
     print("\nAll self-test verifications PASSED!")

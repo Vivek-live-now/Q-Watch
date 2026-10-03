@@ -6,6 +6,7 @@
 #include "settings_data.h"
 #include "qlink.h"
 #include <ESPmDNS.h>
+#include <esp_wifi.h>
 
 WifiPortal wifiPortal;
 
@@ -32,12 +33,24 @@ void WifiPortal::enableWifi() {
         Serial.print("Connecting to Wi-Fi: ");
         Serial.println(cfg.wifi_ssid);
         WiFi.mode(WIFI_STA);
+
+        // Maximize Wi-Fi TX power and disable modem sleep for ESP32-S3 SuperMini
+        WiFi.setSleep(false);
+        WiFi.setTxPower(WIFI_POWER_19_5dBm);
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        esp_wifi_set_max_tx_power(78);
+        esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+
         WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_password.c_str());
         state = WifiState::CONNECTING;
         connect_start_time = millis();
     } else {
         Serial.println("Wi-Fi enabled but no credentials found.");
         WiFi.mode(WIFI_STA);
+        WiFi.setSleep(false);
+        WiFi.setTxPower(WIFI_POWER_19_5dBm);
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        esp_wifi_set_max_tx_power(78);
         state = WifiState::NO_CREDS;
     }
 }
@@ -56,6 +69,11 @@ void WifiPortal::startScan() {
     }
 
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_max_tx_power(78);
+
     WiFi.scanDelete();
     int res = WiFi.scanNetworks(true);
     if (res != WIFI_SCAN_FAILED) {
@@ -82,6 +100,11 @@ void WifiPortal::startPortal() {
     state = WifiState::PORTAL;
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("Q-Watch-Setup");
+
+    WiFi.setSleep(false);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_max_tx_power(78);
 
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     setupRoutes();

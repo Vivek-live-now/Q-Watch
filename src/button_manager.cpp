@@ -134,6 +134,28 @@ ButtonEvent ButtonManager::getEvent(ButtonID id) {
     return evt;
 }
 
+ButtonEvent ButtonManager::peekEvent(ButtonID id) const {
+    if (id < BTN_COUNT) {
+        return buttons[id].pending_event;
+    }
+    return BTN_EVT_NONE;
+}
+
+bool ButtonManager::hasAnyEvent() const {
+    if (pending_combo != COMBO_EVT_NONE) return true;
+    for (int i = 0; i < BTN_COUNT; i++) {
+        if (buttons[i].pending_event != BTN_EVT_NONE) return true;
+    }
+    return false;
+}
+
+void ButtonManager::flushEvents() {
+    pending_combo = COMBO_EVT_NONE;
+    for (int i = 0; i < BTN_COUNT; i++) {
+        buttons[i].pending_event = BTN_EVT_NONE;
+    }
+}
+
 ComboEvent ButtonManager::getComboEvent() {
     ComboEvent evt = pending_combo;
     pending_combo = COMBO_EVT_NONE;

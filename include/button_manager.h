@@ -34,6 +34,9 @@ public:
     void loop();
 
     ButtonEvent getEvent(ButtonID id);
+    ButtonEvent peekEvent(ButtonID id) const;
+    bool hasAnyEvent() const;
+    void flushEvents();
     ComboEvent getComboEvent();
     void injectEvent(ButtonID id, ButtonEvent evt);
     bool isWokenFromSleep() const { return woken_from_sleep; }
@@ -59,7 +62,7 @@ private:
     uint32_t cancel_first_tap_time;
     bool cancel_waiting_for_double_tap;
 
-    static const uint32_t DEBOUNCE_DELAY_MS = 80;
+    static const uint32_t DEBOUNCE_DELAY_MS = 40;
     static const uint32_t LONG_PRESS_MS = 700;
     static const uint32_t REPEAT_DELAY_MS = 300; // Time between repeats when holding
     static const uint32_t DOUBLE_TAP_WINDOW_MS = 250;

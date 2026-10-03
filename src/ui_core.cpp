@@ -261,18 +261,13 @@ void UICore::loop() {
         }
     }
 
-    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
-    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
-    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
-    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
-    ComboEvent combo_evt = btnManager.getComboEvent();
-
-    bool any_button = (up_evt != BTN_EVT_NONE || ok_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE || cancel_evt != BTN_EVT_NONE || combo_evt != COMBO_EVT_NONE);
+    bool any_button = btnManager.hasAnyEvent();
 
     if (any_button) {
         if (display_off) {
             display_off = false;
             displayManager.setPowerSave(false);
+            btnManager.flushEvents();
             last_activity_time = millis();
             needs_redraw = true;
             return;
@@ -326,8 +321,13 @@ void UICore::loop() {
 
     if (current_state == UIState::SLEEPING) return;
 
-    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
-        if (current_state == UIState::APP_HOME) {
+    if (current_state != UIState::APP_RUNNING && current_state != UIState::APP_KEYBOARD) {
+        ButtonEvent cancel_evt = btnManager.peekEvent(BTN_ID_CANCEL);
+        ButtonEvent ok_evt = btnManager.peekEvent(BTN_ID_OK);
+
+        if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+            btnManager.getEvent(BTN_ID_CANCEL);
+            if (current_state == UIState::APP_HOME) {
             display_off = !display_off;
             displayManager.setPowerSave(display_off);
             if (display_off) {
@@ -533,37 +533,43 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-    } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER)) {
-        soundManager.playNavBack();
-        if (current_state == UIState::APP_IR) {
-            if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
-            if (irEngine.isCapturing()) irEngine.stopCapture();
-            if (irEngine.isTvBGoneRunning()) irEngine.stopTvBGone();
-            current_state = UIState::MAIN_MENU;
-        } else if (current_state == UIState::APP_AUDIO) {
-            soundManager.stop();
-            current_state = UIState::MAIN_MENU;
-        } else if (current_state == UIState::APP_CLOCK) {
-            clock_submenu = ClockSubmenu::MAIN;
-            clock_selection = 0;
-            clock_scroll_offset = 0;
-            current_state = UIState::APP_HOME;
-        } else if (current_state == UIState::APP_ANIM_PLAYER) {
-            animEngine.close();
-            current_state = UIState::MAIN_MENU;
-        } else if (current_state == UIState::APP_ANIM_LIST) {
-            current_state = UIState::MAIN_MENU;
-        } else if (current_state == UIState::APP_WIRELESS) {
-            wirelessRecon.stopBleScan();
-            wirelessRecon.stopDeauthMonitor();
-            wirelessRecon.stopPacketMonitor();
-            recon_submenu = ReconSubmenu::MAIN;
-            current_state = UIState::MAIN_MENU;
-        } else {
-            current_state = UIState::APP_HOME;
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI)) {
+            if (cancel_evt == BTN_EVT_LONG_PRESS) {
+                btnManager.getEvent(BTN_ID_CANCEL);
+            } else {
+                btnManager.getEvent(BTN_ID_OK);
+            }
+            soundManager.playNavBack();
+            if (current_state == UIState::APP_IR) {
+                if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
+                if (irEngine.isCapturing()) irEngine.stopCapture();
+                if (irEngine.isTvBGoneRunning()) irEngine.stopTvBGone();
+                current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_AUDIO) {
+                soundManager.stop();
+                current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_CLOCK) {
+                clock_submenu = ClockSubmenu::MAIN;
+                clock_selection = 0;
+                clock_scroll_offset = 0;
+                current_state = UIState::APP_HOME;
+            } else if (current_state == UIState::APP_ANIM_PLAYER) {
+                animEngine.close();
+                current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_ANIM_LIST) {
+                current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_WIRELESS) {
+                wirelessRecon.stopBleScan();
+                wirelessRecon.stopDeauthMonitor();
+                wirelessRecon.stopPacketMonitor();
+                recon_submenu = ReconSubmenu::MAIN;
+                current_state = UIState::MAIN_MENU;
+            } else {
+                current_state = UIState::APP_HOME;
+            }
+            needs_redraw = true;
+            return;
         }
-        needs_redraw = true;
-        return;
     }
 
     switch (current_state) {
