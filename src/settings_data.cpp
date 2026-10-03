@@ -77,6 +77,8 @@ void SettingsManager::load() {
         else if (key == "hourly_chime_enabled") settings.hourly_chime_enabled = (val == "1");
         else if (key == "world_clock_tz_idx") settings.world_clock_tz_idx = val.toInt();
         else if (key == "step_goal") settings.step_goal = (uint32_t)val.toInt();
+            }
+        }
     }
 
 #ifdef ARDUINO
