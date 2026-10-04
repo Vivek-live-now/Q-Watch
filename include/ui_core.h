@@ -114,6 +114,7 @@ enum class UIState {
     APP_WIRELESS,
     APP_STORAGE_INFO,
     APP_MOCHI,
+    APP_VIBRATION,
     APP_KEYBOARD,
     VALUE_EDIT,
     SLEEPING
@@ -235,6 +236,23 @@ public:
     void handleLedInput();
     void handleSoundInput();
     void handleMochiInput();
+    void handleVibrationInput();
+
+    int getVibeSelection() const { return vibe_selection; }
+    int getVibeOffset() const { return vibe_offset; }
+
+    static const int VIBE_MENU_ITEM_COUNT = 9;
+    const char* vibe_menu_items[VIBE_MENU_ITEM_COUNT] = {
+        "CLICK / TICK",
+        "DOUBLE PULSE",
+        "TACTICAL ALERT",
+        "HEARTBEAT",
+        "SOS MORSE",
+        "RAMP INTENSITY",
+        "CONTINUOUS RUN",
+        "STRENGTH",
+        "BUTTON HAPTICS"
+    };
 
     int getLedMenuSelection() const { return led_menu_selection; }
     int getLedMenuOffset() const { return led_menu_offset; }
@@ -273,10 +291,10 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 18;
+    static const int MAIN_MENU_ITEM_COUNT = 19;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;
@@ -654,6 +672,9 @@ public:
     static const int BATTERY_PROFILE_COUNT = 4;
     static const int BATTERY_SLEEP_ITEM_COUNT = 4;
     static const int BATTERY_PERIPH_ITEM_COUNT = 4;
+    // Vibration App State
+    int vibe_selection = 0;
+    int vibe_offset = 0;
 };
 
 extern UICore ui;

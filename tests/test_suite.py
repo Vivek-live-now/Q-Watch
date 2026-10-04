@@ -1296,7 +1296,7 @@ def test_mochi_pet_system():
         u_h = f.read()
     assert "APP_MOCHI," in u_h, "Missing APP_MOCHI in UIState"
     assert '"MOCHI PET"' in u_h, 'Missing "MOCHI PET" in main_menu_items'
-    assert "MAIN_MENU_ITEM_COUNT = 18;" in u_h, "MAIN_MENU_ITEM_COUNT must be 18"
+    assert "MAIN_MENU_ITEM_COUNT = 19;" in u_h, "MAIN_MENU_ITEM_COUNT must be 19"
 
     display_h = os.path.join(base_dir, "include", "display.h")
     with open(display_h, "r", encoding="utf-8") as f:
@@ -1742,6 +1742,111 @@ def test_qwatch_9_bugfixes_and_features():
     assert "wifiPortal.stopPortal();" in uc
     print("  [PASS] 9. Wi-Fi SoftAP Hotspot creation, status display, and toggle menu verified.")
 
+def test_vibration_subsystem_and_app():
+    print("\n--- 35. Vibration Subsystem & Haptic App Verification ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+
+    # 1. Verify Pin Assignment in hw_config.h
+    hw_config_h = os.path.join(base_dir, "include", "hw_config.h")
+    with open(hw_config_h, "r", encoding="utf-8") as f:
+        hw_content = f.read()
+    assert "#define VIBRATOR_PIN 38" in hw_content, "VIBRATOR_PIN must be defined as GPIO 38 in hw_config.h"
+
+    # 2. Verify UI State & Main Menu Registration
+    ui_core_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_core_h, "r", encoding="utf-8") as f:
+        u_h = f.read()
+    assert "APP_VIBRATION," in u_h, "Missing APP_VIBRATION in UIState"
+    assert '"VIBRATION"' in u_h, 'Missing "VIBRATION" in main_menu_items'
+    assert "MAIN_MENU_ITEM_COUNT = 19;" in u_h, "MAIN_MENU_ITEM_COUNT must be 19"
+    assert "VIBE_MENU_ITEM_COUNT = 9;" in u_h, "Missing VIBE_MENU_ITEM_COUNT in ui_core.h"
+
+    # 3. Verify Display Registration in display.h and display.cpp
+    display_h = os.path.join(base_dir, "include", "display.h")
+    with open(display_h, "r", encoding="utf-8") as f:
+        d_h = f.read()
+    assert "void drawAppVibration();" in d_h, "Missing drawAppVibration in display.h"
+
+    display_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        d_cpp = f.read()
+    assert "case UIState::APP_VIBRATION: drawAppVibration(); break;" in d_cpp, "Missing APP_VIBRATION dispatch in display.cpp"
+    assert "void DisplayManager::drawAppVibration()" in d_cpp, "Missing drawAppVibration implementation in display.cpp"
+
+    # 4. Verify VibrationManager header & source
+    vibe_h = os.path.join(base_dir, "include", "vibration_manager.h")
+    assert os.path.exists(vibe_h), "vibration_manager.h must exist"
+    with open(vibe_h, "r", encoding="utf-8") as f:
+        vh = f.read()
+    assert "class VibrationManager" in vh, "VibrationManager class declaration missing"
+    assert "triggerPattern" in vh, "triggerPattern missing in VibrationManager"
+    assert "VibePattern" in vh, "VibePattern enum missing in VibrationManager"
+
+    vibe_cpp = os.path.join(base_dir, "src", "vibration_manager.cpp")
+    assert os.path.exists(vibe_cpp), "vibration_manager.cpp must exist"
+    with open(vibe_cpp, "r", encoding="utf-8") as f:
+        vc = f.read()
+    assert "VibrationManager vibrationManager;" in vc, "Global vibrationManager instance missing"
+    assert "VIBE_LEDC_CHANNEL" in vc, "PWM channel definition missing"
+
+    # 5. Compile and test host verification for VibrationManager pattern logic
+    test_src = """#include <stdio.h>
+#include <assert.h>
+#include <string.h>
+#include "../include/vibration_manager.h"
+
+int main() {
+    VibrationManager vm;
+    vm.begin();
+    assert(vm.getIntensity() == 100);
+    assert(vm.isMasterSwitchOn() == true);
+    assert(vm.isButtonHapticsEnabled() == true);
+
+    // Test intensity clamping
+    vm.setIntensity(50);
+    assert(vm.getIntensity() == 50);
+    vm.setIntensity(150);
+    assert(vm.getIntensity() == 100);
+
+    // Test pattern trigger & names
+    vm.triggerPattern(VibePattern::CLICK);
+    assert(vm.isVibrating() == true);
+    assert(strcmp(vm.getPatternName(VibePattern::CLICK), "CLICK / TICK") == 0);
+    assert(strcmp(vm.getPatternName(VibePattern::SOS_MORSE), "SOS MORSE") == 0);
+    assert(strcmp(vm.getPatternName(VibePattern::HEARTBEAT), "HEARTBEAT") == 0);
+
+    vm.stop();
+    assert(vm.isVibrating() == false);
+    assert(vm.getLiveAmplitude() == 0);
+
+    // Test master switch mute
+    vm.setMasterSwitch(false);
+    vm.triggerPattern(VibePattern::ALERT);
+    assert(vm.isVibrating() == false);
+
+    printf("  [PASS] VibrationManager patterns, intensity clamping, master switch & sequencer verified.\\n");
+    return 0;
+}
+"""
+    tmp_c = os.path.join(base_dir, "tests", "temp_vibe_test.cpp")
+    tmp_bin = os.path.join(base_dir, "tests", "temp_vibe_test")
+    try:
+        with open(tmp_c, "w", encoding="utf-8") as f:
+            f.write(test_src)
+        res_cmp = subprocess.run([
+            "clang++", "-O2", "-Iinclude",
+            tmp_c, "src/vibration_manager.cpp",
+            "-o", tmp_bin
+        ], cwd=base_dir, capture_output=True, text=True)
+        assert res_cmp.returncode == 0, f"Failed to compile vibe test:\n{res_cmp.stderr}"
+        res_run = subprocess.run([tmp_bin], cwd=base_dir, capture_output=True, text=True)
+        assert res_run.returncode == 0, f"Vibe test failed:\n{res_run.stderr}\n{res_run.stdout}"
+    finally:
+        if os.path.exists(tmp_c): os.remove(tmp_c)
+        if os.path.exists(tmp_bin): os.remove(tmp_bin)
+
+    print("  [PASS] Vibration subsystem, hardware pin mapping, and interactive app verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1768,5 +1873,6 @@ if __name__ == "__main__":
     test_button_event_flow_and_supermini_wifi()
     test_sleep_wake_recovery_and_connectivity_menu()
     test_qwatch_9_bugfixes_and_features()
+    test_vibration_subsystem_and_app()
     print("\nAll self-test verifications PASSED!")
 

@@ -77,6 +77,10 @@ void SettingsManager::load() {
         else if (key == "hourly_chime_enabled") settings.hourly_chime_enabled = (val == "1");
         else if (key == "world_clock_tz_idx") settings.world_clock_tz_idx = val.toInt();
         else if (key == "step_goal") settings.step_goal = (uint32_t)val.toInt();
+        else if (key == "vibe_master_on") settings.vibe_master_on = (val == "1");
+        else if (key == "vibe_intensity") settings.vibe_intensity = val.toInt();
+        else if (key == "vibe_button_clicks") settings.vibe_button_clicks = (val == "1");
+        else if (key == "vibe_alarms") settings.vibe_alarms = (val == "1");
             }
         }
     }
@@ -143,6 +147,10 @@ void SettingsManager::save() {
     out += "hourly_chime_enabled=" + String(settings.hourly_chime_enabled ? "1" : "0") + "\n";
     out += "world_clock_tz_idx=" + String(settings.world_clock_tz_idx) + "\n";
     out += "step_goal=" + String(settings.step_goal) + "\n";
+    out += "vibe_master_on=" + String(settings.vibe_master_on ? "1" : "0") + "\n";
+    out += "vibe_intensity=" + String(settings.vibe_intensity) + "\n";
+    out += "vibe_button_clicks=" + String(settings.vibe_button_clicks ? "1" : "0") + "\n";
+    out += "vibe_alarms=" + String(settings.vibe_alarms ? "1" : "0") + "\n";
 
     fileManager.write("/config/settings", out);
 

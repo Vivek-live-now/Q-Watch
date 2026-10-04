@@ -21,6 +21,7 @@
 #include "power_manager.h"
 #include "simd_accel.h"
 #include "mochi_pet.h"
+#include "vibration_manager.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -101,6 +102,7 @@ void DisplayManager::update() {
             case UIState::APP_ANIM_PLAYER: drawAppAnimPlayer(); break;
             case UIState::APP_WIRELESS: drawAppWireless(); break;
             case UIState::APP_MOCHI: drawAppMochi(); break;
+            case UIState::APP_VIBRATION: drawAppVibration(); break;
             case UIState::APP_STORAGE_INFO: drawStorageInfo(); break;
 
             case UIState::MAIN_MENU:
@@ -3410,3 +3412,89 @@ void DisplayManager::drawPacketMonitor() {
     }
     if (data_w > 0) oled.drawBox(4 + mgmt_w + ctrl_w, 59, data_w, 2);
 }
+
+void DisplayManager::drawAppVibration() {
+    oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(2, 9, "HAPTIC LAB [PIN 38]");
+    oled.drawHLine(0, 11, 128);
+
+    int total_items = UICore::VIBE_MENU_ITEM_COUNT;
+    int sel = ui.getVibeSelection();
+    int offset = ui.getVibeOffset();
+
+    // Prepare values column
+    String vals[UICore::VIBE_MENU_ITEM_COUNT];
+    for (int i = 0; i < 7; i++) {
+        if (vibrationManager.isVibrating() && static_cast<int>(vibrationManager.getCurrentPattern()) == i) {
+            vals[i] = "RUN";
+        } else {
+            vals[i] = "";
+        }
+    }
+    vals[7] = String(vibrationManager.getIntensity()) + "%";
+    vals[8] = vibrationManager.isButtonHapticsEnabled() ? "ON" : "OFF";
+
+    // Draw 3 menu items (Y = 13 to 48)
+    for (int i = 0; i < 3; i++) {
+        int idx = offset + i;
+        if (idx >= total_items) break;
+
+        int y = 23 + (i * 12);
+        bool is_selected = (idx == sel);
+
+        if (is_selected) {
+            oled.drawBox(0, y - 9, 122, 11);
+            oled.setDrawColor(0);
+        } else {
+            oled.setDrawColor(1);
+        }
+
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(3, y - 1, ui.vibe_menu_items[idx]);
+
+        if (vals[idx].length() > 0) {
+            int vw = oled.getStrWidth(vals[idx].c_str());
+            oled.drawStr(120 - vw, y - 1, vals[idx].c_str());
+        }
+
+        oled.setDrawColor(1);
+    }
+
+    // Scrollbar (height 36px, y = 13 to 49)
+    if (total_items > 3) {
+        int sb_track_h = 36;
+        int sb_thumb_h = max(6, (3 * sb_track_h) / total_items);
+        int max_offset = total_items - 3;
+        int sb_thumb_y = 13 + (offset * (sb_track_h - sb_thumb_h)) / max_offset;
+        oled.drawVLine(126, 13, sb_track_h);
+        oled.drawBox(125, sb_thumb_y, 3, sb_thumb_h);
+    }
+
+    // Footer divider line
+    oled.drawHLine(0, 50, 128);
+
+    // Footer Live Haptic HUD (Y = 52 to 64)
+    oled.setFont(u8g2_font_5x7_tf);
+    if (vibrationManager.isVibrating()) {
+        oled.drawBox(2, 53, 26, 10);
+        oled.setDrawColor(0);
+        oled.drawStr(4, 61, "VIB");
+        oled.setDrawColor(1);
+
+        // Animated oscillating wave
+        uint32_t t = millis();
+        int phase = (t / 30) % 8;
+        for (int x = 33; x < 85; x += 4) {
+            int dy = ((x + phase * 4) % 8 < 4) ? -3 : 3;
+            oled.drawLine(x, 58 + dy, x + 4, 58 - dy);
+        }
+    } else {
+        oled.drawFrame(2, 53, 26, 10);
+        oled.drawStr(4, 61, "IDLE");
+        oled.drawHLine(33, 58, 52);
+    }
+
+    // Right tag: Transistor driver notice
+    oled.drawStr(89, 61, "2N2222A");
+}
+

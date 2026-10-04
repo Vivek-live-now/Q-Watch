@@ -58,6 +58,12 @@ struct SettingsData {
     bool hourly_chime_enabled = false;
     int world_clock_tz_idx = 1;   // Default: UTC (1)
     uint32_t step_goal = 10000;
+
+    // HAPTIC / VIBRATION SYSTEM
+    bool vibe_master_on = true;
+    int vibe_intensity = 100;         // 25, 50, 75, 100%
+    bool vibe_button_clicks = true;
+    bool vibe_alarms = true;
 };
 
 // Option labels lists

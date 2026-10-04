@@ -19,6 +19,7 @@
 #include "wireless_recon.h"
 #include "power_manager.h"
 #include "battery.h"
+#include "vibration_manager.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -389,8 +390,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (settings_submenu == SettingsSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 16;
-                menu_scroll_offset = 13;
+                menu_selection = 17;
+                menu_scroll_offset = 14;
             } else if (settings_submenu == SettingsSubmenu::WIFI_DETAILS) {
                 settings_submenu = SettingsSubmenu::CONNECTIVITY;
                 settings_selection = 0;
@@ -515,8 +516,8 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ABOUT) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 17;
-            menu_scroll_offset = 14;
+            menu_selection = 18;
+            menu_scroll_offset = 15;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_MOCHI) {
@@ -563,6 +564,14 @@ void UICore::loop() {
             }
             needs_redraw = true;
             return;
+        } else if (current_state == UIState::APP_VIBRATION) {
+            soundManager.playNavBack();
+            vibrationManager.stop();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 16;
+            menu_scroll_offset = 13;
+            needs_redraw = true;
+            return;
         } else {
             soundManager.playNavBack();
             if (current_state == UIState::MAIN_MENU) {
@@ -604,6 +613,9 @@ void UICore::loop() {
                 wirelessRecon.stopPacketMonitor();
                 recon_submenu = ReconSubmenu::MAIN;
                 current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_VIBRATION) {
+                vibrationManager.stop();
+                current_state = UIState::MAIN_MENU;
             } else {
                 current_state = UIState::APP_HOME;
             }
@@ -629,6 +641,7 @@ void UICore::loop() {
         case UIState::APP_ANIM_PLAYER: handleAnimPlayerInput(); break;
         case UIState::APP_WIRELESS: handleWirelessInput(); break;
         case UIState::APP_MOCHI: handleMochiInput(); break;
+        case UIState::APP_VIBRATION: handleVibrationInput(); break;
         case UIState::APP_STORAGE_INFO: handleStorageInfoInput(); break;
         case UIState::APP_KEYBOARD: handleKeyboardInput(); break;
         case UIState::VALUE_EDIT: handleValueEditInput(); break;
@@ -1511,12 +1524,17 @@ void UICore::handleMainMenuInput() {
                 recon_scroll_offset = 0;
                 break;
             case 16:
+                current_state = UIState::APP_VIBRATION;
+                vibe_selection = 0;
+                vibe_offset = 0;
+                break;
+            case 17:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 17: current_state = UIState::APP_ABOUT; break;
+            case 18: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -3466,3 +3484,88 @@ void UICore::handleMochiInput() {
         }
     }
 }
+
+void UICore::handleVibrationInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        if (vibe_selection > 0) {
+            vibe_selection--;
+            if (vibe_selection < vibe_offset) vibe_offset = vibe_selection;
+        } else {
+            vibe_selection = VIBE_MENU_ITEM_COUNT - 1;
+            vibe_offset = (VIBE_MENU_ITEM_COUNT > 3) ? (VIBE_MENU_ITEM_COUNT - 3) : 0;
+        }
+        soundManager.playNavMove();
+        vibrationManager.triggerHapticClick();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        if (vibe_selection < VIBE_MENU_ITEM_COUNT - 1) {
+            vibe_selection++;
+            if (vibe_selection >= vibe_offset + 3) vibe_offset = vibe_selection - 2;
+        } else {
+            vibe_selection = 0;
+            vibe_offset = 0;
+        }
+        soundManager.playNavMove();
+        vibrationManager.triggerHapticClick();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        switch (vibe_selection) {
+            case 0: // CLICK / TICK
+                vibrationManager.triggerPattern(VibePattern::CLICK);
+                showToast("CLICK 35ms", 800);
+                break;
+            case 1: // DOUBLE PULSE
+                vibrationManager.triggerPattern(VibePattern::DOUBLE_PULSE);
+                showToast("DOUBLE PULSE", 800);
+                break;
+            case 2: // TACTICAL ALERT
+                vibrationManager.triggerPattern(VibePattern::ALERT);
+                showToast("ALERT BUZZ", 800);
+                break;
+            case 3: // HEARTBEAT
+                vibrationManager.triggerPattern(VibePattern::HEARTBEAT);
+                showToast("HEARTBEAT", 800);
+                break;
+            case 4: // SOS MORSE
+                vibrationManager.triggerPattern(VibePattern::SOS_MORSE);
+                showToast("... --- ...", 1200);
+                break;
+            case 5: // RAMP INTENSITY
+                vibrationManager.triggerPattern(VibePattern::RAMP_UP);
+                showToast("PWM RAMP", 800);
+                break;
+            case 6: // CONTINUOUS RUN
+                if (vibrationManager.isVibrating() && vibrationManager.getCurrentPattern() == VibePattern::CONTINUOUS) {
+                    vibrationManager.stop();
+                    showToast("MOTOR STOPPED", 800);
+                } else {
+                    vibrationManager.triggerPattern(VibePattern::CONTINUOUS);
+                    showToast("CONTINUOUS (OK: stop)", 1200);
+                }
+                break;
+            case 7: // STRENGTH
+            {
+                uint8_t cur = vibrationManager.getIntensity();
+                uint8_t next = (cur == 25) ? 50 : (cur == 50) ? 75 : (cur == 75) ? 100 : 25;
+                vibrationManager.setIntensity(next);
+                vibrationManager.triggerPulse(80, 100);
+                break;
+            }
+            case 8: // BUTTON HAPTICS
+            {
+                bool next = !vibrationManager.isButtonHapticsEnabled();
+                vibrationManager.setButtonHaptics(next);
+                showToast(next ? "BTN VIBE: ON" : "BTN VIBE: OFF", 800);
+                if (next) vibrationManager.triggerHapticClick();
+                break;
+            }
+        }
+        needs_redraw = true;
+    }
+}
+

@@ -90,6 +90,7 @@ private:
     void drawAppAnimPlayer();
     void drawAppWireless();
     void drawAppMochi();
+    void drawAppVibration();
     void drawReconMainMenu();
     void drawBleList();
     void drawBleRadar();

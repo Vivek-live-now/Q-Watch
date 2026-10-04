@@ -64,9 +64,14 @@
 #define RGB_LED    48
 
 // ----------------------------------------------------------------------------
+// Haptic / Vibration Motor [Requires external MOSFET/BJT driver, e.g. 2N2222A]
+// ----------------------------------------------------------------------------
+#define VIBRATOR_PIN 38
+
+// ----------------------------------------------------------------------------
 // Reserve / Unused Pins
 // ----------------------------------------------------------------------------
-// GPIO 38, 43, 44   (Clean Reserves)
+// GPIO 43, 44   (Clean Reserves)
 // GPIO 0, 3, 45, 46 (Strapping / Boot pins - DO NOT USE)
 
 #endif // HW_CONFIG_H
