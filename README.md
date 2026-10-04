@@ -254,7 +254,7 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     * 30 complete test suites passing 100% across `tests/test_suite.py`, `tests/test_qapp_system.cpp`, and `tests/test_qlink.cpp`, including 100-cycle zero-leak dynamic memory stress tests for all apps.
 
 ### Milestone 20: Haptic & Vibration Subsystem & Interactive Haptic Lab App
-* **GPIO 38 Hardware Driver:** Configured clean reserve pin **GPIO 38** for haptic vibration motor control via LEDC hardware PWM (Channel 1, 1 kHz, 8-bit resolution), supporting discrete BJT drivers (e.g., 2N2222A with $330\,\Omega$ base resistor, $10\,\text{k}\Omega$ pulldown, and 1N4148/1N5819 flyback diode).
+* **GPIO 10 Hardware Driver:** Configured outer-header pin **GPIO 10** for haptic vibration motor control via LEDC hardware PWM (Channel 1, 1 kHz, 8-bit resolution), supporting discrete BJT drivers (e.g., 2N2222A with $330\,\Omega$ base resistor, $10\,\text{k}\Omega$ pulldown, and 1N4148/1N5819 flyback diode).
 * **Non-Blocking Sequencer (`VibrationManager`):** Multi-step asynchronous pattern engine supporting variable duty-cycle profiles:
     * `CLICK / TICK`: Crisp 35ms pulse for tactile UI navigation clicks.
     * `DOUBLE PULSE`: Two 50ms pulses with 70ms pause for phone notifications.
@@ -299,13 +299,15 @@ To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping 
 | IR Receiver | RX DATA | 17 | |
 | IR Transmitter| TX DATA | 18 | High current pulse load |
 | Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
-| Vibration Motor | PWM CONTROL | 38 | Requires external NPN (e.g. 2N2222A) or N-MOSFET driver + flyback diode |
+| Vibration Motor | PWM CONTROL | 10 | Outer-header pin; requires external NPN (e.g. 2N2222A) or N-MOSFET driver + flyback diode |
 | RGB LED | WS2812 DATA | 48 | Onboard RGB LED |
 
 ### 4. Available / Reserved Pins
 The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging:
+*   **GPIO 38:** Clean reserve (Underside solder pad on SuperMini).
 *   **GPIO 43:** Reserved (Hardware UART0 TX / Serial Debugging if USB CDC fails).
 *   **GPIO 44:** Reserved (Hardware UART0 RX / Serial Debugging if USB CDC fails).
+*   **GPIO 9, 11, 12, 13:** Clean reserves on headers.
 *   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*
 
 ### 5. Decoupling Capacitor Strategy (104 Ceramic)

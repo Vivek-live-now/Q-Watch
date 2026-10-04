@@ -1750,7 +1750,7 @@ def test_vibration_subsystem_and_app():
     hw_config_h = os.path.join(base_dir, "include", "hw_config.h")
     with open(hw_config_h, "r", encoding="utf-8") as f:
         hw_content = f.read()
-    assert "#define VIBRATOR_PIN 38" in hw_content, "VIBRATOR_PIN must be defined as GPIO 38 in hw_config.h"
+    assert "#define VIBRATOR_PIN 10" in hw_content, "VIBRATOR_PIN must be defined as GPIO 10 in hw_config.h"
 
     # 2. Verify UI State & Main Menu Registration
     ui_core_h = os.path.join(base_dir, "include", "ui_core.h")

@@ -3415,7 +3415,9 @@ void DisplayManager::drawPacketMonitor() {
 
 void DisplayManager::drawAppVibration() {
     oled.setFont(u8g2_font_5x7_tf);
-    oled.drawStr(2, 9, "HAPTIC LAB [PIN 38]");
+    char title_buf[24];
+    snprintf(title_buf, sizeof(title_buf), "HAPTIC LAB [PIN %d]", VIBRATOR_PIN);
+    oled.drawStr(2, 9, title_buf);
     oled.drawHLine(0, 11, 128);
 
     int total_items = UICore::VIBE_MENU_ITEM_COUNT;

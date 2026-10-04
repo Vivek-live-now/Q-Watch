@@ -66,12 +66,14 @@
 // ----------------------------------------------------------------------------
 // Haptic / Vibration Motor [Requires external MOSFET/BJT driver, e.g. 2N2222A]
 // ----------------------------------------------------------------------------
-#define VIBRATOR_PIN 38
+#define VIBRATOR_PIN 10
 
 // ----------------------------------------------------------------------------
 // Reserve / Unused Pins
 // ----------------------------------------------------------------------------
-// GPIO 43, 44   (Clean Reserves)
+// GPIO 38       (Clean Reserve - Underside Pad on SuperMini)
+// GPIO 43, 44   (Clean Reserves - UART0 TX/RX)
+// GPIO 9, 11, 12, 13 (Clean Reserves)
 // GPIO 0, 3, 45, 46 (Strapping / Boot pins - DO NOT USE)
 
 #endif // HW_CONFIG_H
