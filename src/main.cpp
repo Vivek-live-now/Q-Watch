@@ -77,7 +77,7 @@ void loop() {
   bool anim_active = (ui.getState() == UIState::APP_ANIM_PLAYER && animEngine.isPlaying());
   bool wireless_active = (ui.getState() == UIState::APP_WIRELESS);
   bool vibe_active = (ui.getState() == UIState::APP_VIBRATION && vibrationManager.isVibrating());
-  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || clock_active || anim_active || wireless_active || vibe_active)
+  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || ui.getState() == UIState::APP_RUNNING || clock_active || anim_active || wireless_active || vibe_active)
                             && millis() - last_ui_draw >= 20);
 
   if (!ui.isDisplayOff() && ui.getState() != UIState::SLEEPING) {

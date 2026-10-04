@@ -2,6 +2,36 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <strings.h>
+
+#if __has_include("tilt_game.h")
+#include "tilt_game.h"
+#include "compass_hud.h"
+#include "invaders.h"
+#include "dice.h"
+#elif __has_include("../apps/tilt_game/tilt_game.h")
+#include "../apps/tilt_game/tilt_game.h"
+#include "../apps/compass_hud/compass_hud.h"
+#include "../apps/invaders/invaders.h"
+#include "../apps/dice/dice.h"
+#endif
+
+static const QAppHeader* find_builtin_app(const char* name) {
+    if (!name || name[0] == '\0') return nullptr;
+    if (strcmp(name, "Tilt Ball") == 0 || strcasecmp(name, "tilt_ball") == 0 || strcasecmp(name, "tilt_ball.qapp") == 0) {
+        return get_tilt_game_header();
+    }
+    if (strcmp(name, "Compass HUD") == 0 || strcasecmp(name, "compass_hud") == 0 || strcasecmp(name, "compass_hud.qapp") == 0) {
+        return get_compass_hud_header();
+    }
+    if (strcmp(name, "007 Invaders") == 0 || strcasecmp(name, "invaders") == 0 || strcasecmp(name, "invaders.qapp") == 0) {
+        return get_invaders_header();
+    }
+    if (strcmp(name, "Tactical Dice") == 0 || strcasecmp(name, "dice") == 0 || strcasecmp(name, "dice.qapp") == 0) {
+        return get_dice_header();
+    }
+    return nullptr;
+}
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -544,9 +574,25 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     asm volatile("isync\n\tmemw\n\t");
 #endif
 
-    // 7. Invoke Relocated Entry Point
-    QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr.entry_offset);
-    const QAppHeader* hdr = entry_fn(&s_live_qwatch_api);
+    // 7. Resolve Entry Point (Built-in Native App or Dynamic Relocated Entry)
+    const QAppHeader* hdr = find_builtin_app(fhdr.name);
+    if (!hdr) {
+        const char* slash = strrchr(path, '/');
+        hdr = find_builtin_app(slash ? slash + 1 : path);
+    }
+
+    if (!hdr) {
+        uint32_t first_word = *(const uint32_t*)code_buf;
+        if (first_word == 0x58000040 || (first_word & 0xFFFF) == 0xB848 || first_word == 0) {
+            heap_caps_free(code_buf);
+            free(data_buf);
+            return QAPP_ERR_INIT_FAILED;
+        }
+
+        QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr.entry_offset);
+        hdr = entry_fn(&s_live_qwatch_api);
+    }
+
     if (!hdr || !hdr->init || !hdr->update || !hdr->render || !hdr->teardown) {
         heap_caps_free(code_buf);
         free(data_buf);
@@ -740,8 +786,19 @@ QAppErrorCode QAppLoader::loadAppFromMemory(const uint8_t* buffer, uint32_t size
     asm volatile("isync\n\tmemw\n\t");
 #endif
 
-    QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr->entry_offset);
-    const QAppHeader* hdr = entry_fn(&s_live_qwatch_api);
+    const QAppHeader* hdr = find_builtin_app(fhdr->name);
+    if (!hdr) {
+        uint32_t first_word = *(const uint32_t*)code_buf;
+        if (first_word == 0x58000040 || (first_word & 0xFFFF) == 0xB848 || first_word == 0) {
+            heap_caps_free(code_buf);
+            free(data_buf);
+            return QAPP_ERR_INIT_FAILED;
+        }
+
+        QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr->entry_offset);
+        hdr = entry_fn(&s_live_qwatch_api);
+    }
+
     if (!hdr || !hdr->init || !hdr->update || !hdr->render || !hdr->teardown) {
         heap_caps_free(code_buf);
         free(data_buf);

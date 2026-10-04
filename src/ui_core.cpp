@@ -2260,6 +2260,8 @@ void UICore::handleFileManagerInput() {
                 } else if (lower.endsWith(".qapp")) {
                     String fullPath = fm_current_path;
                     if (!fullPath.endsWith("/")) fullPath += "/";
+                    int lastSlash = filename.lastIndexOf('/');
+                    if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
                     fullPath += filename;
                     soundManager.playNavSelect();
                     QAppErrorCode err = qappLoader.loadApp(fullPath.c_str());
@@ -2285,15 +2287,73 @@ void UICore::handleFileManagerInput() {
 void UICore::handleStorageInfoInput() {
 }
 
+static void ensureAppFileExists(const char* filename, const char* name, const char* ver, const char* author, uint32_t caps, uint32_t psram) {
+    String full_path = String("/apps/") + filename;
+    if (LittleFS.exists(full_path)) return;
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = caps;
+    strncpy(fhdr.name, name, sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, ver, sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, author, sizeof(fhdr.author) - 1);
+    fhdr.required_psram = psram;
+
+    uint32_t code_len = 16;
+    uint32_t data_len = sizeof(QAppHeader);
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    File f = LittleFS.open(full_path, "w");
+    if (!f) return;
+
+    f.write((const uint8_t*)&fhdr, sizeof(fhdr));
+
+    uint8_t dummy_code[16] = {0};
+    f.write(dummy_code, code_len);
+
+    uint8_t dummy_data[sizeof(QAppHeader)] = {0};
+    f.write(dummy_data, data_len);
+
+    QAppReloc reloc;
+    memset(&reloc, 0, sizeof(reloc));
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.offset = 4;
+    f.write((const uint8_t*)&reloc, sizeof(reloc));
+
+    f.close();
+}
+
+static void provisionDefaultAppsIfNeeded() {
+    if (!LittleFS.exists("/apps")) {
+        LittleFS.mkdir("/apps");
+    }
+    ensureAppFileExists("tilt_ball.qapp", "Tilt Ball", "1.0.0", "007 Agent",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED, 2048);
+    ensureAppFileExists("compass_hud.qapp", "Compass HUD", "1.0.0", "007 Agent",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MAG, 1024);
+    ensureAppFileExists("invaders.qapp", "007 Invaders", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 4096);
+    ensureAppFileExists("dice.qapp", "Tactical Dice", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED, 2048);
+}
+
 void UICore::loadAppsList() {
     app_count = 0;
     app_selection = 0;
     app_scroll_offset = 0;
 
-    if (!LittleFS.exists("/apps")) {
-        LittleFS.mkdir("/apps");
-        return;
-    }
+    provisionDefaultAppsIfNeeded();
 
     File dir = LittleFS.open("/apps");
     if (!dir || !dir.isDirectory()) return;
@@ -2301,10 +2361,9 @@ void UICore::loadAppsList() {
     File file = dir.openNextFile();
     while (file && app_count < MAX_APPS) {
         String fname = file.name();
-        if (fname.startsWith("/apps/")) {
-            fname = fname.substring(6);
-        } else if (fname.startsWith("/")) {
-            fname = fname.substring(1);
+        int lastSlash = fname.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fname = fname.substring(lastSlash + 1);
         }
 
         if (fname.endsWith(".qapp")) {

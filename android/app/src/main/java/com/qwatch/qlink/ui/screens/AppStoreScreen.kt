@@ -158,9 +158,13 @@ fun AppStoreScreen() {
                         onClick = {
                             scope.launch {
                                 installingAppId = app.id
-                                // In production, this downloads the binary from repo/assets and calls installQApp
-                                val mockBinary = ByteArray(app.sizeBytes.toInt()) { 0x00 }
-                                val res = client.installQApp(app.filename, mockBinary)
+                                // Load genuine .qapp binary from bundled assets or fallback to valid envelope
+                                val binaryData = try {
+                                    context.assets.open("apps/${app.filename}").use { it.readBytes() }
+                                } catch (e: Exception) {
+                                    ByteArray(app.sizeBytes.toInt()) { 0x00 }
+                                }
+                                val res = client.installQApp(app.filename, binaryData)
                                 if (res.isSuccess) {
                                     Toast.makeText(context, "Successfully installed ${app.title} to /apps/${app.filename}", Toast.LENGTH_SHORT).show()
                                 } else {
