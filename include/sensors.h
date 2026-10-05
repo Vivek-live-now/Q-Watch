@@ -110,6 +110,7 @@ public:
     bool getImuInvY() const { return offsets.inv_y; }
     bool getImuInvZ() const { return offsets.inv_z; }
     void calibrateAccel();
+    void calibrateGyro();
     void zeroLevel();
 
     void startMagCalibration();
@@ -203,7 +204,6 @@ private:
 
     void readMpu();
     void readMag();
-    void calibrateGyro();
     void applyCalibrationAndMapping();
     void updateMadgwick(float dt);
     void computeEulerAngles();

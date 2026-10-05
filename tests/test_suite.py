@@ -1931,6 +1931,13 @@ def test_qwatch_user_5_fixes():
         uc = f.read()
     assert "soundManager.playAppLaunch();" in uc, "playAppLaunch() called in ui_core.cpp"
     assert "sensors.calibrateGyro();" in uc, "calibrateGyro() called in motion menu"
+
+    sens_h = os.path.join(base_dir, "include", "sensors.h")
+    with open(sens_h, "r", encoding="utf-8") as f:
+        sensors_header = f.read()
+    priv_idx = sensors_header.find("private:")
+    cal_idx = sensors_header.find("void calibrateGyro();")
+    assert cal_idx != -1 and cal_idx < priv_idx, "calibrateGyro() must be public in SensorManager"
     print("  [PASS] 5. App launch long beep audio sequence and UI dispatch verified.")
 
 if __name__ == "__main__":
