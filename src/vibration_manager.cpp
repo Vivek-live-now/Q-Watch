@@ -7,8 +7,10 @@
 
 VibrationManager vibrationManager;
 
-#define VIBE_LEDC_CHANNEL   1
-#define VIBE_LEDC_FREQ      1000
+// Assign Channel 2 (Timer 1) to isolate from Buzzer on Channel 0 (Timer 0)
+// and set 200 Hz low-frequency PWM suited for inductive ERM coin motors
+#define VIBE_LEDC_CHANNEL   2
+#define VIBE_LEDC_FREQ      200
 #define VIBE_LEDC_RES_BITS  8
 
 VibrationManager::VibrationManager() :
@@ -49,8 +51,13 @@ void VibrationManager::applyPwmDuty(uint8_t duty_pct) {
     }
     // Scale duty by user intensity preference (0-100%)
     uint32_t effective_pct = (static_cast<uint32_t>(duty_pct) * intensity_pct) / 100;
-    uint32_t val = (effective_pct * 255) / 100;
-    ledcWrite(VIBE_LEDC_CHANNEL, val);
+    if (effective_pct >= 100) {
+        // True 100% DC saturation on ESP32 LEDC (1 << 8 = 256 holds pin constantly HIGH)
+        ledcWrite(VIBE_LEDC_CHANNEL, (1 << VIBE_LEDC_RES_BITS));
+    } else {
+        uint32_t val = (effective_pct * 255) / 100;
+        ledcWrite(VIBE_LEDC_CHANNEL, val);
+    }
 #endif
 }
 
@@ -121,7 +128,7 @@ void VibrationManager::loadPatternSteps(VibePattern pattern) {
 
     switch (pattern) {
         case VibePattern::CLICK:
-            step_sequence[0] = {100, 35};
+            step_sequence[0] = {100, 60}; // 60ms allows ERM coin motor rotor to overcome static friction
             sequence_len = 1;
             break;
 

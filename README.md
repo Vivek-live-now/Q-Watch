@@ -254,9 +254,9 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
     * 30 complete test suites passing 100% across `tests/test_suite.py`, `tests/test_qapp_system.cpp`, and `tests/test_qlink.cpp`, including 100-cycle zero-leak dynamic memory stress tests for all apps.
 
 ### Milestone 20: Haptic & Vibration Subsystem & Interactive Haptic Lab App
-* **GPIO 10 Hardware Driver:** Configured outer-header pin **GPIO 10** for haptic vibration motor control via LEDC hardware PWM (Channel 1, 1 kHz, 8-bit resolution), supporting discrete BJT drivers (e.g., 2N2222A with $330\,\Omega$ base resistor, $10\,\text{k}\Omega$ pulldown, and 1N4148/1N5819 flyback diode).
+* **GPIO 10 Hardware Driver:** Configured outer-header pin **GPIO 10** for haptic vibration motor control via LEDC hardware PWM (Channel 2 on Timer 1 to prevent buzzer tone timer collisions, 200 Hz low-frequency carrier, 8-bit resolution with full DC saturation at 100%), supporting discrete BJT drivers (e.g., 2N2222A with $330\,\Omega$ base resistor, $10\,\text{k}\Omega$ pulldown, and 1N4148/1N5819 flyback diode).
 * **Non-Blocking Sequencer (`VibrationManager`):** Multi-step asynchronous pattern engine supporting variable duty-cycle profiles:
-    * `CLICK / TICK`: Crisp 35ms pulse for tactile UI navigation clicks.
+    * `CLICK / TICK`: Crisp 60ms pulse for tactile UI navigation clicks.
     * `DOUBLE PULSE`: Two 50ms pulses with 70ms pause for phone notifications.
     * `TACTICAL ALERT`: 220ms continuous tactile pulse for alarms and countdown timers.
     * `HEARTBEAT`: Biometric lub-dub cardiac rhythm simulation.
