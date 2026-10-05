@@ -262,6 +262,7 @@ void UICore::loop() {
     if (current_state == UIState::APP_IR && (ir_submenu == IrSubmenu::IR_READ_WAIT || ir_submenu == IrSubmenu::QUICK_REMOTE_WAIT)) {
         if (irEngine.checkCapturedSignal(ir_captured_btn)) {
             soundManager.playNavSelect();
+            irEngine.stopCapture();
             if (ir_submenu == IrSubmenu::IR_READ_WAIT) {
                 ir_submenu = IrSubmenu::IR_READ_RESULT;
             } else {

@@ -37,6 +37,9 @@ IREngine::IREngine() :
 
 void IREngine::begin() {
     irsend.begin();
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
+    gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
+#endif
     ensureIrDirectory();
     loadDefaultTvBGoneCodes();
 }
@@ -123,24 +126,51 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
     decode_type_t type = strToDecodeType(protocol);
 
     if (type == NEC) {
-        uint64_t data = irsend.encodeNEC(address, command);
+        uint64_t data;
+        // If address is non-zero, or command is small (<= 0xFF, e.g. from Flipper .ir file)
+        if (address != 0 || command <= 0xFF) {
+            data = irsend.encodeNEC(address, command);
+        } else {
+            // command is already the full 32-bit NEC frame (e.g. from captured results.value)
+            data = command;
+        }
         irsend.sendNEC(data, nbits > 0 ? nbits : 32);
         return true;
     } else if (type == SAMSUNG) {
-        uint64_t data = irsend.encodeSAMSUNG(address, command);
+        uint64_t data;
+        if (address != 0 && command <= 0xFFFF) {
+            data = irsend.encodeSAMSUNG(address, command);
+        } else {
+            data = command;
+        }
         irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32);
         return true;
     } else if (type == SONY) {
         uint16_t bits = (protocol == "SIRC15") ? 15 : ((protocol == "SIRC20") ? 20 : (nbits > 0 ? nbits : 12));
-        uint64_t data = irsend.encodeSony(bits, command, address);
-        irsend.sendSony(data, bits);
+        uint64_t data;
+        if (address != 0) {
+            data = irsend.encodeSony(bits, command, address);
+        } else {
+            data = command;
+        }
+        irsend.sendSony(data, bits, 2); // Sony SIRC requires min 2 repeats
         return true;
     } else if (type == RC5) {
-        uint64_t data = (protocol == "RC5X") ? irsend.encodeRC5X(address, command) : irsend.encodeRC5(address, command);
+        uint64_t data;
+        if (address != 0) {
+            data = (protocol == "RC5X") ? irsend.encodeRC5X(address, command) : irsend.encodeRC5(address, command);
+        } else {
+            data = command;
+        }
         irsend.sendRC5(data, nbits > 0 ? nbits : 12);
         return true;
     } else if (type == RC6) {
-        uint64_t data = irsend.encodeRC6(address, command);
+        uint64_t data;
+        if (address != 0) {
+            data = irsend.encodeRC6(address, command);
+        } else {
+            data = command;
+        }
         irsend.sendRC6(data, nbits > 0 ? nbits : 20);
         return true;
     } else if (type != UNKNOWN) {
@@ -163,12 +193,18 @@ bool IREngine::sendButton(const IrButton& btn) {
         stopCapture();
     }
 
+    bool success = false;
     if (btn.type == IrSignalType::PARSED) {
-        return sendParsed(btn.protocol, btn.address, btn.command, btn.nbits);
+        success = sendParsed(btn.protocol, btn.address, btn.command, btn.nbits);
+        if (!success && !btn.raw_data.empty()) {
+            success = sendRaw(btn.raw_data.data(), btn.raw_data.size(), btn.frequency);
+        }
     } else {
-        if (btn.raw_data.empty()) return false;
-        return sendRaw(btn.raw_data.data(), btn.raw_data.size(), btn.frequency);
+        if (!btn.raw_data.empty()) {
+            success = sendRaw(btn.raw_data.data(), btn.raw_data.size(), btn.frequency);
+        }
     }
+    return success;
 }
 
 void IREngine::startCapture() {
@@ -189,6 +225,19 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
         out_btn.raw_data.clear();
         out_btn.truncated = false;
 
+        uint16_t* raw_arr = resultToRawArray(&results);
+        uint16_t raw_len = getCorrectedRawLength(&results);
+
+        if (raw_len > MAX_IR_RAW_TIMINGS) {
+            raw_len = MAX_IR_RAW_TIMINGS;
+            out_btn.truncated = true;
+        }
+
+        for (uint16_t i = 0; i < raw_len; i++) {
+            out_btn.raw_data.push_back(raw_arr[i]);
+        }
+        delete[] raw_arr;
+
         if (results.decode_type != UNKNOWN) {
             out_btn.type = IrSignalType::PARSED;
             out_btn.protocol = decodeTypeToStr(results.decode_type, results.bits);
@@ -207,19 +256,6 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
             out_btn.frequency = 0; // 0 = unknown carrier
             out_btn.duty_cycle = 0.0f;
             out_btn.has_duty_cycle = false;
-
-            uint16_t* raw_arr = resultToRawArray(&results);
-            uint16_t raw_len = getCorrectedRawLength(&results);
-
-            if (raw_len > MAX_IR_RAW_TIMINGS) {
-                raw_len = MAX_IR_RAW_TIMINGS;
-                out_btn.truncated = true;
-            }
-
-            for (uint16_t i = 0; i < raw_len; i++) {
-                out_btn.raw_data.push_back(raw_arr[i]);
-            }
-            delete[] raw_arr;
         }
 
         irrecv.resume();
@@ -520,4 +556,8 @@ void IREngine::stopCarrierTest() {
     ledcDetachPin(IR_TX);
     pinMode(IR_TX, OUTPUT);
     digitalWrite(IR_TX, LOW);
+    irsend.begin();
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
+    gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
+#endif
 }
