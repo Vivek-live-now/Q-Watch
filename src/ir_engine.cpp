@@ -134,7 +134,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
             // command is already the full 32-bit NEC frame (e.g. from captured results.value)
             data = command;
         }
-        irsend.sendNEC(data, nbits > 0 ? nbits : 32);
+        irsend.sendNEC(data, nbits > 0 ? nbits : 32, 1);
         return true;
     } else if (type == SAMSUNG) {
         uint64_t data;
@@ -143,7 +143,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32);
+        irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32, 1);
         return true;
     } else if (type == SONY) {
         uint16_t bits = (protocol == "SIRC15") ? 15 : ((protocol == "SIRC20") ? 20 : (nbits > 0 ? nbits : 12));
@@ -162,7 +162,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendRC5(data, nbits > 0 ? nbits : 12);
+        irsend.sendRC5(data, nbits > 0 ? nbits : 12, 1);
         return true;
     } else if (type == RC6) {
         uint64_t data;
@@ -171,7 +171,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendRC6(data, nbits > 0 ? nbits : 20);
+        irsend.sendRC6(data, nbits > 0 ? nbits : 20, 1);
         return true;
     } else if (type != UNKNOWN) {
         irsend.send(type, command, nbits > 0 ? nbits : 32);
