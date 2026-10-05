@@ -433,11 +433,11 @@ void MochiPet::pickerDown() {
     if (submode == MochiSubmode::EMOTE_PICKER) {
         int max_items = static_cast<int>(MochiEmote::COUNT);
         if (picker_selection < max_items - 1) picker_selection++;
-        if (picker_selection >= picker_offset + 3) picker_offset = picker_selection - 2;
+        if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
     } else if (submode == MochiSubmode::HELMET_PICKER) {
         int max_items = static_cast<int>(MochiHelmet::COUNT);
         if (picker_selection < max_items - 1) picker_selection++;
-        if (picker_selection >= picker_offset + 3) picker_offset = picker_selection - 2;
+        if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
     }
 }
 
@@ -632,10 +632,10 @@ void MochiPet::render(U8G2& display) {
         display.drawHLine(0, 13, 128);
 
         int total = (submode == MochiSubmode::EMOTE_PICKER) ? static_cast<int>(MochiEmote::COUNT) : static_cast<int>(MochiHelmet::COUNT);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             int idx = picker_offset + i;
             if (idx >= total) break;
-            int y = 26 + (i * 13);
+            int y = 23 + (i * 12);
             const char* name = (submode == MochiSubmode::EMOTE_PICKER) 
                 ? getEmoteName(static_cast<MochiEmote>(idx)) 
                 : getHelmetName(static_cast<MochiHelmet>(idx));

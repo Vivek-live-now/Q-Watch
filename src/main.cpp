@@ -17,6 +17,7 @@
 #include "timekeeping.h"
 #include "anim_engine.h"
 #include "vibration_manager.h"
+#include "air_mouse.h"
 
 int last_drawn_sec = -1;
 uint32_t last_portal_draw = 0;
@@ -67,6 +68,7 @@ void loop() {
   vibrationManager.loop();
   irEngine.loop();
   timekeeping.loop();
+  airMouse.loop();
 
   // Energy Efficiency & UI Updates
   int current_sec = qclock.getSecond();

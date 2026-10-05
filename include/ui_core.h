@@ -262,14 +262,14 @@ public:
         "Master Sw", "Mode", "Brightness", "Presets", "Effects", "Factory Rst"
     };
 
-    static const int MOTION_MENU_ITEM_COUNT = 7;
+    static const int MOTION_MENU_ITEM_COUNT = 8;
     const char* motion_menu_items[MOTION_MENU_ITEM_COUNT] = {
-        "Zero Altitude", "Zero Level IMU", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
+        "Zero Altitude", "Zero Level IMU", "Calibrate Gyro", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
     };
 
     static const int IMU_SUBAPP_COUNT = 2;
     const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
-        "ALTIMETER", "AIR MOUSE"
+        "IMU / HORIZON", "AIR MOUSE"
     };
 
     static const int CLOCK_MENU_ITEM_COUNT = 8;
@@ -294,7 +294,7 @@ public:
     static const int MAIN_MENU_ITEM_COUNT = 19;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
         "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
-        "IMU6500", "IR REMOTE", "SOUND", "ALTIMETER", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
+        "IMU6500", "IR REMOTE", "SOUND", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
     };
 
     static const int SOUND_MAIN_ITEM_COUNT = 7;

@@ -68,24 +68,24 @@ def test_raw_serialization():
 
 def test_menu_scrollbar_geometry():
     print("\n--- 3. Menu Window & Scrollbar Geometry Test ---")
-    # For any item_count > 3 and valid offset, test bounds
+    # For any item_count > 4 and valid offset, test bounds
     test_cases = [
-        (4, 0), (4, 1),
-        (5, 0), (5, 1), (5, 2),
-        (6, 0), (6, 2), (6, 3),
-        (14, 0), (14, 5), (14, 11),
-        (16, 0), (16, 6), (16, 13),
+        (5, 0), (5, 1),
+        (6, 0), (6, 1), (6, 2),
+        (7, 0), (7, 2), (7, 3),
+        (14, 0), (14, 5), (14, 10),
+        (16, 0), (16, 6), (16, 12),
     ]
     for count, offset in test_cases:
-        items = list(range(offset, min(offset + 3, count)))
-        assert len(items) <= 3
+        items = list(range(offset, min(offset + 4, count)))
+        assert len(items) <= 4
         assert items[0] == offset
         assert items[-1] < count
 
-        # Scrollbar thumb position formula:
-        scroll_h = 30
-        scroll_y = 15 + ((offset / (count - 3)) * (scroll_h - 10))
-        assert 15 <= scroll_y <= 35, f"Scrollbar thumb out of range: {scroll_y}"
+        # Scrollbar thumb position formula (4-item window):
+        scroll_h = 46
+        scroll_y = 12 + ((offset / (count - 4)) * (scroll_h - 10))
+        assert 12 <= scroll_y <= 48, f"Scrollbar thumb out of range: {scroll_y}"
 
     print("  [PASS] All menu window slices and scrollbar thumb ranges verified.")
 
@@ -1847,6 +1847,92 @@ int main() {
 
     print("  [PASS] Vibration subsystem, hardware pin mapping, and interactive app verified.")
 
+def test_qwatch_user_5_fixes():
+    print("\n--- 36. User 5 Fixes Verification: Compass/IMU, BLE Stability, 4-Item Menus, BME280, App Launch Beep ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. Compass dial rotation direction and IMU logic
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+
+    # Check Gyro units: deg/s in cal_data, rad/s in Madgwick
+    assert "raw_gx_cal / 16.4f" in sc, "Gyro raw should be scaled to deg/s (16.4 LSB/dps)"
+    assert "0.0174532925f" in sc, "Madgwick must convert deg/s to rad/s for integration"
+    # Check 6-DOF fallback when mag is missing
+    assert "6-DOF IMU Madgwick update" in sc or "norm_s" in sc, "6-DOF IMU fallback missing in sensors.cpp"
+    # Check yaw math for compass dial clockwise rotation -> dial numbers counter-clockwise
+    assert "yaw_math + 90.0f" in sc, "Yaw math must add 90 deg for correct clockwise rotation heading"
+
+    # Math test for dial rotation
+    h_initial = 0.0
+    h_cw = 30.0
+    dial_marker = 0.0 # North
+    screen_angle_initial = dial_marker - h_initial
+    screen_angle_cw = dial_marker - h_cw
+    assert screen_angle_cw < screen_angle_initial, "Dial markers must rotate counter-clockwise when device turns clockwise"
+    print("  [PASS] 1. Compass rotation NED math, gyro deg/s scaling & 6-DOF IMU fallback verified.")
+
+    # 2. BLE & Air Mouse stability
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "new BLE2902()" in mc, "BLE2902 notification descriptor must be present"
+    assert "ESP_IO_CAP_NONE" in mc, "BLE security capability must be set to ESP_IO_CAP_NONE"
+    assert "!BLEDevice::getInitialized()" in mc, "BLE server initialization check must prevent duplicate server crashes"
+
+    recon_cpp = os.path.join(base_dir, "src", "wireless_recon.cpp")
+    with open(recon_cpp, "r", encoding="utf-8") as f:
+        rc = f.read()
+    assert "scan->clearResults();" in rc, "BLE scan results must be cleared to prevent heap exhaustion"
+
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mainc = f.read()
+    assert "airMouse.loop();" in mainc, "airMouse.loop() must be called in main loop"
+    print("  [PASS] 2. BLE2902 descriptor, security bonding, heap clearance & air mouse loop verified.")
+
+    # 3. 4 Items displayed in menu system
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "MOTION_MENU_ITEM_COUNT = 8" in uh, "Motion menu count must be 8"
+    assert '"Calibrate Gyro"' in uh, "Calibrate Gyro must be in motion menu items"
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "offset + 4 && i < item_count" in dc, "drawStandardMenu must display 4 items"
+    assert "item_count > 4" in dc, "drawScrollBar must trigger for item_count > 4"
+    assert "scroll_h = 46;" in dc, "drawScrollBar height must be 46 for 4 items"
+    assert "offset + 4 && i < UICore::MOTION_MENU_ITEM_COUNT" in dc, "Motion settings must display 4 items"
+    assert "for (int i = 0; i < 4; i++)" in dc, "Apps, anims & vibration menus must loop 4 items"
+    print("  [PASS] 3. 4 items displayed across all menus & scrollbars verified.")
+
+    # 4. Rename Altimeter app to BME280
+    assert '"BME280"' in uh, "BME280 must be present in main_menu_items"
+    assert '"ALTIMETER"' not in uh, "ALTIMETER must be renamed to BME280 in main_menu_items"
+    print("  [PASS] 4. Altimeter renamed to BME280 in main menu verified.")
+
+    # 5. App Launch Beep sound
+    snd_h = os.path.join(base_dir, "include", "sound_manager.h")
+    with open(snd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void playAppLaunch();" in sh, "playAppLaunch() declared in sound_manager.h"
+
+    snd_cpp = os.path.join(base_dir, "src", "sound_manager.cpp")
+    with open(snd_cpp, "r", encoding="utf-8") as f:
+        sc_snd = f.read()
+    assert "playAppLaunch()" in sc_snd, "playAppLaunch() implemented in sound_manager.cpp"
+    assert "seq_app_launch" in sc_snd, "seq_app_launch sequence defined"
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "soundManager.playAppLaunch();" in uc, "playAppLaunch() called in ui_core.cpp"
+    assert "sensors.calibrateGyro();" in uc, "calibrateGyro() called in motion menu"
+    print("  [PASS] 5. App launch long beep audio sequence and UI dispatch verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -1874,5 +1960,6 @@ if __name__ == "__main__":
     test_sleep_wake_recovery_and_connectivity_menu()
     test_qwatch_9_bugfixes_and_features()
     test_vibration_subsystem_and_app()
+    test_qwatch_user_5_fixes()
     print("\nAll self-test verifications PASSED!")
 

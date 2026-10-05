@@ -75,7 +75,7 @@ void UICore::handleSoundMainInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_MAIN_ITEM_COUNT - 1) {
             sound_selection++;
-            if (sound_selection >= sound_scroll_offset + 3) sound_scroll_offset = sound_selection - 2;
+            if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -114,7 +114,7 @@ void UICore::handleSoundSettingsInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_SETTINGS_ITEM_COUNT - 1) {
             sound_selection++;
-            if (sound_selection >= sound_scroll_offset + 3) sound_scroll_offset = sound_selection - 2;
+            if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -154,7 +154,7 @@ void UICore::handleSoundEffectsInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_EFFECTS_ITEM_COUNT - 1) {
             sound_selection++;
-            if (sound_selection >= sound_scroll_offset + 3) sound_scroll_offset = sound_selection - 2;
+            if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -231,7 +231,7 @@ void UICore::handleSoundCreatorListInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < total_items - 1) {
             sound_selection++;
-            if (sound_selection >= sound_scroll_offset + 3) sound_scroll_offset = sound_selection - 2;
+            if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -471,7 +471,7 @@ void UICore::handleSoundLabInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_LAB_ITEM_COUNT - 1) {
             sound_selection++;
-            if (sound_selection >= sound_scroll_offset + 3) sound_scroll_offset = sound_selection - 2;
+            if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }

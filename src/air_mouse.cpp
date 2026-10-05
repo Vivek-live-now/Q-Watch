@@ -83,28 +83,40 @@ void AirMouseManager::begin() {
 void AirMouseManager::start() {
     if (enabled) return;
 
-    BLEDevice::init("Q-Watch Air Mouse");
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new AirMouseServerCallbacks(&is_connected, &was_connected));
+    if (!BLEDevice::getInitialized()) {
+        BLEDevice::init("Q-Watch Air Mouse");
+    }
 
-    hid = new BLEHIDDevice(pServer);
-    inputMouse = hid->inputReport(0);
+    if (!pServer) {
+        pServer = BLEDevice::createServer();
+        pServer->setCallbacks(new AirMouseServerCallbacks(&is_connected, &was_connected));
 
-    hid->manufacturer()->setValue("Q-Branch");
-    hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
-    hid->hidInfo(0x00, 0x02);
+        hid = new BLEHIDDevice(pServer);
+        inputMouse = hid->inputReport(0);
+        inputMouse->addDescriptor(new BLE2902());
 
-    BLESecurity* pSecurity = new BLESecurity();
-    pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+        hid->manufacturer()->setValue("Q-Branch");
+        hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
+        hid->hidInfo(0x00, 0x02);
 
-    hid->reportMap((uint8_t*)_mouseReportDescriptor, sizeof(_mouseReportDescriptor));
-    hid->startServices();
+        BLESecurity* pSecurity = new BLESecurity();
+        pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+        pSecurity->setCapability(ESP_IO_CAP_NONE);
+        pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+
+        hid->reportMap((uint8_t*)_mouseReportDescriptor, sizeof(_mouseReportDescriptor));
+        hid->startServices();
+
+        BLEAdvertising* pAdvertising = pServer->getAdvertising();
+        pAdvertising->setAppearance(HID_MOUSE);
+        pAdvertising->addServiceUUID(hid->hidService()->getUUID());
+        hid->setBatteryLevel(100);
+    }
 
     BLEAdvertising* pAdvertising = pServer->getAdvertising();
-    pAdvertising->setAppearance(HID_MOUSE);
-    pAdvertising->addServiceUUID(hid->hidService()->getUUID());
-    pAdvertising->start();
-    hid->setBatteryLevel(100);
+    if (pAdvertising) {
+        pAdvertising->start();
+    }
 
     enabled = true;
     is_connected = false;
@@ -196,6 +208,7 @@ void AirMouseManager::sendReport(uint8_t buttons, signed char x, signed char y, 
 void AirMouseManager::clickLeft() {
     if (is_connected && movement_active) {
         sendReport(0x01, 0, 0, 0, 0);
+        delay(10);
         sendReport(0x00, 0, 0, 0, 0);
     }
 }
@@ -203,6 +216,7 @@ void AirMouseManager::clickLeft() {
 void AirMouseManager::clickRight() {
     if (is_connected && movement_active) {
         sendReport(0x02, 0, 0, 0, 0);
+        delay(10);
         sendReport(0x00, 0, 0, 0, 0);
     }
 }

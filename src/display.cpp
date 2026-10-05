@@ -228,10 +228,10 @@ void DisplayManager::drawWifiDetailsScreen() {
 }
 
 void DisplayManager::drawScrollBar(int offset, int item_count) {
-    if (item_count > 3) {
-        int scroll_h = 30;
-        int scroll_y = 15 + ((float)offset / (item_count - 3)) * (scroll_h - 10);
-        oled.drawFrame(123, 15, 3, 30);
+    if (item_count > 4) {
+        int scroll_h = 46;
+        int scroll_y = 12 + ((float)offset / (item_count - 4)) * (scroll_h - 10);
+        oled.drawFrame(123, 12, 3, scroll_h);
         oled.drawBox(123, scroll_y, 3, 10);
     }
 }
@@ -246,11 +246,11 @@ void DisplayManager::drawStandardMenu(const char* title, const char** items, int
     oled.drawLine(0, 9, 128, 9);
     oled.setFont(u8g2_font_6x10_tr);
 
-    int y_pos = 22;
+    int y_pos = 21;
 
-    for (int i = offset; i < offset + 3 && i < item_count; i++) {
+    for (int i = offset; i < offset + 4 && i < item_count; i++) {
         if (i == selection) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.drawBox(2, y_pos - 9, 118, 11);
             oled.setDrawColor(0);
             oled.drawStr(4, y_pos, items[i]);
             if (values && values[i].length() > 0) {
@@ -281,11 +281,11 @@ void DisplayManager::drawStandardMenu(const char* title, const char** items, int
     oled.drawLine(0, 9, 128, 9);
     oled.setFont(u8g2_font_6x10_tr);
 
-    int y_pos = 22;
+    int y_pos = 21;
 
-    for (int i = offset; i < offset + 3 && i < item_count; i++) {
+    for (int i = offset; i < offset + 4 && i < item_count; i++) {
         if (i == selection) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.drawBox(2, y_pos - 9, 118, 11);
             oled.setDrawColor(0);
             oled.drawStr(4, y_pos, items[i]);
             if (values && values[i] && values[i][0] != '\0') {
@@ -1580,15 +1580,15 @@ void DisplayManager::drawAppMotionSettings() {
     int sel = ui.getCompassMenuSelection();
     int offset = ui.getCompassMenuOffset();
 
-    int y_pos = 20;
-    for (int i = offset; i < offset + 3 && i < UICore::MOTION_MENU_ITEM_COUNT; i++) {
+    int y_pos = 18;
+    for (int i = offset; i < offset + 4 && i < UICore::MOTION_MENU_ITEM_COUNT; i++) {
         if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.drawBox(2, y_pos - 8, 118, 9);
             oled.setDrawColor(0);
         }
 
         String label = ui.motion_menu_items[i];
-        if (i == 3) {
+        if (i == 4) {
             static const bool kImuFlags[8][4] = {
                 {false, false, false, false},
                 {true,  false, true,  false},
@@ -1611,18 +1611,18 @@ void DisplayManager::drawAppMotionSettings() {
             }
             label += " [" + String(p + 1) + "/8]";
         }
-        else if (i == 4) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
-        else if (i == 5) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
-        else if (i == 6) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
+        else if (i == 5) label += sensors.getImuSwapXY() ? " [ON]" : " [OFF]";
+        else if (i == 6) label += sensors.getImuInvX() ? " [ON]" : " [OFF]";
+        else if (i == 7) label += sensors.getImuInvZ() ? " [ON]" : " [OFF]";
 
         oled.drawStr(4, y_pos, label.c_str());
         oled.setDrawColor(1);
-        y_pos += 12;
+        y_pos += 10;
     }
 
-    int scroll_h = 30;
-    int scroll_y = 12 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 3)) * (scroll_h - 10);
-    oled.drawFrame(123, 12, 3, 30);
+    int scroll_h = 36;
+    int scroll_y = 12 + ((float)offset / (UICore::MOTION_MENU_ITEM_COUNT - 4)) * (scroll_h - 10);
+    oled.drawFrame(123, 12, 3, scroll_h);
     oled.drawBox(123, scroll_y, 3, 10);
 
     oled.setFont(u8g2_font_4x6_tr);
@@ -1804,9 +1804,9 @@ void DisplayManager::drawAppIR() {
 
             int sel = ui.getIrSelection();
             int offset = ui.getIrScrollOffset();
-            int y_pos = 30;
+            int y_pos = 28;
 
-            for (int i = offset; i < offset + 3 && i < count; i++) {
+            for (int i = offset; i < offset + 4 && i < count; i++) {
                 if (i == sel) {
                     oled.drawBox(2, y_pos - 8, 118, 10);
                     oled.setDrawColor(0);
@@ -1821,13 +1821,13 @@ void DisplayManager::drawAppIR() {
                     int tw = oled.getStrWidth(tStr.c_str());
                     oled.drawStr(118 - tw, y_pos, tStr.c_str());
                 }
-                y_pos += 12;
+                y_pos += 10;
             }
 
-            if (count > 3) {
-                int scroll_h = 30;
-                int scroll_y = 22 + ((float)offset / (count - 3)) * (scroll_h - 10);
-                oled.drawFrame(123, 22, 3, 30);
+            if (count > 4) {
+                int scroll_h = 36;
+                int scroll_y = 20 + ((float)offset / (count - 4)) * (scroll_h - 10);
+                oled.drawFrame(123, 20, 3, scroll_h);
                 oled.drawBox(123, scroll_y, 3, 10);
             }
             break;
@@ -1911,9 +1911,9 @@ void DisplayManager::drawAppIR() {
 
             int sel = ui.getIrSelection();
             int offset = ui.getIrScrollOffset();
-            int y_pos = 30;
+            int y_pos = 28;
 
-            for (int i = offset; i < offset + 3 && i < count; i++) {
+            for (int i = offset; i < offset + 4 && i < count; i++) {
                 if (i == sel) {
                     oled.drawBox(2, y_pos - 8, 118, 10);
                     oled.setDrawColor(0);
@@ -1922,7 +1922,7 @@ void DisplayManager::drawAppIR() {
                 } else {
                     oled.drawStr(4, y_pos, list[i].c_str());
                 }
-                y_pos += 12;
+                y_pos += 10;
             }
             break;
         }
@@ -1941,9 +1941,9 @@ void DisplayManager::drawAppIR() {
 
             int sel = ui.getIrSelection();
             int offset = ui.getIrScrollOffset();
-            int y_pos = 30;
+            int y_pos = 28;
 
-            for (int i = offset; i < offset + 3 && i < count; i++) {
+            for (int i = offset; i < offset + 4 && i < count; i++) {
                 if (i == sel) {
                     oled.drawBox(2, y_pos - 8, 118, 10);
                     oled.setDrawColor(0);
@@ -1952,7 +1952,7 @@ void DisplayManager::drawAppIR() {
                 } else {
                     oled.drawStr(4, y_pos, list[i].c_str());
                 }
-                y_pos += 12;
+                y_pos += 10;
             }
             break;
         }
@@ -1971,9 +1971,9 @@ void DisplayManager::drawAppIR() {
 
             int sel = ui.getIrSelection();
             int offset = ui.getIrScrollOffset();
-            int y_pos = 30;
+            int y_pos = 28;
 
-            for (int i = offset; i < offset + 3 && i < count; i++) {
+            for (int i = offset; i < offset + 4 && i < count; i++) {
                 String fname = list[i];
                 int slash = fname.lastIndexOf('/');
                 if (slash >= 0) fname = fname.substring(slash + 1);
@@ -1986,7 +1986,7 @@ void DisplayManager::drawAppIR() {
                 } else {
                     oled.drawStr(4, y_pos, fname.c_str());
                 }
-                y_pos += 12;
+                y_pos += 10;
             }
             break;
         }
@@ -2211,11 +2211,11 @@ void DisplayManager::drawFileManager() {
     int sel = ui.getFmSelection();
     int offset = ui.getFmScrollOffset();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int idx = offset + i;
         if (idx >= total_items) break;
 
-        int y = 35 + (i * 12);
+        int y = 31 + (i * 10);
 
         if (idx == sel) {
             oled.drawStr(0, y, ">");
@@ -2264,11 +2264,11 @@ void DisplayManager::drawAppApps() {
     int sel = ui.getAppSelection();
     int offset = ui.getAppScrollOffset();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int idx = offset + i;
         if (idx >= count) break;
 
-        int y = 35 + (i * 12);
+        int y = 31 + (i * 10);
 
         if (idx == sel) {
             oled.drawStr(0, y, ">");
@@ -2308,11 +2308,11 @@ void DisplayManager::drawAppAnimList() {
     int sel = ui.getAnimSelection();
     int offset = ui.getAnimScrollOffset();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int idx = offset + i;
         if (idx >= count) break;
 
-        int y = 35 + (i * 12);
+        int y = 31 + (i * 10);
 
         if (idx == sel) {
             oled.setFont(u8g2_font_5x7_tf);
@@ -2689,11 +2689,11 @@ void DisplayManager::drawWifiScanScreen() {
     int offset = ui.getSettingsScrollOffset();
 
     oled.setFont(u8g2_font_6x10_tr);
-    int y_pos = 22;
+    int y_pos = 21;
 
-    for (int i = offset; i < offset + 3 && i < count; i++) {
+    for (int i = offset; i < offset + 4 && i < count; i++) {
         if (i == sel) {
-            oled.drawBox(2, y_pos - 8, 118, 10);
+            oled.drawBox(2, y_pos - 9, 118, 11);
             oled.setDrawColor(0);
         }
 
@@ -3150,14 +3150,14 @@ void DisplayManager::drawBleList() {
     int sel = ui.getBleListSelection();
     int offset = ui.getBleListScrollOffset();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int idx = offset + i;
         if (idx >= count) break;
 
         const BleTarget* tgt = wirelessRecon.getBleTarget(idx);
         if (!tgt) continue;
 
-        int y = 34 + (i * 12);
+        int y = 31 + (i * 10);
 
         if (idx == sel) {
             oled.drawBox(0, y - 9, 120, 11);
@@ -3436,16 +3436,16 @@ void DisplayManager::drawAppVibration() {
     vals[7] = String(vibrationManager.getIntensity()) + "%";
     vals[8] = vibrationManager.isButtonHapticsEnabled() ? "ON" : "OFF";
 
-    // Draw 3 menu items (Y = 13 to 48)
-    for (int i = 0; i < 3; i++) {
+    // Draw 4 menu items (Y = 12 to 48)
+    for (int i = 0; i < 4; i++) {
         int idx = offset + i;
         if (idx >= total_items) break;
 
-        int y = 23 + (i * 12);
+        int y = 20 + (i * 9);
         bool is_selected = (idx == sel);
 
         if (is_selected) {
-            oled.drawBox(0, y - 9, 122, 11);
+            oled.drawBox(0, y - 8, 122, 9);
             oled.setDrawColor(0);
         } else {
             oled.setDrawColor(1);
@@ -3463,10 +3463,10 @@ void DisplayManager::drawAppVibration() {
     }
 
     // Scrollbar (height 36px, y = 13 to 49)
-    if (total_items > 3) {
+    if (total_items > 4) {
         int sb_track_h = 36;
-        int sb_thumb_h = max(6, (3 * sb_track_h) / total_items);
-        int max_offset = total_items - 3;
+        int sb_thumb_h = max(6, (4 * sb_track_h) / total_items);
+        int max_offset = total_items - 4;
         int sb_thumb_y = 13 + (offset * (sb_track_h - sb_thumb_h)) / max_offset;
         oled.drawVLine(126, 13, sb_track_h);
         oled.drawBox(125, sb_thumb_y, 3, sb_thumb_h);

@@ -493,6 +493,9 @@ void UICore::loop() {
             } else if (motion_state == MotionState::PAGE_DATA) {
                 motion_state = MotionState::PAGE_LEVEL;
             } else if (imu_subapp != Imu6500SubApp::SUBAPP_MENU) {
+                if (imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
+                    airMouse.stop();
+                }
                 imu_subapp = Imu6500SubApp::SUBAPP_MENU;
             } else {
                 current_state = UIState::MAIN_MENU;
@@ -614,6 +617,9 @@ void UICore::loop() {
                 wirelessRecon.stopPacketMonitor();
                 recon_submenu = ReconSubmenu::MAIN;
                 current_state = UIState::MAIN_MENU;
+            } else if (current_state == UIState::APP_MOTION) {
+                airMouse.stop();
+                current_state = UIState::MAIN_MENU;
             } else if (current_state == UIState::APP_VIBRATION) {
                 vibrationManager.stop();
                 current_state = UIState::MAIN_MENU;
@@ -689,7 +695,7 @@ void UICore::handleIrMainInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < IR_MAIN_ITEM_COUNT - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -745,7 +751,7 @@ void UICore::handleIrCustomInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < IR_CUSTOM_ITEM_COUNT - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -789,7 +795,7 @@ void UICore::handleIrRemoteViewInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < btn_count - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -892,7 +898,7 @@ void UICore::handleIrRecentInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < count - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -923,7 +929,7 @@ void UICore::handleIrFavoritesInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < count - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -953,7 +959,7 @@ void UICore::handleIrFilesInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < count - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -979,7 +985,7 @@ void UICore::handleIrLabInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ir_selection < IR_LAB_ITEM_COUNT - 1) {
             ir_selection++;
-            if (ir_selection >= ir_scroll_offset + 3) ir_scroll_offset = ir_selection - 2;
+            if (ir_selection >= ir_scroll_offset + 4) ir_scroll_offset = ir_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -1030,7 +1036,7 @@ void UICore::processNavDown() {
     int max_items = (current_state == UIState::MAIN_MENU) ? MAIN_MENU_ITEM_COUNT : SETTINGS_MAIN_ITEM_COUNT;
     menu_selection++;
     if (menu_selection >= max_items) menu_selection = max_items - 1;
-    if (menu_selection >= menu_scroll_offset + 3) menu_scroll_offset = menu_selection - 2;
+    if (menu_selection >= menu_scroll_offset + 4) menu_scroll_offset = menu_selection - 3;
     soundManager.playNavMove();
     needs_redraw = true;
 }
@@ -1097,7 +1103,7 @@ void UICore::handleClockMenuInput() {
         soundManager.playNavMove();
         if (clock_selection < CLOCK_MENU_ITEM_COUNT - 1) {
             clock_selection++;
-            if (clock_selection >= clock_scroll_offset + 3) clock_scroll_offset = clock_selection - 2;
+            if (clock_selection >= clock_scroll_offset + 4) clock_scroll_offset = clock_selection - 3;
             needs_redraw = true;
         }
     }
@@ -1160,7 +1166,7 @@ void UICore::handleFaceSelectInput() {
         soundManager.playNavMove();
         if (clock_selection < WATCH_FACE_COUNT - 1) {
             clock_selection++;
-            if (clock_selection >= clock_scroll_offset + 3) clock_scroll_offset = clock_selection - 2;
+            if (clock_selection >= clock_scroll_offset + 4) clock_scroll_offset = clock_selection - 3;
             needs_redraw = true;
         }
     }
@@ -1193,7 +1199,7 @@ void UICore::handleFaceWidgetsInput() {
         soundManager.playNavMove();
         if (widgets_selection < WIDGETS_ITEM_COUNT - 1) {
             widgets_selection++;
-            if (widgets_selection >= widgets_scroll_offset + 3) widgets_scroll_offset = widgets_selection - 2;
+            if (widgets_selection >= widgets_scroll_offset + 4) widgets_scroll_offset = widgets_selection - 3;
             needs_redraw = true;
         }
     }
@@ -1493,7 +1499,12 @@ void UICore::handleMainMenuInput() {
 
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playNavSelect();
+        if (menu_selection == 0) {
+            soundManager.playNavSelect();
+        } else {
+            soundManager.playAppLaunch();
+            delay(150);
+        }
         switch(menu_selection) {
             case 0: current_state = UIState::APP_HOME; break;
             case 1:
@@ -1573,7 +1584,7 @@ void UICore::handleSettingsMainInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= SETTINGS_MAIN_ITEM_COUNT) settings_selection = SETTINGS_MAIN_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1609,7 +1620,7 @@ void UICore::handleConnectivityInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= CONNECTIVITY_ITEM_COUNT) settings_selection = CONNECTIVITY_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1672,7 +1683,7 @@ void UICore::handleWifiScanInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= count) settings_selection = (count > 0) ? count - 1 : 0;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1712,7 +1723,7 @@ void UICore::handleWifiDetailsInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= WIFI_DETAILS_ITEM_COUNT) settings_selection = WIFI_DETAILS_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1763,7 +1774,7 @@ void UICore::handleTimeInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= TIME_ITEM_COUNT) settings_selection = TIME_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1823,7 +1834,7 @@ void UICore::handlePowerInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= POWER_ITEM_COUNT) settings_selection = POWER_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1865,7 +1876,7 @@ void UICore::handleDisplayInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= DISPLAY_ITEM_COUNT) settings_selection = DISPLAY_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1904,7 +1915,7 @@ void UICore::handleSensorsInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= SENSORS_ITEM_COUNT) settings_selection = SENSORS_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -1941,7 +1952,7 @@ void UICore::handleHealthSettingsInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= HEALTH_SETTINGS_ITEM_COUNT) settings_selection = HEALTH_SETTINGS_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -2001,7 +2012,7 @@ void UICore::handleSystemInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
         if (settings_selection >= SYSTEM_ITEM_COUNT) settings_selection = SYSTEM_ITEM_COUNT - 1;
-        if (settings_selection >= settings_scroll_offset + 3) settings_scroll_offset = settings_selection - 2;
+        if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
     }
@@ -2129,7 +2140,7 @@ void UICore::handleLedInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (led_menu_selection < LED_MENU_ITEM_COUNT - 1) {
             led_menu_selection++;
-            if (led_menu_selection >= led_menu_offset + 3) led_menu_offset = led_menu_selection - 2;
+            if (led_menu_selection >= led_menu_offset + 4) led_menu_offset = led_menu_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -2235,7 +2246,7 @@ void UICore::handleFileManagerInput() {
     } else if (btnManager.getEvent(BTN_ID_DN) == BTN_EVT_SHORT_PRESS) {
         if (total_entries > 0 && fm_selection < total_entries - 1) {
             fm_selection++;
-            if (fm_selection >= fm_scroll_offset + 3) fm_scroll_offset = fm_selection - 2;
+            if (fm_selection >= fm_scroll_offset + 4) fm_scroll_offset = fm_selection - 3;
             needs_redraw = true;
         }
     } else if (btnManager.getEvent(BTN_ID_OK) == BTN_EVT_SHORT_PRESS) {
@@ -2264,7 +2275,8 @@ void UICore::handleFileManagerInput() {
                     int lastSlash = filename.lastIndexOf('/');
                     if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
                     fullPath += filename;
-                    soundManager.playNavSelect();
+                    soundManager.playAppLaunch();
+                    delay(150);
                     QAppErrorCode err = qappLoader.loadApp(fullPath.c_str());
                     if (err == QAPP_OK) {
                         current_state = UIState::APP_RUNNING;
@@ -2276,7 +2288,8 @@ void UICore::handleFileManagerInput() {
                     String fullPath = fm_current_path;
                     if (!fullPath.endsWith("/")) fullPath += "/";
                     fullPath += filename;
-                    soundManager.playNavSelect();
+                    soundManager.playAppLaunch();
+                    delay(150);
                     openAnimationPlayer(fullPath.c_str(), UIState::APP_FILE_MANAGER);
                 }
             }
@@ -2411,8 +2424,8 @@ void UICore::handleAppsInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (app_selection < app_count - 1) {
             app_selection++;
-            if (app_selection >= app_scroll_offset + 3) {
-                app_scroll_offset = app_selection - 2;
+            if (app_selection >= app_scroll_offset + 4) {
+                app_scroll_offset = app_selection - 3;
             }
             soundManager.playNavMove();
             needs_redraw = true;
@@ -2423,7 +2436,8 @@ void UICore::handleAppsInput() {
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         if (app_count > 0 && app_selection < app_count) {
             String full_path = String("/apps/") + app_entries[app_selection].filename;
-            soundManager.playNavSelect();
+            soundManager.playAppLaunch();
+            delay(150);
             QAppErrorCode err = qappLoader.loadApp(full_path.c_str());
             if (err == QAPP_OK) {
                 current_state = UIState::APP_RUNNING;
@@ -2440,8 +2454,8 @@ void UICore::handleAppsInput() {
         soundManager.playNavBack();
         current_state = UIState::MAIN_MENU;
         menu_selection = 12; // APPS
-        if (menu_selection >= menu_scroll_offset + 3) {
-            menu_scroll_offset = menu_selection - 2;
+        if (menu_selection >= menu_scroll_offset + 4) {
+            menu_scroll_offset = menu_selection - 3;
         }
         needs_redraw = true;
     }
@@ -2564,8 +2578,8 @@ void UICore::handleAnimListInput() {
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (anim_selection < anim_count - 1) {
             anim_selection++;
-            if (anim_selection >= anim_scroll_offset + 3) {
-                anim_scroll_offset = anim_selection - 2;
+            if (anim_selection >= anim_scroll_offset + 4) {
+                anim_scroll_offset = anim_selection - 3;
             }
             soundManager.playNavMove();
             needs_redraw = true;
@@ -2575,7 +2589,8 @@ void UICore::handleAnimListInput() {
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         if (anim_count > 0 && anim_selection < anim_count) {
-            soundManager.playNavSelect();
+            soundManager.playAppLaunch();
+            delay(150);
             openAnimationPlayer(anim_entries[anim_selection].fullPath.c_str(), UIState::APP_ANIM_LIST);
         }
     } else if (ok_evt == BTN_EVT_LONG_PRESS) {
@@ -2788,8 +2803,8 @@ void UICore::handleBatteryInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             if (battery_menu_selection < 3) {
                 battery_menu_selection++;
-                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
-                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 4) {
+                    battery_menu_scroll_offset = battery_menu_selection - 3;
                 }
                 soundManager.playNavMove();
                 needs_redraw = true;
@@ -2823,8 +2838,8 @@ void UICore::handleBatteryInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             if (battery_menu_selection < 3) {
                 battery_menu_selection++;
-                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
-                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 4) {
+                    battery_menu_scroll_offset = battery_menu_selection - 3;
                 }
                 soundManager.playNavMove();
                 needs_redraw = true;
@@ -2873,8 +2888,8 @@ void UICore::handleBatteryInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             if (battery_menu_selection < 3) {
                 battery_menu_selection++;
-                if (battery_menu_selection >= battery_menu_scroll_offset + 3) {
-                    battery_menu_scroll_offset = battery_menu_selection - 2;
+                if (battery_menu_selection >= battery_menu_scroll_offset + 4) {
+                    battery_menu_scroll_offset = battery_menu_selection - 3;
                 }
                 soundManager.playNavMove();
                 needs_redraw = true;
@@ -2960,7 +2975,7 @@ void UICore::handleCompassInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             compass_menu_selection++;
             if (compass_menu_selection >= COMPASS_MENU_ITEM_COUNT) compass_menu_selection = COMPASS_MENU_ITEM_COUNT - 1;
-            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
+            if (compass_menu_selection >= compass_menu_offset + 4) compass_menu_offset = compass_menu_selection - 3;
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
@@ -3113,7 +3128,7 @@ void UICore::handleMotionInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             compass_menu_selection++;
             if (compass_menu_selection >= MOTION_MENU_ITEM_COUNT) compass_menu_selection = MOTION_MENU_ITEM_COUNT - 1;
-            if (compass_menu_selection >= compass_menu_offset + 3) compass_menu_offset = compass_menu_selection - 2;
+            if (compass_menu_selection >= compass_menu_offset + 4) compass_menu_offset = compass_menu_selection - 3;
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
@@ -3121,8 +3136,12 @@ void UICore::handleMotionInput() {
                 if (sensors.isBmeOk()) sensors.zeroAltitude();
                 else showToast("[BME UNLINKED]", 1500);
             } else if (compass_menu_selection == 1) sensors.zeroLevel();
-            else if (compass_menu_selection == 2) sensors.calibrateAccel();
-            else if (compass_menu_selection == 3) {
+            else if (compass_menu_selection == 2) {
+                sensors.calibrateGyro();
+                showToast("[GYRO CAL OK]", 1500);
+            }
+            else if (compass_menu_selection == 3) sensors.calibrateAccel();
+            else if (compass_menu_selection == 4) {
                 static const bool kImuFlags[8][4] = {
                     {false, false, false, false},
                     {true,  false, true,  false},
@@ -3149,9 +3168,9 @@ void UICore::handleMotionInput() {
                                                  kImuFlags[imu_orient_preset][3]);
                 motion_state = MotionState::PAGE_ORIENTATION_3D;
             }
-            else if (compass_menu_selection == 4) sensors.setImuSwapXY(!sensors.getImuSwapXY());
-            else if (compass_menu_selection == 5) sensors.setImuInvX(!sensors.getImuInvX());
-            else if (compass_menu_selection == 6) sensors.setImuInvZ(!sensors.getImuInvZ());
+            else if (compass_menu_selection == 5) sensors.setImuSwapXY(!sensors.getImuSwapXY());
+            else if (compass_menu_selection == 6) sensors.setImuInvX(!sensors.getImuInvX());
+            else if (compass_menu_selection == 7) sensors.setImuInvZ(!sensors.getImuInvZ());
             needs_redraw = true;
         }
     } else if (motion_state == MotionState::PAGE_ORIENTATION_3D) {
@@ -3287,7 +3306,7 @@ void UICore::handleReconMainInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (recon_selection < RECON_MAIN_ITEM_COUNT - 1) {
             recon_selection++;
-            if (recon_selection >= recon_scroll_offset + 3) recon_scroll_offset = recon_selection - 2;
+            if (recon_selection >= recon_scroll_offset + 4) recon_scroll_offset = recon_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -3334,7 +3353,7 @@ void UICore::handleBleListInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (ble_list_selection < count - 1) {
             ble_list_selection++;
-            if (ble_list_selection >= ble_list_scroll_offset + 3) ble_list_scroll_offset = ble_list_selection - 2;
+            if (ble_list_selection >= ble_list_scroll_offset + 4) ble_list_scroll_offset = ble_list_selection - 3;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -3556,7 +3575,7 @@ void UICore::handleVibrationInput() {
             if (vibe_selection < vibe_offset) vibe_offset = vibe_selection;
         } else {
             vibe_selection = VIBE_MENU_ITEM_COUNT - 1;
-            vibe_offset = (VIBE_MENU_ITEM_COUNT > 3) ? (VIBE_MENU_ITEM_COUNT - 3) : 0;
+            vibe_offset = (VIBE_MENU_ITEM_COUNT > 4) ? (VIBE_MENU_ITEM_COUNT - 4) : 0;
         }
         soundManager.playNavMove();
         vibrationManager.triggerHapticClick();
@@ -3564,7 +3583,7 @@ void UICore::handleVibrationInput() {
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (vibe_selection < VIBE_MENU_ITEM_COUNT - 1) {
             vibe_selection++;
-            if (vibe_selection >= vibe_offset + 3) vibe_offset = vibe_selection - 2;
+            if (vibe_selection >= vibe_offset + 4) vibe_offset = vibe_selection - 3;
         } else {
             vibe_selection = 0;
             vibe_offset = 0;

@@ -34,6 +34,7 @@ static void ble_scan_complete_cb(BLEScanResults results) {
     if (wirelessRecon.isBleScanning()) {
         BLEScan* scan = BLEDevice::getScan();
         if (scan) {
+            scan->clearResults();
             scan->start(5, ble_scan_complete_cb, false);
         }
     }

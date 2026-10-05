@@ -27,6 +27,9 @@ const SoundNote seq_ret_move[] = { {1000, 25} };
 const SoundNote seq_ret_sel[] = { {1500, 30}, {2500, 30} };
 const SoundNote seq_ret_back[] = { {1500, 30}, {800, 30} };
 
+// Long beep for launching apps
+const SoundNote seq_app_launch[] = { {2700, 220} };
+
 #define BUZZER_LEDC_CHANNEL 0
 #define BUZZER_LEDC_RES_BITS 8
 
@@ -210,6 +213,11 @@ void SoundManager::playNavBack() {
     if (st == SoundStyle::MODERN) playSequence(seq_mod_back, 1);
     else if (st == SoundStyle::TACTICAL) playSequence(seq_tac_back, 1);
     else if (st == SoundStyle::RETRO) playSequence(seq_ret_back, 2);
+}
+
+void SoundManager::playAppLaunch() {
+    if (!isButtonSoundsEnabled()) return;
+    playSequence(seq_app_launch, 1);
 }
 
 void SoundManager::playMorse(const String& text) {

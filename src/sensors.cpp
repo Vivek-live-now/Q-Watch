@@ -484,9 +484,9 @@ void SensorManager::applyCalibrationAndMapping() {
     float ax = raw_ax_cal / 4096.0f;
     float ay = raw_ay_cal / 4096.0f;
     float az = raw_az_cal / 4096.0f;
-    float gx = raw_gx_cal * 0.001065f;
-    float gy = raw_gy_cal * 0.001065f;
-    float gz = raw_gz_cal * 0.001065f;
+    float gx = raw_gx_cal / 16.4f; // in deg/s (MPU-6500 2000dps = 16.4 LSB/dps)
+    float gy = raw_gy_cal / 16.4f;
+    float gz = raw_gz_cal / 16.4f;
 
     // 3. MPU Mapping
     if (offsets.swap_xy) {
@@ -540,10 +540,65 @@ void SensorManager::updateMadgwick(float dt) {
     float _2q0mx, _2q0my, _2q0mz, _2q1mx, _2bx, _2bz, _4bx, _4bz, _2q0, _2q1, _2q2, _2q3, _2q0q2, _2q2q3, q0q0, q0q1, q0q2, q0q3, q1q1, q1q2, q1q3, q2q2, q2q3, q3q3;
 
     float ax = cal_data.ax, ay = cal_data.ay, az = cal_data.az;
-    float gx = cal_data.gx, gy = cal_data.gy, gz = cal_data.gz;
+    float gx = cal_data.gx * 0.0174532925f; // convert deg/s to rad/s for filter
+    float gy = cal_data.gy * 0.0174532925f;
+    float gz = cal_data.gz * 0.0174532925f;
     float mx = cal_data.mx, my = cal_data.my, mz = cal_data.mz;
 
-    if((mx == 0.0f) && (my == 0.0f) && (mz == 0.0f)) { return; }
+    if((mx == 0.0f) && (my == 0.0f) && (mz == 0.0f)) {
+        // 6-DOF IMU Madgwick update using Accel + Gyro when Magnetometer is unavailable
+        qDot1 = 0.5f * (-q1 * gx - q2 * gy - q3 * gz);
+        qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
+        qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
+        qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
+
+        if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
+            float norm_a = sqrtf(ax * ax + ay * ay + az * az);
+            if (norm_a > 1e-4f) {
+                recipNorm = 1.0f / norm_a;
+                ax *= recipNorm; ay *= recipNorm; az *= recipNorm;
+            }
+
+            _2q0 = 2.0f * q0; _2q1 = 2.0f * q1; _2q2 = 2.0f * q2; _2q3 = 2.0f * q3;
+            _2q0q2 = 2.0f * q0 * q2; _2q2q3 = 2.0f * q2 * q3;
+            q0q1 = q0 * q1; q1q1 = q1 * q1; q1q3 = q1 * q3; q2q2 = q2 * q2;
+
+            float f_g_x = 2.0f * q1q3 - _2q0q2 - ax;
+            float f_g_y = 2.0f * q0q1 + _2q2q3 - ay;
+            float f_g_z = 1.0f - 2.0f * (q1q1 + q2q2) - az;
+
+            s0 = -_2q2 * f_g_x + _2q1 * f_g_y;
+            s1 = _2q3 * f_g_x + _2q0 * f_g_y - 4.0f * q1 * f_g_z;
+            s2 = -_2q0 * f_g_x + _2q3 * f_g_y - 4.0f * q2 * f_g_z;
+            s3 = _2q1 * f_g_x + _2q2 * f_g_y;
+
+            float norm_s = sqrtf(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
+            if (norm_s > 1e-4f) {
+                recipNorm = 1.0f / norm_s;
+                s0 *= recipNorm; s1 *= recipNorm; s2 *= recipNorm; s3 *= recipNorm;
+
+                qDot1 -= MADGWICK_BETA * s0;
+                qDot2 -= MADGWICK_BETA * s1;
+                qDot3 -= MADGWICK_BETA * s2;
+                qDot4 -= MADGWICK_BETA * s3;
+            }
+        }
+
+        q0 += qDot1 * dt;
+        q1 += qDot2 * dt;
+        q2 += qDot3 * dt;
+        q3 += qDot4 * dt;
+
+        float norm_q = sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+        if (norm_q > 1e-4f) {
+            recipNorm = 1.0f / norm_q;
+            q0 *= recipNorm;
+            q1 *= recipNorm;
+            q2 *= recipNorm;
+            q3 *= recipNorm;
+        }
+        return;
+    }
 
     qDot1 = 0.5f * (-q1 * gx - q2 * gy - q3 * gz);
     qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
@@ -631,7 +686,7 @@ void SensorManager::computeEulerAngles() {
 
     float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
-    float target_yaw = 360.0f - yaw_math - 90.0f;
+    float target_yaw = yaw_math + 90.0f;
 
     // Apply Declination
     target_yaw += mag_cal.declination;
