@@ -2815,15 +2815,15 @@ void UICore::enterDeepSleep() {
         // Real user wakeup from ext1 (button, MPU motion) or GPIO
         break;
     }
-        display_off = false;
-        displayManager.setPowerSave(false);
-        current_state = (prev_state != UIState::SLEEPING) ? prev_state : UIState::APP_HOME;
-        last_activity_time = millis();
-        display_off_time = 0;
-        btnManager.flushEvents();
-        soundManager.playWake();
-        needs_redraw = true;
-    }
+
+    display_off = false;
+    displayManager.setPowerSave(false);
+    current_state = (prev_state != UIState::SLEEPING) ? prev_state : UIState::APP_HOME;
+    last_activity_time = millis();
+    display_off_time = 0;
+    btnManager.flushEvents();
+    soundManager.playWake();
+    needs_redraw = true;
 }
 
 void UICore::handleBatteryInput() {
