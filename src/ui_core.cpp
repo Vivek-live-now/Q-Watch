@@ -2383,7 +2383,7 @@ static void provisionDefaultAppsIfNeeded() {
     ensureAppFileExists("tilt_ball.qapp", "Tilt Ball", "1.0.0", "007 Agent",
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED, 2048);
     ensureAppFileExists("compass_hud.qapp", "Compass HUD", "1.0.0", "007 Agent",
-                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MAG, 1024);
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_MAG, 1024);
     ensureAppFileExists("invaders.qapp", "007 Invaders", "1.0.0", "MI6 Cyber",
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 4096);
     ensureAppFileExists("dice.qapp", "Tactical Dice", "1.0.0", "MI6 Cyber",

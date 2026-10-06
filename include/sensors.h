@@ -184,6 +184,8 @@ private:
     CalibrationOffsets offsets;
     OrientationData orientation;
     bool yaw_initialized;
+    bool mag_sample_fresh;
+    uint32_t last_heading_update;
 
     MagCalibration mag_cal;
 
@@ -207,6 +209,7 @@ private:
     void applyCalibrationAndMapping();
     void updateMadgwick(float dt);
     void computeEulerAngles();
+    float computeTiltCompensatedHeading(float roll_deg, float pitch_deg) const;
 };
 
 extern SensorManager sensors;
