@@ -24,8 +24,9 @@ SensorManager sensors;
 
 // Heading samples arrive at 50 Hz. Keep the displayed bearing calmer than
 // individual magnetometer readings without making normal turns feel delayed.
-#define COMPASS_SMOOTHING_ALPHA 0.18f
-#define COMPASS_MAX_SLEW_DPS    180.0f
+#define COMPASS_SMOOTHING_ALPHA 0.28f
+#define COMPASS_MAX_SLEW_DPS    720.0f
+#define COMPASS_HOLD_DEGREES    0.70f
 
 SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), mag_sample_fresh(false), last_heading_update(0), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
@@ -86,7 +87,10 @@ void SensorManager::loadCalibration() {
         mag_cal.soft_iron_y = prefs.getFloat("si_y", 1.0f);
         mag_cal.soft_iron_z = prefs.getFloat("si_z", 1.0f);
         mag_cal.orientation_mode = prefs.getInt("orient", 0);
-        mag_cal.invert_z = prefs.getBool("inv_z", false);
+        // Magnetometer and IMU Z direction are independent settings. Older
+        // firmware used the same key for both, so changing IMU mounting could
+        // silently reverse the compass.
+        mag_cal.invert_z = prefs.getBool("mag_inv_z", false);
         mag_cal.declination = prefs.getFloat("decl", 0.0f);
         mag_cal.auto_declination = prefs.getBool("auto_decl", false);
     }
@@ -106,7 +110,7 @@ void SensorManager::saveMagCalibration(const MagCalibration& cal) {
     prefs.putFloat("si_y", mag_cal.soft_iron_y);
     prefs.putFloat("si_z", mag_cal.soft_iron_z);
     prefs.putInt("orient", mag_cal.orientation_mode);
-    prefs.putBool("inv_z", mag_cal.invert_z);
+    prefs.putBool("mag_inv_z", mag_cal.invert_z);
     prefs.putFloat("decl", mag_cal.declination);
     prefs.putBool("auto_decl", mag_cal.auto_declination);
     prefs.end();
@@ -122,14 +126,14 @@ void SensorManager::saveOrientationMode(int mode, bool inv_z) {
     mag_cal.invert_z = inv_z;
     prefs.begin("sensors", false);
     prefs.putInt("orient", mag_cal.orientation_mode);
-    prefs.putBool("inv_z", mag_cal.invert_z);
+    prefs.putBool("mag_inv_z", mag_cal.invert_z);
     prefs.end();
 }
 
 void SensorManager::revertMagOrientation() {
     prefs.begin("sensors", true);
     mag_cal.orientation_mode = prefs.getInt("orient", 0);
-    mag_cal.invert_z = prefs.getBool("inv_z", false);
+    mag_cal.invert_z = prefs.getBool("mag_inv_z", false);
     prefs.end();
 }
 
@@ -543,8 +547,11 @@ void SensorManager::applyCalibrationAndMapping() {
 
     // Step B: Orientation Remap into watch body frame
     float mapped_x, mapped_y, mapped_z;
-    if (mag_cal.orientation_mode == 0) { // Default Y-Fwd, X-Left
-        mapped_x = -cx; mapped_y = cy; mapped_z = -cz;
+    if (mag_cal.orientation_mode == 0) { // Default: X-Left, Y-Fwd, Z-Down
+        // The installed QMC board is upside-down: chip X points left, chip Y
+        // points forward, and chip Z points down. Preserve that body frame so
+        // +Y is magnetic north when the watch faces north.
+        mapped_x = cx; mapped_y = cy; mapped_z = cz;
     } else if (mag_cal.orientation_mode == 1) { // X-Fwd, Y-Right
         mapped_x = -cy; mapped_y = -cx; mapped_z = -cz;
     } else if (mag_cal.orientation_mode == 2) { // Y-Back, X-Right
@@ -552,7 +559,7 @@ void SensorManager::applyCalibrationAndMapping() {
     } else if (mag_cal.orientation_mode == 3) { // X-Back, Y-Left
         mapped_x = cy; mapped_y = cx; mapped_z = -cz;
     } else {
-        mapped_x = -cx; mapped_y = cy; mapped_z = -cz;
+        mapped_x = cx; mapped_y = cy; mapped_z = cz;
     }
 
     // Step C: Z-Invert
@@ -741,8 +748,16 @@ void SensorManager::computeEulerAngles() {
     while (diff < -180.0f) diff += 360.0f;
     while (diff > 180.0f) diff -= 360.0f;
 
+    // Do not animate sub-degree magnetometer noise; it is perceived as a
+    // vibrating needle when the watch is resting still.
+    if (fabsf(diff) < COMPASS_HOLD_DEGREES) {
+        last_heading_update = now;
+        return;
+    }
+
     // Reject one-sample magnetic spikes and limit the visible needle speed.
-    // A normal wrist turn remains responsive at 180 degrees per second.
+    // A normal wrist turn remains responsive while magnetic spikes cannot
+    // teleport the needle across the dial.
     float elapsed = (now - last_heading_update) / 1000.0f;
     if (elapsed <= 0.0f || elapsed > 0.25f) elapsed = 0.02f;
     const float max_step = COMPASS_MAX_SLEW_DPS * elapsed;
