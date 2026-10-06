@@ -133,6 +133,14 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Reference Q-Apps:**
     * **Tilt Ball (`apps/tilt_ball.qapp`):** 6-axis MPU-6500 roll/pitch physics simulation, bounce damping, target collision, audio score chimes, and LED flash.
     * **Compass HUD (`apps/compass_hud.qapp`):** QMC5883P 3D magnetometer tactical HUD, rotating North-seeking needle, 8-point cardinal telemetry, waypoint bearing lock, course deviation indicator, and declination adjustment.
+    * **007 Invaders (`apps/invaders.qapp`):** Space Invaders arcade shooter with 3 bunkers, alien fleet marching, projectile combat, and boss UFO.
+    * **Tactical Dice (`apps/dice.qapp`):** Multi-mode D6, D20, D100, and Coin flipper with IMU shake-to-roll physics.
+    * **Retro Snake (`apps/snake.qapp`):** Iconic Nokia snake arcade game with 4-way steering, food spawning, growth mechanics, and high score tracking.
+    * **F1 Grand Prix (`apps/f1_race.qapp`):** Top-down high-speed racer with multi-lane traffic, boost mechanics, RPM engine audio, and crash avoidance.
+    * **Pacman Arcade (`apps/pacman.qapp`):** Authentic arcade maze chase with power pellets, ghost AI pathfinding, score fruit, and death sequences.
+    * **Breakout 007 (`apps/breakout.qapp`):** Brick wall destruction platformer with paddle bounce physics, power-ups, multi-ball action, and laser fire.
+    * **Space Impact 2 (`apps/space_impact.qapp`):** Nokia space shooter with delta fighter, laser blasts, screen-clearing torpedo bombs, alien squadron waves, and mothership boss battle.
+    * **Nokia Bounce (`apps/bounce.qapp`):** Classic bouncing ball platformer with restitution gravity physics, platform navigation, spikes, rotating ring collection, and 3 level maps.
 * **Automated Verification:** Comprehensive test harness (`tests/test_qapp_system.cpp`) with ESP32-S3 IRAM/PSRAM POC execution, fault injection (corrupt magic, ABI mismatch, OOB entry, invalid relocations), and 100-cycle zero-leak stress tests.
 
 ### Milestone 13: Tactical Animation Engine, Custom Boot Splash & Player

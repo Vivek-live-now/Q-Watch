@@ -60,6 +60,11 @@ static int       s_high_score = 1000;
 static int       s_wave = 1;
 static int       s_aliens_alive = TOTAL_ALIENS;
 
+// Unified sensor calibration tare and button override
+static float     s_neutral_roll = 0.0f;
+static bool      s_tare_initialized = false;
+static float     s_btn_override_timer = 0.0f;
+
 // Fleet movement & animation
 static Alien   s_aliens[NUM_ALIEN_ROWS][NUM_ALIEN_COLS];
 static float   s_fleet_dir = 1.0f; // +1 = right, -1 = left
@@ -191,6 +196,9 @@ int invaders_init(const QWatchAPI* api) {
     s_score = 0;
     s_wave = 1;
     s_alien_fire_timer = 1.5f;
+    s_neutral_roll = 0.0f;
+    s_tare_initialized = false;
+    s_btn_override_timer = 0.0f;
 
     load_high_score();
     init_wave();
@@ -223,16 +231,49 @@ void invaders_update(float dt) {
     if (!g_api) return;
     if (dt <= 0.0f || dt > 0.2f) dt = 0.016f;
 
-    // Poll Gyro / IMU tilt for smooth analog steering
+    // Decrement button override timer
+    if (s_btn_override_timer > 0.0f) {
+        s_btn_override_timer -= dt;
+    }
+
+    // Continuous button hold steering via live button state
+    if (g_api && g_api->get_button_state && s_state == GAME_STATE_PLAYING) {
+        uint8_t btn_mask = g_api->get_button_state();
+        if (btn_mask & QBTN_UP) {
+            s_player_x -= 55.0f * dt;
+            if (s_player_x < 4.0f) s_player_x = 4.0f;
+            s_btn_override_timer = 0.35f;
+        }
+        if (btn_mask & QBTN_DOWN) {
+            s_player_x += 55.0f * dt;
+            if (s_player_x > 116.0f) s_player_x = 116.0f;
+            s_btn_override_timer = 0.35f;
+        }
+    }
+
+    // Poll Gyro / IMU tilt for smooth analog steering (uses unified sensor calibration)
     QTelemetry telem;
     memset(&telem, 0, sizeof(telem));
     g_api->get_telemetry(&telem);
 
-    if (fabsf(telem.roll) > 5.0f && s_state == GAME_STATE_PLAYING) {
-        float tilt_speed = telem.roll * 0.9f;
-        s_player_x += tilt_speed * dt;
-        if (s_player_x < 4.0f)   s_player_x = 4.0f;
-        if (s_player_x > 116.0f) s_player_x = 116.0f;
+    if (!s_tare_initialized) {
+        s_neutral_roll = telem.roll;
+        s_tare_initialized = true;
+    }
+
+    // Only apply tilt steering if buttons aren't actively steering
+    if (s_btn_override_timer <= 0.0f && s_state == GAME_STATE_PLAYING) {
+        float effective_roll = telem.roll - s_neutral_roll;
+        const float DEADBAND = 14.0f;
+        if (fabsf(effective_roll) > DEADBAND) {
+            float tilt_delta = (effective_roll > 0.0f) ? (effective_roll - DEADBAND) : (effective_roll + DEADBAND);
+            float tilt_speed = tilt_delta * 1.5f;
+            if (tilt_speed > 65.0f)  tilt_speed = 65.0f;
+            if (tilt_speed < -65.0f) tilt_speed = -65.0f;
+            s_player_x += tilt_speed * dt;
+            if (s_player_x < 4.0f)   s_player_x = 4.0f;
+            if (s_player_x > 116.0f) s_player_x = 116.0f;
+        }
     }
 
     if (s_state == GAME_STATE_WAVE_CLEAR) {
@@ -621,12 +662,14 @@ void invaders_on_button(uint8_t btn, QButtonEvent evt) {
         if (s_state == GAME_STATE_PLAYING) {
             if (btn == QBTN_UP) {
                 // Move Left
-                s_player_x -= 6.0f;
+                s_player_x -= 8.0f;
                 if (s_player_x < 4.0f) s_player_x = 4.0f;
+                s_btn_override_timer = 0.35f;
             } else if (btn == QBTN_DOWN) {
                 // Move Right
-                s_player_x += 6.0f;
+                s_player_x += 8.0f;
                 if (s_player_x > 116.0f) s_player_x = 116.0f;
+                s_btn_override_timer = 0.35f;
             } else if (btn == QBTN_OK) {
                 // Fire
                 invaders_fire_player_laser();

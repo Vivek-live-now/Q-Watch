@@ -2303,7 +2303,19 @@ void UICore::handleStorageInfoInput() {
 
 static void ensureAppFileExists(const char* filename, const char* name, const char* ver, const char* author, uint32_t caps, uint32_t psram) {
     String full_path = String("/apps/") + filename;
-    if (LittleFS.exists(full_path)) return;
+    if (LittleFS.exists(full_path)) {
+        File f_chk = LittleFS.open(full_path, "r");
+        if (f_chk) {
+            size_t sz = f_chk.size();
+            QAppFileHeader test_hdr;
+            size_t rb = f_chk.read((uint8_t*)&test_hdr, sizeof(QAppFileHeader));
+            f_chk.close();
+            if (rb == sizeof(QAppFileHeader) && sz >= sizeof(QAppFileHeader) && test_hdr.magic == QAPP_MAGIC) {
+                return;
+            }
+        }
+        LittleFS.remove(full_path);
+    }
 
     QAppFileHeader fhdr;
     memset(&fhdr, 0, sizeof(fhdr));
@@ -2360,6 +2372,18 @@ static void provisionDefaultAppsIfNeeded() {
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 4096);
     ensureAppFileExists("dice.qapp", "Tactical Dice", "1.0.0", "MI6 Cyber",
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED, 2048);
+    ensureAppFileExists("snake.qapp", "Retro Snake", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
+    ensureAppFileExists("f1_race.qapp", "F1 Grand Prix", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
+    ensureAppFileExists("pacman.qapp", "Pacman Arcade", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 4096);
+    ensureAppFileExists("breakout.qapp", "Breakout 007", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
+    ensureAppFileExists("space_impact.qapp", "Space Impact 2", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
+    ensureAppFileExists("bounce.qapp", "Nokia Bounce", "1.0.0", "MI6 Cyber",
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
 }
 
 void UICore::loadAppsList() {
@@ -2404,6 +2428,38 @@ void UICore::loadAppsList() {
             app_count++;
         }
         file = dir.openNextFile();
+    }
+
+    if (app_count == 0) {
+        const struct {
+            const char* file;
+            const char* name;
+            const char* ver;
+            const char* auth;
+        } defaults[] = {
+            { "tilt_ball.qapp", "Tilt Ball", "1.0.0", "007 Agent" },
+            { "compass_hud.qapp", "Compass HUD", "1.0.0", "007 Agent" },
+            { "invaders.qapp", "007 Invaders", "1.0.0", "MI6 Cyber" },
+            { "dice.qapp", "Tactical Dice", "1.0.0", "MI6 Cyber" },
+            { "snake.qapp", "Retro Snake", "1.0.0", "MI6 Cyber" },
+            { "f1_race.qapp", "F1 Grand Prix", "1.0.0", "MI6 Cyber" },
+            { "pacman.qapp", "Pacman Arcade", "1.0.0", "MI6 Cyber" },
+            { "breakout.qapp", "Breakout 007", "1.0.0", "MI6 Cyber" },
+            { "space_impact.qapp", "Space Impact 2", "1.0.0", "MI6 Cyber" },
+            { "bounce.qapp", "Nokia Bounce", "1.0.0", "MI6 Cyber" }
+        };
+        for (size_t i = 0; i < sizeof(defaults)/sizeof(defaults[0]) && app_count < MAX_APPS; i++) {
+            AppEntry& entry = app_entries[app_count];
+            entry.filename = defaults[i].file;
+            strncpy(entry.name, defaults[i].name, sizeof(entry.name) - 1);
+            entry.name[sizeof(entry.name) - 1] = '\0';
+            strncpy(entry.version, defaults[i].ver, sizeof(entry.version) - 1);
+            entry.version[sizeof(entry.version) - 1] = '\0';
+            strncpy(entry.author, defaults[i].auth, sizeof(entry.author) - 1);
+            entry.author[sizeof(entry.author) - 1] = '\0';
+            entry.valid = true;
+            app_count++;
+        }
     }
 }
 

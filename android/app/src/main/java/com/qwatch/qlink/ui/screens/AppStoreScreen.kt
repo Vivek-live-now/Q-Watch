@@ -75,6 +75,72 @@ fun AppStoreScreen() {
             filename = "dice.qapp",
             sizeBytes = 2240,
             iconSymbol = "🎲"
+        ),
+        QAppMeta(
+            id = "retro_snake",
+            title = "Retro Snake",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "Classic arcade snake game with dual button turning, wrap boundaries, audio FX, and persistent high score.",
+            category = "ARCADE",
+            filename = "snake.qapp",
+            sizeBytes = 3120,
+            iconSymbol = "🐍"
+        ),
+        QAppMeta(
+            id = "f1_grand_prix",
+            title = "F1 Grand Prix",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "High-speed highway racer with tilt & button steering, turbo boost, traffic overtakes, and engine sound.",
+            category = "RACING",
+            filename = "f1_race.qapp",
+            sizeBytes = 3840,
+            iconSymbol = "🏎️"
+        ),
+        QAppMeta(
+            id = "pacman_arcade",
+            title = "Pacman Arcade",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "Authentic dot-eating arcade maze with side warp tunnels, energizer pellets, hunting ghosts, and waka-waka audio.",
+            category = "ARCADE",
+            filename = "pacman.qapp",
+            sizeBytes = 4650,
+            iconSymbol = "🟡"
+        ),
+        QAppMeta(
+            id = "breakout_007",
+            title = "Breakout 007",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "Tactical brick breaker with angle deflection paddle, 4-tier colored brick wall, sound FX, and high scores.",
+            category = "ARCADE",
+            filename = "breakout.qapp",
+            sizeBytes = 3380,
+            iconSymbol = "🧱"
+        ),
+        QAppMeta(
+            id = "space_impact_2",
+            title = "Space Impact 2",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "Nokia 3310 horizontal space shooter with laser cannons, area-damage torpedoes, alien waves & mothership boss.",
+            category = "ARCADE",
+            filename = "space_impact.qapp",
+            sizeBytes = 4220,
+            iconSymbol = "🛸"
+        ),
+        QAppMeta(
+            id = "nokia_bounce",
+            title = "Nokia Bounce",
+            version = "1.0",
+            author = "MI6 Cyber",
+            description = "Iconic Nokia red ball platformer with momentum physics, gold ring collection, spikes, super jump & camera tracking.",
+            category = "PLATFORMER",
+            filename = "bounce.qapp",
+            sizeBytes = 4110,
+            iconSymbol = "🔴"
         )
     )
 

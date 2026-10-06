@@ -13,6 +13,11 @@ static int   s_score = 0;
 static int16_t s_target_x = 30;
 static int16_t s_target_y = 20;
 
+// Unified calibration tare
+static float s_neutral_roll = 0.0f;
+static float s_neutral_pitch = 0.0f;
+static bool  s_tare_calibrated = false;
+
 static const QAppHeader s_tilt_game_header = {
     .magic = QAPP_MAGIC,
     .api_version = QAPP_API_VERSION,
@@ -43,6 +48,9 @@ int tilt_game_init(const QWatchAPI* api) {
     s_score = 0;
     s_target_x = 30;
     s_target_y = 20;
+    s_neutral_roll = 0.0f;
+    s_neutral_pitch = 0.0f;
+    s_tare_calibrated = false;
 
     if (g_api->set_led) {
         g_api->set_led(0, 40, 0); // Green startup LED
@@ -54,12 +62,31 @@ void tilt_game_update(float dt) {
     if (!g_api) return;
 
     QTelemetry telem;
+    memset(&telem, 0, sizeof(telem));
     g_api->get_telemetry(&telem);
+
+    // Tare neutral wrist posture on first frame
+    if (!s_tare_calibrated) {
+        s_neutral_roll = telem.roll;
+        s_neutral_pitch = telem.pitch;
+        s_tare_calibrated = true;
+    }
+
+    float diff_roll = telem.roll - s_neutral_roll;
+    float diff_pitch = telem.pitch - s_neutral_pitch;
+
+    // Apply deadband so resting hand jitter does not drift ball
+    const float DEADBAND = 3.5f;
+    if (fabsf(diff_roll) < DEADBAND) diff_roll = 0.0f;
+    else diff_roll = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
+
+    if (fabsf(diff_pitch) < DEADBAND) diff_pitch = 0.0f;
+    else diff_pitch = (diff_pitch > 0.0f) ? (diff_pitch - DEADBAND) : (diff_pitch + DEADBAND);
 
     // MPU-6500 Tilt physics
     // Roll moves X (+roll tilts right), Pitch moves Y (+pitch tilts down)
-    float ax = telem.roll * 0.15f;
-    float ay = telem.pitch * 0.15f;
+    float ax = diff_roll * 0.15f;
+    float ay = diff_pitch * 0.15f;
 
     s_vel_x += ax * dt;
     s_vel_y += ay * dt;
@@ -134,12 +161,17 @@ void tilt_game_render(void) {
 }
 
 void tilt_game_on_button(uint8_t btn, QButtonEvent evt) {
-    if (btn == QBTN_OK && (evt == QEVT_BTN_DOWN || evt == QEVT_BTN_SHORT_CLICK)) {
-        // Recenter ball
-        s_ball_x = 64.0f;
-        s_ball_y = 32.0f;
-        s_vel_x = 0.0f;
-        s_vel_y = 0.0f;
+    if (evt == QEVT_BTN_DOWN || evt == QEVT_BTN_SHORT_CLICK) {
+        if (btn == QBTN_OK) {
+            // Recenter ball and re-tare resting angle
+            s_ball_x = 64.0f;
+            s_ball_y = 32.0f;
+            s_vel_x = 0.0f;
+            s_vel_y = 0.0f;
+            s_tare_calibrated = false;
+        } else if (btn == QBTN_CANCEL) {
+            if (g_api && g_api->exit_app) g_api->exit_app();
+        }
     }
 }
 

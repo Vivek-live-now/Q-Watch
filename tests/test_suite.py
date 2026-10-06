@@ -253,17 +253,118 @@ def test_qapp_abi_and_system():
     if os.path.exists(test_dice_qapp):
         os.remove(test_dice_qapp)
 
-    print("  [PASS] Relocatable .qapp packagers compiled and verified for Tilt Ball, Compass HUD, 007 Invaders and Tactical Dice.")
+    # Generate Retro Snake .qapp (test packager)
+    gen_snake_bin = os.path.join(os.path.dirname(__file__), "gen_snake_qapp_bin")
+    res_snake_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/snake",
+        "apps/snake/generate_snake_qapp.c", "apps/snake/snake.c", "-lm",
+        "-o", gen_snake_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_snake_cmp.returncode == 0, f"Failed to compile snake packager:\n{res_snake_cmp.stderr}"
+    test_snake_qapp = os.path.join(os.path.dirname(__file__), "test_snake_pkg.qapp")
+    res_snake_run = subprocess.run([gen_snake_bin, test_snake_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_snake_run.returncode == 0, f"Failed to generate snake.qapp:\n{res_snake_run.stderr}"
+    if os.path.exists(gen_snake_bin):
+        os.remove(gen_snake_bin)
+    if os.path.exists(test_snake_qapp):
+        os.remove(test_snake_qapp)
+
+    # Generate F1 Grand Prix .qapp (test packager)
+    gen_f1_bin = os.path.join(os.path.dirname(__file__), "gen_f1_qapp_bin")
+    res_f1_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/f1_race",
+        "apps/f1_race/generate_f1_race_qapp.c", "apps/f1_race/f1_race.c", "-lm",
+        "-o", gen_f1_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_f1_cmp.returncode == 0, f"Failed to compile f1 packager:\n{res_f1_cmp.stderr}"
+    test_f1_qapp = os.path.join(os.path.dirname(__file__), "test_f1_pkg.qapp")
+    res_f1_run = subprocess.run([gen_f1_bin, test_f1_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_f1_run.returncode == 0, f"Failed to generate f1_race.qapp:\n{res_f1_run.stderr}"
+    if os.path.exists(gen_f1_bin):
+        os.remove(gen_f1_bin)
+    if os.path.exists(test_f1_qapp):
+        os.remove(test_f1_qapp)
+
+    # Generate Pacman Arcade .qapp (test packager)
+    gen_pacman_bin = os.path.join(os.path.dirname(__file__), "gen_pacman_qapp_bin")
+    res_pacman_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/pacman",
+        "apps/pacman/generate_pacman_qapp.c", "apps/pacman/pacman.c", "-lm",
+        "-o", gen_pacman_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_pacman_cmp.returncode == 0, f"Failed to compile pacman packager:\n{res_pacman_cmp.stderr}"
+    test_pacman_qapp = os.path.join(os.path.dirname(__file__), "test_pacman_pkg.qapp")
+    res_pacman_run = subprocess.run([gen_pacman_bin, test_pacman_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_pacman_run.returncode == 0, f"Failed to generate pacman.qapp:\n{res_pacman_run.stderr}"
+    if os.path.exists(gen_pacman_bin):
+        os.remove(gen_pacman_bin)
+    if os.path.exists(test_pacman_qapp):
+        os.remove(test_pacman_qapp)
+
+    # Generate Breakout 007 .qapp (test packager)
+    gen_breakout_bin = os.path.join(os.path.dirname(__file__), "gen_breakout_qapp_bin")
+    res_breakout_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/breakout",
+        "apps/breakout/generate_breakout_qapp.c", "apps/breakout/breakout.c", "-lm",
+        "-o", gen_breakout_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_breakout_cmp.returncode == 0, f"Failed to compile breakout packager:\n{res_breakout_cmp.stderr}"
+    test_breakout_qapp = os.path.join(os.path.dirname(__file__), "test_breakout_pkg.qapp")
+    res_breakout_run = subprocess.run([gen_breakout_bin, test_breakout_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_breakout_run.returncode == 0, f"Failed to generate breakout.qapp:\n{res_breakout_run.stderr}"
+    if os.path.exists(gen_breakout_bin):
+        os.remove(gen_breakout_bin)
+    if os.path.exists(test_breakout_qapp):
+        os.remove(test_breakout_qapp)
+
+    # Generate Space Impact 2 .qapp (test packager)
+    gen_space_bin = os.path.join(os.path.dirname(__file__), "gen_space_impact_qapp_bin")
+    res_space_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/space_impact",
+        "apps/space_impact/generate_space_impact_qapp.c", "apps/space_impact/space_impact.c", "-lm",
+        "-o", gen_space_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_space_cmp.returncode == 0, f"Failed to compile space impact packager:\n{res_space_cmp.stderr}"
+    test_space_qapp = os.path.join(os.path.dirname(__file__), "test_space_impact_pkg.qapp")
+    res_space_run = subprocess.run([gen_space_bin, test_space_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_space_run.returncode == 0, f"Failed to generate space_impact.qapp:\n{res_space_run.stderr}"
+    if os.path.exists(gen_space_bin):
+        os.remove(gen_space_bin)
+    if os.path.exists(test_space_qapp):
+        os.remove(test_space_qapp)
+
+    # Generate Nokia Bounce .qapp (test packager)
+    gen_bounce_bin = os.path.join(os.path.dirname(__file__), "gen_bounce_qapp_bin")
+    res_bounce_cmp = subprocess.run([
+        "clang", "-O2", "-Iinclude", "-Iapps/bounce",
+        "apps/bounce/generate_bounce_qapp.c", "apps/bounce/bounce.c", "-lm",
+        "-o", gen_bounce_bin
+    ], cwd=base_dir, capture_output=True, text=True)
+    assert res_bounce_cmp.returncode == 0, f"Failed to compile bounce packager:\n{res_bounce_cmp.stderr}"
+    test_bounce_qapp = os.path.join(os.path.dirname(__file__), "test_bounce_pkg.qapp")
+    res_bounce_run = subprocess.run([gen_bounce_bin, test_bounce_qapp], cwd=base_dir, capture_output=True, text=True)
+    assert res_bounce_run.returncode == 0, f"Failed to generate bounce.qapp:\n{res_bounce_run.stderr}"
+    if os.path.exists(gen_bounce_bin):
+        os.remove(gen_bounce_bin)
+    if os.path.exists(test_bounce_qapp):
+        os.remove(test_bounce_qapp)
+
+    print("  [PASS] Relocatable .qapp packagers compiled and verified for all 10 reference Q-Apps.")
 
     # 3. Re-compile and execute the C++ Q-App test harness
     bin_path = os.path.join(os.path.dirname(__file__), "test_qapp_system_bin")
     compile_cmd = [
         "clang++", "-O2", "-Iinclude", "-Itests",
         "-Iapps/tilt_game", "-Iapps/compass_hud", "-Iapps/invaders", "-Iapps/dice",
+        "-Iapps/snake", "-Iapps/f1_race", "-Iapps/pacman", "-Iapps/breakout",
+        "-Iapps/space_impact", "-Iapps/bounce",
         "tests/test_qapp_system.cpp", "tests/mock_qwatch_api.cpp",
         "src/qapp_loader.cpp", "src/qapp_target_poc.cpp",
         "apps/tilt_game/tilt_game.c", "apps/compass_hud/compass_hud.c",
         "apps/invaders/invaders.c", "apps/dice/dice.c",
+        "apps/snake/snake.c", "apps/f1_race/f1_race.c",
+        "apps/pacman/pacman.c", "apps/breakout/breakout.c",
+        "apps/space_impact/space_impact.c", "apps/bounce/bounce.c",
         "-lm", "-o", bin_path
     ]
     res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
@@ -274,7 +375,7 @@ def test_qapp_abi_and_system():
     assert "ALL RELOCATABLE LOADER & POC TESTS PASSED" in run_res.stdout, "POC & Relocatable test verification string missing"
     if os.path.exists(bin_path):
         os.remove(bin_path)
-    print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, Tilt Ball, Compass HUD, 007 Invaders & Tactical Dice stress tests verified.")
+    print("  [PASS] Target IRAM/PSRAM POC, relocatable loader, and all 10 dynamic reference app execution & stress tests verified.")
 
 def test_animation_engine():
     print("\n--- 7. Tactical Animation Engine & Player Test ---")
@@ -1322,12 +1423,18 @@ def test_app_store_qapps_and_installer():
     print("\n--- 30. App Store Q-Apps (Invaders & Dice) & Wireless Installer Test ---")
     base_dir = os.path.join(os.path.dirname(__file__), "..")
 
-    # 1. Verify existence and binary headers of all 4 store apps
+    # 1. Verify existence and binary headers of all 10 store apps
     apps = [
         ("tilt_ball.qapp", b"Tilt Ball\x00"),
         ("compass_hud.qapp", b"Compass HUD\x00"),
         ("invaders.qapp", b"007 Invaders\x00"),
-        ("dice.qapp", b"Tactical Dice\x00")
+        ("dice.qapp", b"Tactical Dice\x00"),
+        ("snake.qapp", b"Retro Snake\x00"),
+        ("f1_race.qapp", b"F1 Grand Prix\x00"),
+        ("pacman.qapp", b"Pacman Arcade\x00"),
+        ("breakout.qapp", b"Breakout 007\x00"),
+        ("space_impact.qapp", b"Space Impact 2\x00"),
+        ("bounce.qapp", b"Nokia Bounce\x00")
     ]
     import struct
     for filename, name_prefix in apps:
@@ -1341,7 +1448,7 @@ def test_app_store_qapps_and_installer():
         assert api_ver == 1, f"Bad API version in {filename}: {api_ver}"
         raw_name = data[12:32]
         assert raw_name.startswith(name_prefix), f"Name mismatch in {filename}: {raw_name}"
-    print("  [PASS] All 4 curated App Store binaries (Tilt Ball, Compass HUD, Invaders, Dice) verified with valid Q-App headers.")
+    print("  [PASS] All 10 curated App Store binaries verified with valid Q-App headers.")
 
     # 2. Verify Android AppStoreScreen catalog synchronization
     store_kt_path = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "AppStoreScreen.kt")
@@ -1352,6 +1459,12 @@ def test_app_store_qapps_and_installer():
     assert 'filename = "compass_hud.qapp"' in kt_content
     assert 'filename = "invaders.qapp"' in kt_content
     assert 'filename = "dice.qapp"' in kt_content
+    assert 'filename = "snake.qapp"' in kt_content
+    assert 'filename = "f1_race.qapp"' in kt_content
+    assert 'filename = "pacman.qapp"' in kt_content
+    assert 'filename = "breakout.qapp"' in kt_content
+    assert 'filename = "space_impact.qapp"' in kt_content
+    assert 'filename = "bounce.qapp"' in kt_content
     print("  [PASS] Android AppStoreScreen catalog 100% synchronized with firmware app binaries.")
 
     # 3. Verify Q-Link Wireless Sideload & Filesystem REST Routes

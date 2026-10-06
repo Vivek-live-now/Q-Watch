@@ -11,6 +11,12 @@
 #include "../apps/compass_hud/compass_hud.h"
 #include "../apps/invaders/invaders.h"
 #include "../apps/dice/dice.h"
+#include "../apps/snake/snake.h"
+#include "../apps/f1_race/f1_race.h"
+#include "../apps/pacman/pacman.h"
+#include "../apps/breakout/breakout.h"
+#include "../apps/space_impact/space_impact.h"
+#include "../apps/bounce/bounce.h"
 
 // Generates a genuine relocatable .qapp file with code, data, and relocations
 static void create_relocatable_qapp(const char* path) {
@@ -846,6 +852,525 @@ static void test_dice_100_cycle_stress(void) {
     remove(test_path);
 }
 
+static void create_relocatable_snake_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_snake_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "Retro Snake", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_snake_dynamic_execution(void) {
+    printf("\n=== 11. Retro Snake Dynamic Loading, Controls & Physics ===\n");
+    const char* test_path = "./tests/test_reloc_snake.qapp";
+    create_relocatable_snake_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "Retro Snake") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Retro Snake") == 0);
+
+    assert(snake_get_length() == 3);
+    assert(!snake_is_game_over());
+
+    for (int f = 0; f < 5; f++) {
+        qappLoader.update(0.05f);
+        qappLoader.render();
+    }
+
+    qappLoader.handleButton(QBTN_UP, QEVT_BTN_SHORT_CLICK);
+    qappLoader.update(0.05f);
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] Retro Snake loaded, animated, controlled, and unloaded.\n");
+    remove(test_path);
+}
+
+static void create_relocatable_f1_race_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_f1_race_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "F1 Grand Prix", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_f1_race_dynamic_execution(void) {
+    printf("\n=== 12. F1 Grand Prix Dynamic Loading, Physics & Audio ===\n");
+    const char* test_path = "./tests/test_reloc_f1.qapp";
+    create_relocatable_f1_race_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "F1 Grand Prix") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "F1 Grand Prix") == 0);
+
+    assert(f1_race_get_speed() > 0.0f);
+    assert(!f1_race_is_game_over());
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+
+    for (int f = 0; f < 10; f++) {
+        qappLoader.update(0.02f);
+        qappLoader.render();
+    }
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] F1 Grand Prix loaded, boosted, simulated, and unloaded.\n");
+    remove(test_path);
+}
+
+static void create_relocatable_pacman_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_pacman_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "Pacman Arcade", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_pacman_dynamic_execution(void) {
+    printf("\n=== 13. Pacman Arcade Dynamic Loading, Maze & Ghosts ===\n");
+    const char* test_path = "./tests/test_reloc_pacman.qapp";
+    create_relocatable_pacman_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "Pacman Arcade") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Pacman Arcade") == 0);
+
+    assert(pacman_get_lives() == 3);
+    assert(pacman_get_dots_left() > 0);
+    assert(!pacman_is_game_over());
+
+    for (int f = 0; f < 10; f++) {
+        qappLoader.update(0.02f);
+        qappLoader.render();
+    }
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] Pacman Arcade loaded, maze navigated, and unloaded.\n");
+    remove(test_path);
+}
+
+static void create_relocatable_breakout_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_breakout_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "Breakout 007", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_breakout_dynamic_execution(void) {
+    printf("\n=== 14. Breakout 007 Dynamic Loading, Brick Wall & Ball ===\n");
+    const char* test_path = "./tests/test_reloc_breakout.qapp";
+    create_relocatable_breakout_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "Breakout 007") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Breakout 007") == 0);
+
+    assert(breakout_get_lives() == 3);
+    assert(breakout_get_bricks_left() == 32);
+    assert(!breakout_is_game_over());
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+
+    for (int f = 0; f < 15; f++) {
+        qappLoader.update(0.016f);
+        qappLoader.render();
+    }
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] Breakout 007 loaded, ball launched, and unloaded.\n");
+    remove(test_path);
+}
+
+static void create_relocatable_space_impact_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_space_impact_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "Space Impact 2", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_space_impact_dynamic_execution(void) {
+    printf("\n=== 15. Space Impact 2 Dynamic Loading, Alien Waves & Boss ===\n");
+    const char* test_path = "./tests/test_reloc_space_impact.qapp";
+    create_relocatable_space_impact_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "Space Impact 2") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Space Impact 2") == 0);
+
+    assert(space_impact_get_lives() == 3);
+    assert(space_impact_get_bombs() == 3);
+    assert(!space_impact_is_game_over());
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+
+    for (int f = 0; f < 15; f++) {
+        qappLoader.update(0.016f);
+        qappLoader.render();
+    }
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+    qappLoader.update(0.016f);
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] Space Impact 2 loaded, lasers fired, waves advanced, and unloaded.\n");
+    remove(test_path);
+}
+
+static void create_relocatable_bounce_qapp(const char* path) {
+    FILE* fp = fopen(path, "wb");
+    assert(fp != NULL);
+
+#if defined(__aarch64__)
+    uint32_t code_payload[4] = { 0x58000040, 0xd65f03c0, 0, 0 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 8;
+#elif defined(__x86_64__)
+    uint8_t code_payload[11] = { 0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0xc3 };
+    uint32_t code_len = sizeof(code_payload);
+    uint32_t reloc_offset_in_code = 2;
+#else
+    uint32_t code_payload[4] = { 0 };
+    uint32_t code_len = 16;
+    uint32_t reloc_offset_in_code = 4;
+#endif
+
+    const QAppHeader* src_hdr = get_bounce_header();
+    uint32_t data_len = sizeof(QAppHeader);
+
+    QAppFileHeader fhdr;
+    memset(&fhdr, 0, sizeof(fhdr));
+    fhdr.magic = QAPP_MAGIC;
+    fhdr.api_version = QAPP_API_VERSION;
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE);
+    strncpy(fhdr.name, "Nokia Bounce", sizeof(fhdr.name) - 1);
+    strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
+    strncpy(fhdr.author, "MI6 Cyber", sizeof(fhdr.author) - 1);
+    fhdr.required_psram = 2048;
+
+    fhdr.code_offset = sizeof(QAppFileHeader);
+    fhdr.code_size = code_len;
+    fhdr.data_offset = fhdr.code_offset + fhdr.code_size;
+    fhdr.data_size = data_len;
+    fhdr.bss_size = 64;
+    fhdr.reloc_offset = fhdr.data_offset + fhdr.data_size;
+    fhdr.reloc_count = 1;
+    fhdr.entry_offset = 0;
+
+    fwrite(&fhdr, sizeof(fhdr), 1, fp);
+    fwrite(code_payload, 1, code_len, fp);
+    fwrite(src_hdr, 1, data_len, fp);
+
+    QAppReloc reloc;
+    reloc.section = 0;
+    reloc.type = QRELOC_DATA_ADDR;
+    reloc.reserved = 0;
+    reloc.offset = reloc_offset_in_code;
+    fwrite(&reloc, sizeof(reloc), 1, fp);
+    fclose(fp);
+}
+
+static void test_bounce_dynamic_execution(void) {
+    printf("\n=== 16. Nokia Bounce Dynamic Loading, Ring Collection & Physics ===\n");
+    const char* test_path = "./tests/test_reloc_bounce.qapp";
+    create_relocatable_bounce_qapp(test_path);
+
+    QAppFileHeader fhdr;
+    QAppErrorCode err = QAppLoader::inspectFile(test_path, &fhdr);
+    assert(err == QAPP_OK);
+    assert(strcmp(fhdr.name, "Nokia Bounce") == 0);
+
+    mock_reset_state();
+    err = qappLoader.loadApp(test_path);
+    assert(err == QAPP_OK);
+    assert(qappLoader.isRunning());
+    assert(strcmp(qappLoader.getActiveAppName(), "Nokia Bounce") == 0);
+
+    assert(bounce_get_lives() == 3);
+    assert(bounce_get_level() == 1);
+    assert(bounce_get_rings_left() == 5);
+    assert(!bounce_is_game_over());
+
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+    qappLoader.handleButton(QBTN_OK, QEVT_BTN_SHORT_CLICK);
+    qappLoader.handleButton(QBTN_DOWN, QEVT_BTN_SHORT_CLICK);
+
+    for (int f = 0; f < 20; f++) {
+        qappLoader.update(0.016f);
+        qappLoader.render();
+    }
+
+    qappLoader.unloadApp();
+    assert(!qappLoader.isRunning());
+    printf("  [PASS] Nokia Bounce loaded, ball bounced, platforms navigated, and unloaded.\n");
+    remove(test_path);
+}
+
 int main(void) {
     printf("====================================================\n");
     printf("   MICRO-ELF RELOCATABLE Q-APP DYNAMIC TEST HARNESS  \n");
@@ -890,6 +1415,30 @@ int main(void) {
     printf("Running test_dice_100_cycle_stress (Tactical Dice)...\n");
     fflush(stdout);
     test_dice_100_cycle_stress();
+
+    printf("Running test_snake_dynamic_execution (Retro Snake)...\n");
+    fflush(stdout);
+    test_snake_dynamic_execution();
+
+    printf("Running test_f1_race_dynamic_execution (F1 Grand Prix)...\n");
+    fflush(stdout);
+    test_f1_race_dynamic_execution();
+
+    printf("Running test_pacman_dynamic_execution (Pacman Arcade)...\n");
+    fflush(stdout);
+    test_pacman_dynamic_execution();
+
+    printf("Running test_breakout_dynamic_execution (Breakout 007)...\n");
+    fflush(stdout);
+    test_breakout_dynamic_execution();
+
+    printf("Running test_space_impact_dynamic_execution (Space Impact 2)...\n");
+    fflush(stdout);
+    test_space_impact_dynamic_execution();
+
+    printf("Running test_bounce_dynamic_execution (Nokia Bounce)...\n");
+    fflush(stdout);
+    test_bounce_dynamic_execution();
 
     printf("Running test_fault_injection...\n");
     fflush(stdout);

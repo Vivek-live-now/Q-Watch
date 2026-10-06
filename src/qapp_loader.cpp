@@ -6,29 +6,128 @@
 
 #if __has_include("tilt_game.h")
 #include "tilt_game.h"
-#include "compass_hud.h"
-#include "invaders.h"
-#include "dice.h"
 #elif __has_include("../apps/tilt_game/tilt_game.h")
 #include "../apps/tilt_game/tilt_game.h"
-#include "../apps/compass_hud/compass_hud.h"
-#include "../apps/invaders/invaders.h"
-#include "../apps/dice/dice.h"
+#elif __has_include("apps/tilt_game/tilt_game.h")
+#include "apps/tilt_game/tilt_game.h"
 #endif
+
+#if __has_include("compass_hud.h")
+#include "compass_hud.h"
+#elif __has_include("../apps/compass_hud/compass_hud.h")
+#include "../apps/compass_hud/compass_hud.h"
+#elif __has_include("apps/compass_hud/compass_hud.h")
+#include "apps/compass_hud/compass_hud.h"
+#endif
+
+#if __has_include("invaders.h")
+#include "invaders.h"
+#elif __has_include("../apps/invaders/invaders.h")
+#include "../apps/invaders/invaders.h"
+#elif __has_include("apps/invaders/invaders.h")
+#include "apps/invaders/invaders.h"
+#endif
+
+#if __has_include("dice.h")
+#include "dice.h"
+#elif __has_include("../apps/dice/dice.h")
+#include "../apps/dice/dice.h"
+#elif __has_include("apps/dice/dice.h")
+#include "apps/dice/dice.h"
+#endif
+
+#if __has_include("snake.h")
+#include "snake.h"
+#elif __has_include("../apps/snake/snake.h")
+#include "../apps/snake/snake.h"
+#elif __has_include("apps/snake/snake.h")
+#include "apps/snake/snake.h"
+#endif
+
+#if __has_include("f1_race.h")
+#include "f1_race.h"
+#elif __has_include("../apps/f1_race/f1_race.h")
+#include "../apps/f1_race/f1_race.h"
+#elif __has_include("apps/f1_race/f1_race.h")
+#include "apps/f1_race/f1_race.h"
+#endif
+
+#if __has_include("pacman.h")
+#include "pacman.h"
+#elif __has_include("../apps/pacman/pacman.h")
+#include "../apps/pacman/pacman.h"
+#elif __has_include("apps/pacman/pacman.h")
+#include "apps/pacman/pacman.h"
+#endif
+
+#if __has_include("breakout.h")
+#include "breakout.h"
+#elif __has_include("../apps/breakout/breakout.h")
+#include "../apps/breakout/breakout.h"
+#elif __has_include("apps/breakout/breakout.h")
+#include "apps/breakout/breakout.h"
+#endif
+
+#if __has_include("space_impact.h")
+#include "space_impact.h"
+#elif __has_include("../apps/space_impact/space_impact.h")
+#include "../apps/space_impact/space_impact.h"
+#elif __has_include("apps/space_impact/space_impact.h")
+#include "apps/space_impact/space_impact.h"
+#endif
+
+#if __has_include("bounce.h")
+#include "bounce.h"
+#elif __has_include("../apps/bounce/bounce.h")
+#include "../apps/bounce/bounce.h"
+#elif __has_include("apps/bounce/bounce.h")
+#include "apps/bounce/bounce.h"
+#endif
+
+extern "C" {
+    const QAppHeader* get_tilt_game_header(void);
+    const QAppHeader* get_compass_hud_header(void);
+    const QAppHeader* get_invaders_header(void);
+    const QAppHeader* get_dice_header(void);
+    const QAppHeader* get_snake_header(void);
+    const QAppHeader* get_f1_race_header(void);
+    const QAppHeader* get_pacman_header(void);
+    const QAppHeader* get_breakout_header(void);
+    const QAppHeader* get_space_impact_header(void);
+    const QAppHeader* get_bounce_header(void);
+}
 
 static const QAppHeader* find_builtin_app(const char* name) {
     if (!name || name[0] == '\0') return nullptr;
-    if (strcmp(name, "Tilt Ball") == 0 || strcasecmp(name, "tilt_ball") == 0 || strcasecmp(name, "tilt_ball.qapp") == 0) {
+    if (strcasestr(name, "tilt") || (strcasestr(name, "ball") && !strcasestr(name, "bounce"))) {
         return get_tilt_game_header();
     }
-    if (strcmp(name, "Compass HUD") == 0 || strcasecmp(name, "compass_hud") == 0 || strcasecmp(name, "compass_hud.qapp") == 0) {
+    if (strcasestr(name, "compass")) {
         return get_compass_hud_header();
     }
-    if (strcmp(name, "007 Invaders") == 0 || strcasecmp(name, "invaders") == 0 || strcasecmp(name, "invaders.qapp") == 0) {
+    if (strcasestr(name, "invader")) {
         return get_invaders_header();
     }
-    if (strcmp(name, "Tactical Dice") == 0 || strcasecmp(name, "dice") == 0 || strcasecmp(name, "dice.qapp") == 0) {
+    if (strcasestr(name, "dice")) {
         return get_dice_header();
+    }
+    if (strcasestr(name, "snake")) {
+        return get_snake_header();
+    }
+    if (strcasestr(name, "f1") || strcasestr(name, "race") || strcasestr(name, "prix")) {
+        return get_f1_race_header();
+    }
+    if (strcasestr(name, "pacman") || strcasestr(name, "pac-man") || strcasestr(name, "pac_man") || strcasestr(name, "packman")) {
+        return get_pacman_header();
+    }
+    if (strcasestr(name, "breakout") || strcasestr(name, "brick") || strcasestr(name, "arkanoid")) {
+        return get_breakout_header();
+    }
+    if (strcasestr(name, "space") || strcasestr(name, "impact")) {
+        return get_space_impact_header();
+    }
+    if (strcasestr(name, "bounce")) {
+        return get_bounce_header();
     }
     return nullptr;
 }
@@ -473,21 +572,72 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     if (is_running) return QAPP_ERR_ALREADY_RUNNING;
     if (!path) return QAPP_ERR_INVALID_PARAM;
 
+    const char* slash = strrchr(path, '/');
+    const char* app_fname = slash ? slash + 1 : path;
+    const QAppHeader* builtin_hdr = find_builtin_app(app_fname);
+
 #ifdef ARDUINO
-    if (!LittleFS.exists(path)) return QAPP_ERR_FILE_NOT_FOUND;
+    if (!LittleFS.exists(path)) {
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
+        return QAPP_ERR_FILE_NOT_FOUND;
+    }
     File f = LittleFS.open(path, "r");
-    if (!f) return QAPP_ERR_FILE_NOT_FOUND;
+    if (!f) {
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
+        return QAPP_ERR_FILE_NOT_FOUND;
+    }
     uint32_t fsize = f.size();
 
     QAppFileHeader fhdr;
     if (f.read((uint8_t*)&fhdr, sizeof(QAppFileHeader)) != sizeof(QAppFileHeader)) {
         f.close();
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
         return QAPP_ERR_CORRUPT_HEADER;
     }
     QAppErrorCode err = validateFileHeader(fhdr, fsize);
     if (err != QAPP_OK) {
         f.close();
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
         return err;
+    }
+
+    if (builtin_hdr && (fhdr.code_size <= 16 || fsize <= sizeof(QAppFileHeader) + 256)) {
+        f.close();
+        initLiveApi();
+        active_header = *builtin_hdr;
+        active_file_header = fhdr;
+        int init_res = active_header.init(&s_live_qwatch_api);
+        if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+        is_running = true;
+        return QAPP_OK;
     }
 
     // 1. Allocate Executable Code Memory in internal IRAM
@@ -497,6 +647,15 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     );
     if (!code_buf) {
         f.close();
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            active_file_header = fhdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
         return QAPP_ERR_OOM;
     }
 
@@ -514,6 +673,15 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     if (!data_buf) {
         heap_caps_free(code_buf);
         f.close();
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            active_file_header = fhdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
         return QAPP_ERR_OOM;
     }
 
@@ -577,6 +745,9 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
     // 7. Resolve Entry Point (Built-in Native App or Dynamic Relocated Entry)
     const QAppHeader* hdr = find_builtin_app(fhdr.name);
     if (!hdr) {
+        hdr = builtin_hdr;
+    }
+    if (!hdr) {
         const char* slash = strrchr(path, '/');
         hdr = find_builtin_app(slash ? slash + 1 : path);
     }
@@ -618,7 +789,17 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
 
 #else
     FILE* fp = fopen(path, "rb");
-    if (!fp) return QAPP_ERR_FILE_NOT_FOUND;
+    if (!fp) {
+        if (builtin_hdr) {
+            initLiveApi();
+            active_header = *builtin_hdr;
+            int init_res = active_header.init(&s_live_qwatch_api);
+            if (init_res != QAPP_OK) return QAPP_ERR_INIT_FAILED;
+            is_running = true;
+            return QAPP_OK;
+        }
+        return QAPP_ERR_FILE_NOT_FOUND;
+    }
     fseek(fp, 0, SEEK_END);
     uint32_t fsize = (uint32_t)ftell(fp);
     fseek(fp, 0, SEEK_SET);
@@ -708,9 +889,17 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
 
     __builtin___clear_cache((char*)code_buf, (char*)code_buf + alloc_code_size);
 
-    // 6. Invoke Relocated Entry Point
-    QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr.entry_offset);
-    const QAppHeader* hdr = entry_fn(&s_live_qwatch_api);
+    // 6. Invoke Relocated Entry Point (or resolve built-in)
+    const QAppHeader* hdr = find_builtin_app(fhdr.name);
+    if (!hdr) hdr = builtin_hdr;
+    if (!hdr) {
+        const char* slash = strrchr(path, '/');
+        hdr = find_builtin_app(slash ? slash + 1 : path);
+    }
+    if (!hdr) {
+        QAppEntryFunc entry_fn = (QAppEntryFunc)((uintptr_t)code_buf + fhdr.entry_offset);
+        hdr = entry_fn(&s_live_qwatch_api);
+    }
     if (!hdr || !hdr->init || !hdr->update || !hdr->render || !hdr->teardown) {
         munmap(code_buf, alloc_code_size);
         free(data_buf);
