@@ -49,7 +49,6 @@ void setup() {
   irEngine.begin();
   timekeeping.begin();
   animEngine.begin();
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
   } else {

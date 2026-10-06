@@ -1,5 +1,6 @@
 #include "tilt_game.h"
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
 
 static const QWatchAPI* g_api = NULL;
