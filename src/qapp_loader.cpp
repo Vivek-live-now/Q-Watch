@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <strings.h>
-#include <math.h>
 
 #if __has_include("tilt_game.h")
 #include "tilt_game.h"
@@ -183,21 +182,6 @@ QAppLoader qappLoader;
 // -------------------------------------------------------------
 #ifdef ARDUINO
 
-// Q-Apps receive movement relative to the posture in which they were opened.
-// This prevents an unlevel global IMU calibration from making a newly launched
-// game drift left before the player has moved their wrist.
-static float s_qapp_neutral_roll = 0.0f;
-static float s_qapp_neutral_pitch = 0.0f;
-static uint8_t s_qapp_stable_samples = 0;
-static bool s_qapp_motion_tared = false;
-
-static void reset_qapp_motion_tare() {
-    s_qapp_neutral_roll = 0.0f;
-    s_qapp_neutral_pitch = 0.0f;
-    s_qapp_stable_samples = 0;
-    s_qapp_motion_tared = false;
-}
-
 static uint8_t* live_get_framebuffer(void) {
     return oled.getBufferPtr();
 }
@@ -273,26 +257,8 @@ static void live_get_telemetry(QTelemetry* out) {
     EnvironmentData env = sensors.getEnvData();
     HealthMetrics hm = max30102Manager.getMetrics();
 
-    // Wait for a short stable window before accepting the launch posture as
-    // neutral. Until then, report no tilt so an app cannot drift on entry.
-    const bool stable = fabsf(cal.gx) < 8.0f && fabsf(cal.gy) < 8.0f && fabsf(cal.gz) < 8.0f;
-    if (!s_qapp_motion_tared) {
-        if (stable) {
-            if (s_qapp_stable_samples == 0) {
-                s_qapp_neutral_roll = ori.roll;
-                s_qapp_neutral_pitch = ori.pitch;
-            } else {
-                s_qapp_neutral_roll = (s_qapp_neutral_roll * 0.75f) + (ori.roll * 0.25f);
-                s_qapp_neutral_pitch = (s_qapp_neutral_pitch * 0.75f) + (ori.pitch * 0.25f);
-            }
-            if (++s_qapp_stable_samples >= 5) s_qapp_motion_tared = true;
-        } else {
-            s_qapp_stable_samples = 0;
-        }
-    }
-
-    out->pitch = s_qapp_motion_tared ? (ori.pitch - s_qapp_neutral_pitch) : 0.0f;
-    out->roll = s_qapp_motion_tared ? (ori.roll - s_qapp_neutral_roll) : 0.0f;
+    out->pitch = ori.pitch;
+    out->roll = ori.roll;
     out->yaw = ori.yaw;
 
     out->accel_x = cal.ax;
@@ -605,10 +571,6 @@ QAppErrorCode QAppLoader::inspectFile(const char* path, QAppHeader* out_hdr) {
 QAppErrorCode QAppLoader::loadApp(const char* path) {
     if (is_running) return QAPP_ERR_ALREADY_RUNNING;
     if (!path) return QAPP_ERR_INVALID_PARAM;
-
-#ifdef ARDUINO
-    reset_qapp_motion_tare();
-#endif
 
     const char* slash = strrchr(path, '/');
     const char* app_fname = slash ? slash + 1 : path;
@@ -966,10 +928,6 @@ QAppErrorCode QAppLoader::loadApp(const char* path) {
 QAppErrorCode QAppLoader::loadAppFromMemory(const uint8_t* buffer, uint32_t size) {
     if (is_running) return QAPP_ERR_ALREADY_RUNNING;
     if (!buffer || size < sizeof(QAppFileHeader)) return QAPP_ERR_INVALID_PARAM;
-
-#ifdef ARDUINO
-    reset_qapp_motion_tare();
-#endif
 
     const QAppFileHeader* fhdr = (const QAppFileHeader*)buffer;
     QAppErrorCode err = validateFileHeader(*fhdr, size);
