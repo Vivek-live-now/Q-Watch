@@ -1512,7 +1512,6 @@ void UICore::handleMainMenuInput() {
             soundManager.playNavSelect();
         } else {
             soundManager.playAppLaunch();
-            delay(150);
         }
         switch(menu_selection) {
             case 0: current_state = UIState::APP_HOME; break;
@@ -2292,7 +2291,6 @@ void UICore::handleFileManagerInput() {
                     if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
                     fullPath += filename;
                     soundManager.playAppLaunch();
-                    delay(150);
                     QAppErrorCode err = qappLoader.loadApp(fullPath.c_str());
                     if (err == QAPP_OK) {
                         current_state = UIState::APP_RUNNING;
@@ -2389,7 +2387,7 @@ static void provisionDefaultAppsIfNeeded() {
     ensureAppFileExists("dice.qapp", "Tactical Dice", "1.0.0", "MI6 Cyber",
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED, 2048);
     ensureAppFileExists("snake.qapp", "Retro Snake", "1.0.0", "MI6 Cyber",
-                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
+                       QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
     ensureAppFileExists("f1_race.qapp", "F1 Grand Prix", "1.0.0", "MI6 Cyber",
                        QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_AUDIO | QAPP_CAP_RGB_LED | QAPP_CAP_STORAGE, 2048);
     ensureAppFileExists("pacman.qapp", "Pacman Arcade", "1.0.0", "MI6 Cyber",
@@ -2509,7 +2507,6 @@ void UICore::handleAppsInput() {
         if (app_count > 0 && app_selection < app_count) {
             String full_path = String("/apps/") + app_entries[app_selection].filename;
             soundManager.playAppLaunch();
-            delay(150);
             QAppErrorCode err = qappLoader.loadApp(full_path.c_str());
             if (err == QAPP_OK) {
                 current_state = UIState::APP_RUNNING;
