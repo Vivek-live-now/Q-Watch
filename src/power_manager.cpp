@@ -239,7 +239,11 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
     switch (current_sleep_engine) {
         case SleepEngine::DEEP_SLEEP: {
-            esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            if (sleep_sec > 0) {
+                esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            } else {
+                esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+            }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
             esp_deep_sleep_start();
             break;
@@ -247,7 +251,11 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
 
         case SleepEngine::LIGHT_SLEEP: {
             // Light Sleep: maintains RAM and fast 300µs wake
-            esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            if (sleep_sec > 0) {
+                esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            } else {
+                esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+            }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
             esp_light_sleep_start();
             // On wake, execution continues immediately here!
@@ -262,7 +270,11 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
 
         case SleepEngine::ULP_SENTINEL: {
             // Experimental: deep sleep with ULP sentry
-            esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            if (sleep_sec > 0) {
+                esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+            } else {
+                esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+            }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
             esp_deep_sleep_start();
             break;

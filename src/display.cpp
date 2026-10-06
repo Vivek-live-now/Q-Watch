@@ -197,11 +197,12 @@ void DisplayManager::drawAppSettings() {
         const char* vals[4] = {"", "", "", ""};
         drawSettingsMenuWithValues("SENSORS", ui.sensors_items, vals, UICore::SENSORS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::HEALTH_SETTINGS) {
-        const char* vals[2] = {
-            s.health_bg_enabled ? "ON" : "OFF",
-            HEALTH_INTERVAL_OPTIONS[s.health_interval_idx]
+        const char* vals[3] = {
+            s.auto_record_enabled ? "ON" : "OFF",
+            AUTO_RECORD_INTERVAL_OPTIONS[s.auto_record_interval_idx],
+            AUTO_RECORD_TARGET_OPTIONS[s.auto_record_target_idx]
         };
-        drawSettingsMenuWithValues("MAX30102 SETTINGS", ui.health_settings_items, vals, UICore::HEALTH_SETTINGS_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
+        drawSettingsMenuWithValues("AUTO DATA REC", ui.auto_record_items, vals, UICore::AUTO_RECORD_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SYSTEM) {
         const char* vals[2] = {"", ""};
         drawSettingsMenuWithValues("SYSTEM", ui.system_items, vals, UICore::SYSTEM_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
@@ -1299,7 +1300,7 @@ void DisplayManager::drawHealthPage2History() {
         oled.setFont(u8g2_font_6x10_tr);
         oled.drawStr(10, 36, "(NO DATA FOR TODAY)");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(10, 50, "Enable BG Recording in Settings");
+        oled.drawStr(10, 50, "Enable Auto Rec in Settings");
         return;
     }
 

@@ -30,6 +30,13 @@ void setup() {
   fileManager.begin();
   settingsManager.begin();
 
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+    // Silent background data recording: OLED, audio & LEDs must NOT turn on!
+    ui.performSilentDeepSleepWake();
+    // If performSilentDeepSleepWake returns, user pressed a button during sampling!
+  }
+
   displayManager.begin();
   btnManager.begin();
   ui.begin();

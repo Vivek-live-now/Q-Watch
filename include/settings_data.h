@@ -34,10 +34,15 @@ struct SettingsData {
     bool invert_display = false;
     int ui_option_idx = 0;
 
-    // BME280 / WEATHER SENSORS
+    // UNIFIED AUTO DATA RECORDING & SENSORS
+    bool auto_record_enabled = false;    // Unified master switch (Default: OFF -> zero periodic timer wakeups)
+    int auto_record_interval_idx = 0;   // 0: 5m, 1: 10m, 2: 15m, 3: 30m, 4: 1h
+    int auto_record_target_idx = 0;     // 0: ALL (Weather + Health), 1: WEATHER (BME280), 2: HEALTH (MAX30102)
+
+    // BME280 / WEATHER SENSORS (synced with auto_record)
     int bme_interval_idx = 0;     // 0: 5m, 1: 10m, 2: 15m, 3: 30m, 4: 1h
 
-    // MAX30102 / HEALTH SENSOR
+    // MAX30102 / HEALTH SENSOR (synced with auto_record)
     bool health_bg_enabled = false;
     int health_interval_idx = 0;  // 0: 5m, 1: 10m, 2: 15m, 3: 30m, 4: 1h
 
@@ -82,6 +87,12 @@ static const int SLEEP_TIMEOUT_COUNT = 5;
 
 static const char* const WIFI_AUTO_OFF_OPTIONS[] = {"OFF", "After Sync", "When Idle"};
 static const int WIFI_AUTO_OFF_COUNT = 3;
+
+static const char* const AUTO_RECORD_INTERVAL_OPTIONS[] = {"5 min", "10 min", "15 min", "30 min", "1 hour"};
+static const int AUTO_RECORD_INTERVAL_COUNT = 5;
+
+static const char* const AUTO_RECORD_TARGET_OPTIONS[] = {"ALL", "WEATHER", "HEALTH"};
+static const int AUTO_RECORD_TARGET_COUNT = 3;
 
 static const char* const BME_INTERVAL_OPTIONS[] = {"5 min", "10 min", "15 min", "30 min", "1 hour"};
 static const int BME_INTERVAL_COUNT = 5;

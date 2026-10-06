@@ -112,65 +112,74 @@ void UICore::setIrActiveRemotePath(const String& path) {
     needs_redraw = true;
 }
 
+uint32_t UICore::calculateNextRecordIntervalSec() {
+    SettingsData& s = settingsManager.get();
+    if (!s.auto_record_enabled) {
+        return 0; // Disabled: zero periodic timer wakeups
+    }
+    uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600};
+    int idx = s.auto_record_interval_idx;
+    if (idx < 0 || idx >= 5) idx = 0;
+    return intervals_sec[idx];
+}
+
+void UICore::performSilentBackgroundRecording() {
+    SettingsData& s = settingsManager.get();
+    if (!s.auto_record_enabled) return;
+
+    if (s.auto_record_target_idx == 0 || s.auto_record_target_idx == 1) {
+        sensors.logBmeSample();
+    }
+    if (s.auto_record_target_idx == 0 || s.auto_record_target_idx == 2) {
+        max30102Manager.takeSampleAndSave(6000);
+    }
+}
+
+void UICore::performSilentDeepSleepWake() {
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+    SettingsData& s = settingsManager.get();
+    if (s.auto_record_enabled) {
+        sensors.begin();
+        max30102Manager.begin();
+        performSilentBackgroundRecording();
+    }
+
+    // Check if user pressed any button during background sampling
+    if (digitalRead(BTN_CANCEL) == LOW || digitalRead(BTN_OK) == LOW ||
+        digitalRead(BTN_UP) == LOW || digitalRead(BTN_DN) == LOW) {
+        return; // User interacted! Abort deep sleep and boot normally
+    }
+
+    uint32_t sleep_sec = calculateNextRecordIntervalSec();
+    if (sleep_sec > 0) {
+        esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
+    } else {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    }
+
+    rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
+    rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
+    uint64_t wake_mask = (1ULL << BTN_CANCEL);
+
+    if (s.raise_to_wake) {
+        sensors.enableMotionInterruptForSleep();
+        rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
+        rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
+        wake_mask |= (1ULL << MPU_INT);
+    } else {
+        sensors.clearMpuInterrupt();
+    }
+
+    esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_deep_sleep_start();
+#endif
+}
+
 void UICore::begin() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
-        Preferences sched_prefs;
-        sched_prefs.begin("sched", false);
-        uint32_t now = qclock.getEpoch();
-        if (now == 0) now = millis() / 1000;
-
-        uint32_t last_bme_epoch = sched_prefs.getUInt("last_bme", 0);
-        uint32_t last_health_epoch = sched_prefs.getUInt("last_health", 0);
-
-        SettingsData& s = settingsManager.get();
-        uint32_t intervals_sec[] = {300, 600, 900, 1800, 3600};
-        uint32_t bme_interval_sec = intervals_sec[s.bme_interval_idx];
-        uint32_t health_interval_sec = intervals_sec[s.health_interval_idx];
-
-        bool bme_due = (last_bme_epoch == 0) || (now >= last_bme_epoch + bme_interval_sec);
-        bool health_due = s.health_bg_enabled && ((last_health_epoch == 0) || (now >= last_health_epoch + health_interval_sec));
-
-        if (bme_due) {
-            sensors.begin();
-            sensors.logBmeSample();
-            sched_prefs.putUInt("last_bme", now);
-            last_bme_epoch = now;
-        }
-
-        if (health_due) {
-            max30102Manager.begin();
-            if (max30102Manager.takeSampleAndSave(7000)) {
-                sched_prefs.putUInt("last_health", now);
-                last_health_epoch = now;
-            }
-        }
-
-        uint32_t next_bme_in = (last_bme_epoch + bme_interval_sec > now) ? (last_bme_epoch + bme_interval_sec - now) : bme_interval_sec;
-        if (next_bme_in == 0) next_bme_in = bme_interval_sec;
-
-        uint32_t next_health_in = s.health_bg_enabled ? ((last_health_epoch + health_interval_sec > now) ? (last_health_epoch + health_interval_sec - now) : health_interval_sec) : 0xFFFFFFFF;
-        if (next_health_in == 0) next_health_in = health_interval_sec;
-
-        uint32_t sleep_sec = min(next_bme_in, next_health_in);
-        sched_prefs.end();
-
-        esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
-
-        rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
-        rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
-        uint64_t wake_mask = (1ULL << BTN_CANCEL);
-
-        if (s.raise_to_wake) {
-            sensors.enableMotionInterruptForSleep();
-            rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
-            rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
-            wake_mask |= (1ULL << MPU_INT);
-        }
-
-        esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
-
-        esp_deep_sleep_start();
+        performSilentDeepSleepWake();
+        return;
     }
     powerManager.begin();
 }
@@ -1951,7 +1960,7 @@ void UICore::handleHealthSettingsInput() {
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         settings_selection++;
-        if (settings_selection >= HEALTH_SETTINGS_ITEM_COUNT) settings_selection = HEALTH_SETTINGS_ITEM_COUNT - 1;
+        if (settings_selection >= AUTO_RECORD_ITEM_COUNT) settings_selection = AUTO_RECORD_ITEM_COUNT - 1;
         if (settings_selection >= settings_scroll_offset + 4) settings_scroll_offset = settings_selection - 3;
         soundManager.playNavMove();
         needs_redraw = true;
@@ -1962,10 +1971,17 @@ void UICore::handleHealthSettingsInput() {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         if (settings_selection == 0) {
-            s.health_bg_enabled = !s.health_bg_enabled;
+            s.auto_record_enabled = !s.auto_record_enabled;
+            s.health_bg_enabled = s.auto_record_enabled;
             settingsManager.save();
+            showToast(s.auto_record_enabled ? "[AUTO REC: ON]" : "[AUTO REC: OFF]", 1200);
         } else if (settings_selection == 1) {
-            s.health_interval_idx = (s.health_interval_idx + 1) % HEALTH_INTERVAL_COUNT;
+            s.auto_record_interval_idx = (s.auto_record_interval_idx + 1) % AUTO_RECORD_INTERVAL_COUNT;
+            s.bme_interval_idx = s.auto_record_interval_idx;
+            s.health_interval_idx = s.auto_record_interval_idx;
+            settingsManager.save();
+        } else if (settings_selection == 2) {
+            s.auto_record_target_idx = (s.auto_record_target_idx + 1) % AUTO_RECORD_TARGET_COUNT;
             settingsManager.save();
         }
         needs_redraw = true;
@@ -2770,47 +2786,35 @@ void UICore::enterDeepSleep() {
     esp_sleep_enable_gpio_wakeup();
 #endif
 
-    Preferences sched_prefs;
-    sched_prefs.begin("sched", false);
-    uint32_t now = qclock.getEpoch();
-    if (now == 0) now = millis() / 1000;
+    uint32_t sleep_sec = calculateNextRecordIntervalSec();
 
-    uint32_t last_bme_epoch = sched_prefs.getUInt("last_bme", 0);
-    uint32_t last_health_epoch = sched_prefs.getUInt("last_health", 0);
-    uint32_t sleep_intervals_sec[] = {300, 600, 900, 1800, 3600};
-    uint32_t bme_sec = sleep_intervals_sec[sleep_s.bme_interval_idx];
-    uint32_t health_sec = sleep_intervals_sec[sleep_s.health_interval_idx];
+    // Sleep loop for Light Sleep / Display Off
+    while (current_state == UIState::SLEEPING) {
+        powerManager.executeSleep(sleep_sec, sleep_s.raise_to_wake, wake_mask);
 
-    uint32_t next_bme_in = (last_bme_epoch + bme_sec > now) ? (last_bme_epoch + bme_sec - now) : bme_sec;
-    if (next_bme_in == 0) next_bme_in = bme_sec;
-
-    uint32_t next_health_in = sleep_s.health_bg_enabled ? ((last_health_epoch + health_sec > now) ? (last_health_epoch + health_sec - now) : health_sec) : 0xFFFFFFFF;
-    if (next_health_in == 0) next_health_in = health_sec;
-
-    uint32_t sleep_sec = min(next_bme_in, next_health_in);
-    sched_prefs.end();
-
-    powerManager.executeSleep(sleep_sec, sleep_s.raise_to_wake, wake_mask);
-
-    // Resumed from Light Sleep / Display Off
-    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    if (cause == ESP_SLEEP_WAKEUP_TIMER) {
-        sched_prefs.begin("sched", false);
-        uint32_t wake_now = qclock.getEpoch();
-        if (wake_now == 0) wake_now = millis() / 1000;
-        uint32_t last_bme = sched_prefs.getUInt("last_bme", 0);
-        uint32_t last_hlth = sched_prefs.getUInt("last_health", 0);
-        if (last_bme == 0 || wake_now >= last_bme + bme_sec) {
-            sensors.logBmeSample();
-            sched_prefs.putUInt("last_bme", wake_now);
-        }
-        if (sleep_s.health_bg_enabled && (last_hlth == 0 || wake_now >= last_hlth + health_sec)) {
-            if (max30102Manager.takeSampleAndSave(7000)) {
-                sched_prefs.putUInt("last_health", wake_now);
+        esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+        if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+            // Background timer fired: record silently without turning on OLED!
+            if (sleep_s.auto_record_enabled) {
+                performSilentBackgroundRecording();
+                sleep_sec = calculateNextRecordIntervalSec();
+            } else {
+                sleep_sec = 0;
             }
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+            // Check if user pressed any button during background sampling
+            if (digitalRead(BTN_CANCEL) == LOW || digitalRead(BTN_OK) == LOW ||
+                digitalRead(BTN_UP) == LOW || digitalRead(BTN_DN) == LOW) {
+                break;
+            }
+#endif
+            // Timer wake handled silently: continue sleeping!
+            continue;
         }
-        sched_prefs.end();
-    } else {
+
+        // Real user wakeup from ext1 (button, MPU motion) or GPIO
+        break;
+    }
         display_off = false;
         displayManager.setPowerSave(false);
         current_state = (prev_state != UIState::SLEEPING) ? prev_state : UIState::APP_HOME;

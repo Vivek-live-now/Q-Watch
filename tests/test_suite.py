@@ -2053,6 +2053,86 @@ def test_qwatch_user_5_fixes():
     assert cal_idx != -1 and cal_idx < priv_idx, "calibrateGyro() must be public in SensorManager"
     print("  [PASS] 5. App launch long beep audio sequence and UI dispatch verified.")
 
+def test_unified_auto_record_and_silent_sleep():
+    print("\n--- 37. Unified Auto Data Recording & Silent Background Sleep Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    settings_h = os.path.join(base_dir, "include", "settings_data.h")
+    settings_cpp = os.path.join(base_dir, "src", "settings_data.cpp")
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    power_cpp = os.path.join(base_dir, "src", "power_manager.cpp")
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+
+    # 1. Unified Settings & Defaults
+    with open(settings_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "bool auto_record_enabled = false;" in sh, "auto_record_enabled must default to false"
+    assert "int auto_record_interval_idx = 0;" in sh
+    assert "int auto_record_target_idx = 0;" in sh
+    assert "AUTO_RECORD_INTERVAL_OPTIONS" in sh
+    assert "AUTO_RECORD_TARGET_OPTIONS" in sh
+
+    with open(settings_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert 'key == "auto_record_enabled"' in sc
+    assert 'key == "auto_record_interval_idx"' in sc
+    assert 'key == "auto_record_target_idx"' in sc
+    assert 'out += "auto_record_enabled="' in sc
+    print("  [PASS] 1. Unified Auto Data Recording settings, defaults (OFF), and persistence verified.")
+
+    # 2. Timer Wakeup Disabled when Auto Record is OFF
+    with open(power_cpp, "r", encoding="utf-8") as f:
+        pc = f.read()
+    assert "if (sleep_sec > 0)" in pc
+    assert "esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);" in pc
+    print("  [PASS] 2. Hardware timer wakeup disabled when auto data recording is OFF.")
+
+    # 3. Silent Deep Sleep Wakeup Without Powering on OLED
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    # Ensure silent wake check occurs BEFORE displayManager.begin()
+    timer_check_idx = mc.find("wakeup_reason == ESP_SLEEP_WAKEUP_TIMER")
+    silent_deep_idx = mc.find("ui.performSilentDeepSleepWake();")
+    disp_begin_idx = mc.find("displayManager.begin();")
+    assert timer_check_idx != -1 and silent_deep_idx != -1 and disp_begin_idx != -1
+    assert timer_check_idx < disp_begin_idx, "Timer wake check must happen before displayManager.begin()"
+    assert silent_deep_idx < disp_begin_idx, "Silent deep sleep wake must execute before display initialization"
+
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "void UICore::performSilentDeepSleepWake()" in uc
+    assert "void UICore::performSilentBackgroundRecording()" in uc
+    assert "uint32_t UICore::calculateNextRecordIntervalSec()" in uc
+    print("  [PASS] 3. Deep sleep timer wakeup routes to silent background logging with OLED unpowered.")
+
+    # 4. Silent Light Sleep Loop Without Exiting to Active UI
+    enter_sleep_idx = uc.find("void UICore::enterDeepSleep()")
+    assert enter_sleep_idx != -1
+    enter_sleep_body = uc[enter_sleep_idx:enter_sleep_idx + 2200]
+    assert "while (current_state == UIState::SLEEPING)" in enter_sleep_body
+    assert "performSilentBackgroundRecording();" in enter_sleep_body
+    assert "calculateNextRecordIntervalSec();" in enter_sleep_body
+    print("  [PASS] 4. Light sleep loop handles background timer wakeups silently without waking display.")
+
+    # 5. UI Menu Integration
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert '"AUTO RECORD"' in uh
+    assert "AUTO_RECORD_ITEM_COUNT = 3;" in uh
+    assert "auto_record_items" in uh
+
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert '"AUTO DATA REC"' in dc
+    assert "ui.auto_record_items" in dc
+
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sensc = f.read()
+    assert "!s.auto_record_enabled" in sensc, "sensors.cpp must respect auto_record_enabled"
+    print("  [PASS] 5. UI Menu AUTO DATA REC and sensor logging guards verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2081,5 +2161,7 @@ if __name__ == "__main__":
     test_qwatch_9_bugfixes_and_features()
     test_vibration_subsystem_and_app()
     test_qwatch_user_5_fixes()
+    test_unified_auto_record_and_silent_sleep()
     print("\nAll self-test verifications PASSED!")
+
 

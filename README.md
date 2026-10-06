@@ -274,6 +274,16 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 * **Interactive Haptic Lab App (`APP_VIBRATION`):** Native smartwatch app accessible directly from `SYS MENU -> VIBRATION` featuring a 3-item scrolling menu, strength adjustment (25%, 50%, 75%, 100%), button haptic click toggle, and a live oscillating waveform HUD visualizer with `[VIB]` / `[IDLE]` state badge.
 * **Settings Persistence & Safety:** Persistent saving in `/config/settings` (`vibe_master_on`, `vibe_intensity`, `vibe_button_clicks`, `vibe_alarms`) with power-down muting during ESP32-S3 sleep.
 
+### Milestone 21: Unified Auto Data Recording & Silent Background Sleep Architecture
+* **Unified Sensor Recording Settings (`SETTINGS -> SENSORS -> AUTO DATA REC`):** Unified configuration replacing fragmented logging settings with a consolidated, user-controllable interface:
+    * `AUTO RECORD`: Master switch (`[ON]` / `[OFF]`, default: `OFF`). When `OFF`, all periodic background timer wakeups are completely disabled in hardware, preventing unrequested periodic wakeups.
+    * `REC INTERVAL`: Configurable interval (`5 min`, `10 min`, `15 min`, `30 min`, `1 hour`).
+    * `TARGET`: Selectable logging targets (`ALL` for BME280 + MAX30102, `WEATHER` for BME280 environmental data, or `HEALTH` for MAX30102 PPG biometrics).
+* **Silent Background Execution (Zero OLED / Audio Flash):**
+    * **Deep Sleep Early Intercept:** `main.cpp:setup()` intercepts `ESP_SLEEP_WAKEUP_TIMER` before display SPI initialization (`displayManager.begin()`) or audio boot sequences. The OLED panel remains unpowered and completely dark while sensors log silently before returning directly to deep sleep.
+    * **Light Sleep Execution Loop:** In `UICore::enterDeepSleep()`, periodic timer wakeups are processed inside a persistent sleep loop with the display in power-save mode (`display_off = true`), recalculating next intervals and continuing sleep without leaking into active UI render loops or false raise-to-wake triggers.
+    * **Responsive User Interrupt:** If any physical button (`CANCEL`, `OK`, `UP`, `DOWN`) is pressed during background sampling, the silent sleep aborts and transitions immediately into active interactive boot.
+
 ## Hardware Architecture & Pinout
 
 To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.

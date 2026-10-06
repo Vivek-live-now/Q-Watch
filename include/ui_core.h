@@ -365,12 +365,16 @@ public:
 
     static const int SENSORS_ITEM_COUNT = 4;
     const char* sensors_items[SENSORS_ITEM_COUNT] = {
-        "COMPASS CAL", "IMU CAL", "HEALTH", "SENSOR STATUS"
+        "COMPASS CAL", "IMU CAL", "AUTO RECORD", "SENSOR STATUS"
     };
 
-    static const int HEALTH_SETTINGS_ITEM_COUNT = 2;
+    static const int AUTO_RECORD_ITEM_COUNT = 3;
+    const char* auto_record_items[AUTO_RECORD_ITEM_COUNT] = {
+        "AUTO RECORD", "REC INTERVAL", "TARGET"
+    };
+    static const int HEALTH_SETTINGS_ITEM_COUNT = 3;
     const char* health_settings_items[HEALTH_SETTINGS_ITEM_COUNT] = {
-        "BG RECORDING", "REC INTERVAL"
+        "AUTO RECORD", "REC INTERVAL", "TARGET"
     };
 
     static const int SYSTEM_ITEM_COUNT = 2;
@@ -657,6 +661,9 @@ public:
     void processNavUp();
     void processNavDown();
     void enterDeepSleep();
+    void performSilentBackgroundRecording();
+    void performSilentDeepSleepWake();
+    uint32_t calculateNextRecordIntervalSec();
     bool isDisplayOff() const { return display_off; }
     void registerActivity();
 

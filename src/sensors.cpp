@@ -425,8 +425,10 @@ void SensorManager::updateBmeHistory() {
     if (!bme_ok) return;
 
     SettingsData& s = settingsManager.get();
+    if (!s.auto_record_enabled || s.auto_record_target_idx == 2) return;
+
     uint32_t intervals_ms[] = {300000, 600000, 900000, 1800000, 3600000}; // 5m, 10m, 15m, 30m, 1h
-    uint32_t interval = intervals_ms[s.bme_interval_idx];
+    uint32_t interval = intervals_ms[s.auto_record_interval_idx];
 
     if (last_bme_log == 0 || (millis() - last_bme_log >= interval)) {
         logBmeSample();

@@ -60,8 +60,14 @@ void SettingsManager::load() {
         else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
+        else if (key == "auto_record_enabled") settings.auto_record_enabled = (val == "1");
+        else if (key == "auto_record_interval_idx") settings.auto_record_interval_idx = val.toInt();
+        else if (key == "auto_record_target_idx") settings.auto_record_target_idx = val.toInt();
         else if (key == "bme_interval_idx") settings.bme_interval_idx = val.toInt();
-        else if (key == "health_bg_enabled") settings.health_bg_enabled = (val == "1");
+        else if (key == "health_bg_enabled") {
+            settings.health_bg_enabled = (val == "1");
+            settings.auto_record_enabled = settings.health_bg_enabled;
+        }
         else if (key == "health_interval_idx") settings.health_interval_idx = val.toInt();
         else if (key == "sound_master_on") settings.sound_master_on = (val == "1");
         else if (key == "volume_pct") settings.volume_pct = val.toInt();
@@ -84,6 +90,15 @@ void SettingsManager::load() {
             }
         }
     }
+
+    // Sync unified auto record settings with legacy fields
+    if (settings.auto_record_enabled) {
+        settings.health_bg_enabled = (settings.auto_record_target_idx == 0 || settings.auto_record_target_idx == 2);
+    } else {
+        settings.health_bg_enabled = false;
+    }
+    settings.bme_interval_idx = settings.auto_record_interval_idx;
+    settings.health_interval_idx = settings.auto_record_interval_idx;
 
 #ifdef ARDUINO
     // NVS Preferences fallback / mirror for core hardware settings
@@ -130,6 +145,9 @@ void SettingsManager::save() {
     out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";
+    out += "auto_record_enabled=" + String(settings.auto_record_enabled ? "1" : "0") + "\n";
+    out += "auto_record_interval_idx=" + String(settings.auto_record_interval_idx) + "\n";
+    out += "auto_record_target_idx=" + String(settings.auto_record_target_idx) + "\n";
     out += "bme_interval_idx=" + String(settings.bme_interval_idx) + "\n";
     out += "health_bg_enabled=" + String(settings.health_bg_enabled ? "1" : "0") + "\n";
     out += "health_interval_idx=" + String(settings.health_interval_idx) + "\n";
