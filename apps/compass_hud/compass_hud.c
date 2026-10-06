@@ -40,7 +40,7 @@ static const char* get_cardinal(float deg) {
 static const QAppHeader s_compass_hud_header = {
     .magic = QAPP_MAGIC,
     .api_version = QAPP_API_VERSION,
-    .required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_MAG),
+    .required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MAG),
     .name = "Compass HUD",
     .version = "1.0.0",
     .author = "007 Agent",
@@ -94,18 +94,16 @@ void compass_hud_update(float dt) {
                         telem.mag_y * telem.mag_y +
                         telem.mag_z * telem.mag_z);
 
-    // Firmware provides a fresh, tilt-compensated and spike-rejected bearing.
-    // Keep only a light circular display filter here so the HUD does not undo
-    // that stabilization with a second sluggish filter.
+    // Circular angle smoothing
     float diff = s_raw_heading - s_smooth_heading;
     while (diff < -180.0f) diff += 360.0f;
     while (diff > 180.0f)  diff -= 360.0f;
 
-    float alpha = 0.45f;
+    float alpha = 0.30f;
     if (dt > 0.0f && dt < 1.0f) {
-        alpha = 1.0f - expf(-30.0f * dt);
-        if (alpha < 0.25f) alpha = 0.25f;
-        if (alpha > 0.90f) alpha = 0.90f;
+        alpha = 1.0f - expf(-10.0f * dt);
+        if (alpha < 0.10f) alpha = 0.10f;
+        if (alpha > 0.80f) alpha = 0.80f;
     }
 
     s_smooth_heading += diff * alpha;

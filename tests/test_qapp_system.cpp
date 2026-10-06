@@ -303,7 +303,7 @@ static void create_relocatable_compass_qapp(const char* path) {
     memset(&fhdr, 0, sizeof(fhdr));
     fhdr.magic = QAPP_MAGIC;
     fhdr.api_version = QAPP_API_VERSION;
-    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_MAG);
+    fhdr.required_caps = (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MAG);
     strncpy(fhdr.name, "Compass HUD", sizeof(fhdr.name) - 1);
     strncpy(fhdr.version, "1.0.0", sizeof(fhdr.version) - 1);
     strncpy(fhdr.author, "007 Agent", sizeof(fhdr.author) - 1);
@@ -347,7 +347,7 @@ static void test_compass_hud_dynamic_execution(void) {
     assert(fhdr.magic == QAPP_MAGIC);
     assert(fhdr.api_version == QAPP_API_VERSION);
     assert(strcmp(fhdr.name, "Compass HUD") == 0);
-    assert(fhdr.required_caps == (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MPU | QAPP_CAP_MAG));
+    assert(fhdr.required_caps == (QAPP_CAP_DISPLAY | QAPP_CAP_BUTTONS | QAPP_CAP_MAG));
     assert(fhdr.required_psram == 1024);
     assert(fhdr.code_size > 0);
     assert(fhdr.reloc_count == 1);

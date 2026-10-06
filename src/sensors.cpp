@@ -22,12 +22,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-// Heading samples arrive at 50 Hz. Keep the displayed bearing calmer than
-// individual magnetometer readings without making normal turns feel delayed.
-#define COMPASS_SMOOTHING_ALPHA 0.18f
-#define COMPASS_MAX_SLEW_DPS    180.0f
-
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), mag_sample_fresh(false), last_heading_update(0), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -474,33 +469,7 @@ void SensorManager::readMag() {
         raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
         raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
         raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
-        mag_sample_fresh = true;
     }
-}
-
-float SensorManager::computeTiltCompensatedHeading(float roll_deg, float pitch_deg) const {
-    // Project the calibrated magnetic field onto the horizontal plane defined
-    // by gravity. Unlike a flat-only atan2(my, mx), this remains correct when
-    // the watch is pitched or rolled.
-    const float roll = roll_deg * 0.0174532925f;
-    const float pitch = pitch_deg * 0.0174532925f;
-    const float sin_roll = sinf(roll);
-    const float cos_roll = cosf(roll);
-    const float sin_pitch = sinf(pitch);
-    const float cos_pitch = cosf(pitch);
-
-    const float horizontal_x = cal_data.mx * cos_pitch + cal_data.mz * sin_pitch;
-    const float horizontal_y = cal_data.mx * sin_roll * sin_pitch +
-                               cal_data.my * cos_roll -
-                               cal_data.mz * sin_roll * cos_pitch;
-
-    // The body frame is X-left / Y-forward.  Measuring the north vector from
-    // +Y toward +X therefore yields the watch's clockwise compass bearing.
-    float heading = atan2f(horizontal_x, horizontal_y) * 57.29578f;
-    heading += mag_cal.declination;
-    while (heading < 0.0f) heading += 360.0f;
-    while (heading >= 360.0f) heading -= 360.0f;
-    return heading;
 }
 
 void SensorManager::applyCalibrationAndMapping() {
@@ -717,42 +686,29 @@ void SensorManager::computeEulerAngles() {
     orientation.roll = raw_roll - offsets.roll_offset;
     orientation.pitch = raw_pitch - offsets.pitch_offset;
 
-    // Heading is calculated independently from the calibrated magnetic vector
-    // and gravity-derived attitude. Using the Madgwick yaw directly made the
-    // bearing react to every noisy filter correction and visibly hunt.
-    if (!mag_sample_fresh) return;
-    mag_sample_fresh = false;
+    float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
 
-    const float field = sqrtf(cal_data.mx * cal_data.mx + cal_data.my * cal_data.my + cal_data.mz * cal_data.mz);
-    const float gravity = sqrtf(cal_data.ax * cal_data.ax + cal_data.ay * cal_data.ay + cal_data.az * cal_data.az);
-    if (field < 1.0f || gravity < 0.75f || gravity > 1.25f) return;
+    float target_yaw = yaw_math + 90.0f;
 
-    const float target_yaw = computeTiltCompensatedHeading(raw_roll, raw_pitch);
-    const uint32_t now = millis();
+    // Apply Declination
+    target_yaw += mag_cal.declination;
 
+    // Normalize target to [0, 360)
+    while (target_yaw < 0.0f) target_yaw += 360.0f;
+    while (target_yaw >= 360.0f) target_yaw -= 360.0f;
+
+    // Circular exponential smoothing (alpha = 0.25) across 360-degree wrap-around
     if (!yaw_initialized) {
         orientation.yaw = target_yaw;
         yaw_initialized = true;
-        last_heading_update = now;
-        return;
+    } else {
+        float diff = target_yaw - orientation.yaw;
+        while (diff < -180.0f) diff += 360.0f;
+        while (diff > 180.0f) diff -= 360.0f;
+        orientation.yaw += 0.25f * diff;
+        while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
+        while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
     }
-
-    float diff = target_yaw - orientation.yaw;
-    while (diff < -180.0f) diff += 360.0f;
-    while (diff > 180.0f) diff -= 360.0f;
-
-    // Reject one-sample magnetic spikes and limit the visible needle speed.
-    // A normal wrist turn remains responsive at 180 degrees per second.
-    float elapsed = (now - last_heading_update) / 1000.0f;
-    if (elapsed <= 0.0f || elapsed > 0.25f) elapsed = 0.02f;
-    const float max_step = COMPASS_MAX_SLEW_DPS * elapsed;
-    if (diff > max_step) diff = max_step;
-    if (diff < -max_step) diff = -max_step;
-
-    orientation.yaw += COMPASS_SMOOTHING_ALPHA * diff;
-    while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
-    while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
-    last_heading_update = now;
 }
 
 void SensorManager::startMagCalibration() {
