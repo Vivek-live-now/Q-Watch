@@ -141,12 +141,17 @@ void breakout_update(float dt) {
     if (s_btn_override_timer > 0.0f) {
         s_btn_override_timer -= dt;
     } else {
-        // Unified Sensor Calibration tilt steering
+        // Rate-of-change (dy/dx via gyro rate) + proportional tilt fusion steering
         QTelemetry telem;
         g_api->get_telemetry(&telem);
         float d_roll = telem.roll - s_neutral_roll;
-        if (fabsf(d_roll) > 12.0f) {
-            float steer = (d_roll > 0.0f ? (d_roll - 12.0f) : (d_roll + 12.0f)) * 1.6f;
+        const float DEADBAND = 2.5f;
+        float prop_roll = 0.0f;
+        if (fabsf(d_roll) > DEADBAND) {
+            prop_roll = (d_roll > 0.0f ? (d_roll - DEADBAND) : (d_roll + DEADBAND));
+        }
+        float steer = (prop_roll * 1.5f) + (telem.gyro_x * 0.35f);
+        if (fabsf(steer) > 1.0f) {
             s_paddle_x += steer * dt;
         }
     }

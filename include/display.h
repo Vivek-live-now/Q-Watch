@@ -68,6 +68,7 @@ private:
     void drawAppMotionSettings();
     void drawAppMotionOrientation3D();
     void drawAppAirMouse();
+    void drawAppMouseSettings();
     void drawAppIR();
     void drawAppBme();
     void drawBmePage1Pressure();

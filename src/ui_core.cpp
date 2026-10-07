@@ -28,6 +28,7 @@ UICore::UICore() :
     current_state(UIState::APP_HOME),
     imu_subapp(Imu6500SubApp::SUBAPP_MENU),
     imu_subapp_selection(0),
+    mouse_settings_selection(0),
     last_activity_time(millis()),
     display_off(false),
     display_off_time(0),
@@ -352,7 +353,7 @@ void UICore::loop() {
 
     if (current_state == UIState::SLEEPING) return;
 
-    if (current_state != UIState::APP_RUNNING && current_state != UIState::APP_KEYBOARD) {
+    if (current_state != UIState::APP_RUNNING && current_state != UIState::APP_KEYBOARD && !(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE)) {
         ButtonEvent cancel_evt = btnManager.peekEvent(BTN_ID_CANCEL);
         ButtonEvent ok_evt = btnManager.peekEvent(BTN_ID_OK);
 
@@ -3143,8 +3144,12 @@ void UICore::handleMotionInput() {
             if (imu_subapp_selection == 0) {
                 imu_subapp = Imu6500SubApp::SUBAPP_ALTIMETER;
                 motion_state = MotionState::PAGE_LEVEL;
-            } else {
+            } else if (imu_subapp_selection == 1) {
                 imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
+                if (!airMouse.isEnabled()) airMouse.start();
+            } else {
+                imu_subapp = Imu6500SubApp::SUBAPP_MOUSE_SETTINGS;
+                mouse_settings_selection = 0;
             }
             needs_redraw = true;
         }
@@ -3153,6 +3158,11 @@ void UICore::handleMotionInput() {
 
     if (imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE) {
         handleAirMouseInput();
+        return;
+    }
+
+    if (imu_subapp == Imu6500SubApp::SUBAPP_MOUSE_SETTINGS) {
+        handleMouseSettingsInput();
         return;
     }
 
@@ -3277,35 +3287,43 @@ void UICore::handleAirMouseInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
 
-    if (up_evt == BTN_EVT_LONG_PRESS) {
-        soundManager.playNavSelect();
-        airMouse.cycleSensitivityUp();
-        showToast("[SENS INCREASED]", 1000);
+    // Long press CANCEL exits Air Mouse and tears down BLE
+    if (cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        airMouse.stop();
+        imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+        showToast("[AIR MOUSE STOPPED]", 1000);
         needs_redraw = true;
         return;
     }
 
-    if (dn_evt == BTN_EVT_LONG_PRESS) {
+    // Single click CANCEL toggles between Pointer Mode and Scroll Mode
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
-        airMouse.cycleSensitivityDown();
-        showToast("[SENS DECREASED]", 1000);
+        airMouse.toggleMode();
+        showToast(airMouse.getMode() == AirMouseMode::SCROLL ? "[SCROLL MODE]" : "[POINTER MODE]", 1000);
         needs_redraw = true;
         return;
     }
 
+    // OK click: reconnect BLE if disconnected, or toggle movement pause/active
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (!airMouse.isEnabled() || airMouse.getBleStatus() == AirMouseBleStatus::DISCONNECTED) {
             if (airMouse.isEnabled()) airMouse.stop();
             airMouse.start();
+            showToast("[BLE ADVERTISING]", 1000);
         } else {
             airMouse.toggleMovement();
+            showToast(airMouse.isMovementActive() ? "[POINTER RESUMED]" : "[POINTER PAUSED]", 1000);
         }
         needs_redraw = true;
         return;
     }
 
+    // Mode-specific button controls:
     if (airMouse.getMode() == AirMouseMode::POINTER) {
         if (up_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
@@ -3317,6 +3335,7 @@ void UICore::handleAirMouseInput() {
             needs_redraw = true;
         }
     } else {
+        // SCROLL Mode: UP scrolls up, DOWN scrolls down
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
             soundManager.playNavMove();
             airMouse.scrollUp();
@@ -3326,6 +3345,44 @@ void UICore::handleAirMouseInput() {
             airMouse.scrollDown();
             needs_redraw = true;
         }
+    }
+}
+
+void UICore::handleMouseSettingsInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        mouse_settings_selection--;
+        if (mouse_settings_selection < 0) mouse_settings_selection = 0;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        mouse_settings_selection++;
+        if (mouse_settings_selection > 2) mouse_settings_selection = 2;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (mouse_settings_selection == 0) {
+            airMouse.cycleSensitivity();
+        } else if (mouse_settings_selection == 1) {
+            airMouse.recenter();
+            showToast("[GYRO RECENTERED]", 1000);
+        } else if (mouse_settings_selection == 2) {
+            imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
+            if (!airMouse.isEnabled()) airMouse.start();
+        }
+        needs_redraw = true;
     }
 }
 

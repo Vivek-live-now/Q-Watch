@@ -366,15 +366,24 @@ void space_impact_update(float dt) {
     if (s_btn_override_timer <= 0.0f) {
         float diff_pitch = telem.pitch - s_neutral_pitch;
         float diff_roll  = telem.roll - s_neutral_roll;
-        const float DEADBAND = 6.0f;
+        const float DEADBAND = 2.5f;
 
+        float prop_pitch = 0.0f;
         if (fabsf(diff_pitch) > DEADBAND) {
-            float v = (diff_pitch > 0.0f) ? (diff_pitch - DEADBAND) : (diff_pitch + DEADBAND);
-            s_player_y += v * 0.9f * dt;
+            prop_pitch = (diff_pitch > 0.0f) ? (diff_pitch - DEADBAND) : (diff_pitch + DEADBAND);
         }
+        float vy = (prop_pitch * 0.85f) + (telem.gyro_y * 0.25f);
+        if (fabsf(vy) > 0.8f) {
+            s_player_y += vy * dt;
+        }
+
+        float prop_roll = 0.0f;
         if (fabsf(diff_roll) > DEADBAND) {
-            float h = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
-            s_player_x += h * 0.6f * dt;
+            prop_roll = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
+        }
+        float vx = (prop_roll * 0.65f) + (telem.gyro_x * 0.20f);
+        if (fabsf(vx) > 0.8f) {
+            s_player_x += vx * dt;
         }
     }
 

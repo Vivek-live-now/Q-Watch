@@ -2133,6 +2133,140 @@ def test_unified_auto_record_and_silent_sleep():
     assert "!s.auto_record_enabled" in sensc, "sensors.cpp must respect auto_record_enabled"
     print("  [PASS] 5. UI Menu AUTO DATA REC and sensor logging guards verified.")
 
+def test_compass_games_airmouse_overhaul():
+    print("\n--- 38. Compass Dual-Axis Tilt Compensation, IMU Games dy/dx Fusion & Air Mouse Overhaul ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. Compass Stabilization, Tilt Compensation & Dual-Axis Switching
+    sensors_h = os.path.join(base_dir, "include", "sensors.h")
+    with open(sensors_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "bool isTiltedZMode() const" in sh, "sensors.h must expose isTiltedZMode()"
+
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "tilted_z_mode" in sc, "sensors.cpp must track tilted_z_mode"
+    assert "fabsf(orientation.pitch) > 45.0f" in sc, "Hysteresis threshold > 45 deg must switch to Z-axis"
+    assert "fabsf(orientation.pitch) < 35.0f" in sc, "Hysteresis threshold < 35 deg must switch back to X-axis"
+    assert "rh_x = gy * fh_z - gz * fh_y" in sc, "Right vector cross product must be implemented"
+    assert "atan2f(-Y_h, X_h)" in sc, "Heading must be computed with clockwise-increasing math atan2f(-Y_h, X_h)"
+    assert "yaw_math + 90.0f" in sc, "6-DOF IMU fallback must preserve clockwise yaw rotation"
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "sensors.isTiltedZMode()" in dc, "display.cpp must check isTiltedZMode"
+    assert '"Z-AXIS"' in dc, "display.cpp must render Z-AXIS badge on compass HUD when tilted"
+
+    # Mathematical simulation of flat vs tilted projection
+    def compute_projected_heading(ax, ay, az, mx, my, mz, pitch_deg):
+        is_z = abs(pitch_deg) > 40.0
+        a_norm = math.sqrt(ax*ax + ay*ay + az*az)
+        gx, gy, gz = ax/a_norm, ay/a_norm, az/a_norm
+        fx = 0.0 if is_z else 1.0
+        fy = 0.0
+        fz = 1.0 if is_z else 0.0
+        f_dot_g = fx*gx + fy*gy + fz*gz
+        fh_x = fx - f_dot_g * gx
+        fh_y = fy - f_dot_g * gy
+        fh_z = fz - f_dot_g * gz
+        fh_norm = math.sqrt(fh_x*fh_x + fh_y*fh_y + fh_z*fh_z)
+        if fh_norm > 1e-4:
+            fh_x /= fh_norm; fh_y /= fh_norm; fh_z /= fh_norm
+        rh_x = gy*fh_z - gz*fh_y
+        rh_y = gz*fh_x - gx*fh_z
+        rh_z = gx*fh_y - gy*fh_x
+        X_h = mx*fh_x + my*fh_y + mz*fh_z
+        Y_h = mx*rh_x + my*rh_y + mz*rh_z
+        h = math.degrees(math.atan2(-Y_h, X_h))
+        while h < 0: h += 360.0
+        while h >= 360.0: h -= 360.0
+        return h
+
+    # Test flat: top of watch points North (mx=100, my=0, mz=0) -> 0 deg heading
+    h_flat = compute_projected_heading(0, 0, 1, 100, 0, 0, 0.0)
+    assert abs(h_flat - 0.0) < 1e-3, f"Flat heading North should be 0 deg, got {h_flat}"
+    # Turn clockwise 90 deg -> North is now to the left (my=-100, mx=0) -> 90 deg heading
+    h_cw = compute_projected_heading(0, 0, 1, 0, -100, 0, 0.0)
+    assert abs(h_cw - 90.0) < 1e-3, f"Clockwise rotation should yield 90 deg, got {h_cw}"
+
+    # Test tilted upright (facing horizon): normal to screen points North (mz=100, mx=0, my=0) -> 0 deg heading
+    h_tilt = compute_projected_heading(1, 0, 0, 0, 0, 100, 90.0)
+    assert abs(h_tilt - 0.0) < 1e-3, f"Tilted heading Z-axis North should be 0 deg, got {h_tilt}"
+    print("  [PASS] 1. Compass tilt compensation, dynamic Z-axis mode, and OLED Z-AXIS HUD badge verified.")
+
+    # 2. .qapps IMU Games Dynamics (dy/dx Gyro-Accel Fusion)
+    tilt_game_c = os.path.join(base_dir, "apps", "tilt_game", "tilt_game.c")
+    with open(tilt_game_c, "r", encoding="utf-8") as f:
+        tgc = f.read()
+    assert "telem.gyro_x * 0.04f" in tgc and "telem.gyro_y * 0.04f" in tgc, "tilt_game must fuse gyro rate dy/dx"
+
+    f1_race_c = os.path.join(base_dir, "apps", "f1_race", "f1_race.c")
+    with open(f1_race_c, "r", encoding="utf-8") as f:
+        f1c = f.read()
+    assert "DEADBAND = 2.5f" in f1c and "telem.gyro_x * 0.35f" in f1c, "f1_race must fuse gyro rate with 2.5 deg deadband"
+
+    breakout_c = os.path.join(base_dir, "apps", "breakout", "breakout.c")
+    with open(breakout_c, "r", encoding="utf-8") as f:
+        boc = f.read()
+    assert "DEADBAND = 2.5f" in boc and "telem.gyro_x * 0.35f" in boc, "breakout must fuse gyro rate with 2.5 deg deadband"
+
+    space_c = os.path.join(base_dir, "apps", "space_impact", "space_impact.c")
+    with open(space_c, "r", encoding="utf-8") as f:
+        spc = f.read()
+    assert "telem.gyro_y * 0.25f" in spc and "telem.gyro_x * 0.20f" in spc, "space_impact must fuse gyro rate dy/dx"
+
+    bounce_c = os.path.join(base_dir, "apps", "bounce", "bounce.c")
+    with open(bounce_c, "r", encoding="utf-8") as f:
+        bnc = f.read()
+    assert "telem.gyro_x * 0.85f" in bnc and "DEADBAND = 2.5f" in bnc, "bounce must fuse gyro rate with 2.5 deg deadband"
+
+    snake_c = os.path.join(base_dir, "apps", "snake", "snake.c")
+    with open(snake_c, "r", encoding="utf-8") as f:
+        snc = f.read()
+    assert "roll_signal" in snc and "telem.gyro_x * 0.25f" in snc, "snake must fuse gyro flick rate dy/dx"
+
+    pacman_c = os.path.join(base_dir, "apps", "pacman", "pacman.c")
+    with open(pacman_c, "r", encoding="utf-8") as f:
+        pcc = f.read()
+    assert "roll_signal" in pcc and "telem.gyro_x * 0.25f" in pcc, "pacman must fuse gyro flick rate dy/dx"
+    print("  [PASS] 2. .qapps IMU games rate-of-change (dy/dx) and gyro-accel fusion verified.")
+
+    # 3. Air Mouse Pointer Control, Scrolling & Settings UX Architecture
+    mouse_h = os.path.join(base_dir, "include", "air_mouse.h")
+    with open(mouse_h, "r", encoding="utf-8") as f:
+        mh = f.read()
+    assert "cycleSensitivity()" in mh, "air_mouse.h must declare cycleSensitivity()"
+    assert "BLECharacteristic* mouse_char" in mh, "air_mouse.h must accept characteristic in callbacks"
+
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "desc->setNotifications(true)" in mc, "air_mouse.cpp must enable BLE2902 notifications on connection"
+    assert "DEAD_ZONE = 1.8f" in mc, "air_mouse.cpp dead zone must be tuned to 1.8 dps"
+    assert "dt * 28.0f" in mc, "air_mouse.cpp scaling gain must be tuned to 28.0f"
+
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "SUBAPP_MOUSE_SETTINGS" in uh, "ui_core.h must declare SUBAPP_MOUSE_SETTINGS"
+    assert "IMU_SUBAPP_COUNT = 3" in uh, "IMU_SUBAPP_COUNT must be 3"
+    assert '"MOUSE SETTINGS"' in uh, "imu_subapp_items must include MOUSE SETTINGS"
+    assert "handleMouseSettingsInput()" in uh, "ui_core.h must declare handleMouseSettingsInput()"
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "airMouse.toggleMode()" in uc, "handleAirMouseInput must toggle scroll mode on short click CANCEL"
+    assert "cancel_evt == BTN_EVT_LONG_PRESS" in uc, "handleAirMouseInput must handle long CANCEL for exit"
+    assert "handleMouseSettingsInput()" in uc, "ui_core.cpp must implement handleMouseSettingsInput"
+    assert "!(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE)" in uc, "Global cancel must not intercept active air mouse"
+
+    assert "drawAppMouseSettings()" in dc, "display.cpp must implement drawAppMouseSettings"
+    assert "OK:MVE C:SCRL L-C:EXT" in dc, "Air mouse HUD footer must show OK:MVE C:SCRL L-C:EXT"
+    print("  [PASS] 3. Air Mouse BLE2902, single-click scroll toggle, long-cancel exit & dedicated settings page verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2162,6 +2296,7 @@ if __name__ == "__main__":
     test_vibration_subsystem_and_app()
     test_qwatch_user_5_fixes()
     test_unified_auto_record_and_silent_sleep()
+    test_compass_games_airmouse_overhaul()
     print("\nAll self-test verifications PASSED!")
 
 

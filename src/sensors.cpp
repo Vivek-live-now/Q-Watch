@@ -22,7 +22,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -686,18 +686,67 @@ void SensorManager::computeEulerAngles() {
     orientation.roll = raw_roll - offsets.roll_offset;
     orientation.pitch = raw_pitch - offsets.pitch_offset;
 
-    float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
+    // Hysteresis: Dynamic reference axis switch between X-axis (Flat) and Z-axis (Tilted)
+    if (!tilted_z_mode && fabsf(orientation.pitch) > 45.0f) {
+        tilted_z_mode = true;
+    } else if (tilted_z_mode && fabsf(orientation.pitch) < 35.0f) {
+        tilted_z_mode = false;
+    }
 
-    float target_yaw = yaw_math + 90.0f;
+    float target_yaw = 0.0f;
+    float mx = cal_data.mx, my = cal_data.my, mz = cal_data.mz;
+    float mag_norm_sq = mx * mx + my * my + mz * mz;
 
-    // Apply Declination
-    target_yaw += mag_cal.declination;
+    if (mag_ok && mag_norm_sq > 1e-4f) {
+        // Down unit vector from body accelerometer
+        float ax = cal_data.ax, ay = cal_data.ay, az = cal_data.az;
+        float a_norm = sqrtf(ax * ax + ay * ay + az * az);
+        float gx = (a_norm > 1e-4f) ? (ax / a_norm) : 0.0f;
+        float gy = (a_norm > 1e-4f) ? (ay / a_norm) : 0.0f;
+        float gz = (a_norm > 1e-4f) ? (az / a_norm) : 1.0f;
 
-    // Normalize target to [0, 360)
-    while (target_yaw < 0.0f) target_yaw += 360.0f;
-    while (target_yaw >= 360.0f) target_yaw -= 360.0f;
+        // Forward reference vector: +X in Flat Mode, +Z in Tilted Mode (facing horizon)
+        float fx = tilted_z_mode ? 0.0f : 1.0f;
+        float fy = 0.0f;
+        float fz = tilted_z_mode ? 1.0f : 0.0f;
 
-    // Circular exponential smoothing (alpha = 0.25) across 360-degree wrap-around
+        // Project forward reference onto horizontal plane: f_h = f - (f . g) g
+        float f_dot_g = fx * gx + fy * gy + fz * gz;
+        float fh_x = fx - f_dot_g * gx;
+        float fh_y = fy - f_dot_g * gy;
+        float fh_z = fz - f_dot_g * gz;
+        float fh_norm = sqrtf(fh_x * fh_x + fh_y * fh_y + fh_z * fh_z);
+
+        if (fh_norm > 1e-4f) {
+            fh_x /= fh_norm;
+            fh_y /= fh_norm;
+            fh_z /= fh_norm;
+        } else {
+            fh_x = fx; fh_y = fy; fh_z = fz;
+        }
+
+        // Horizontal Right unit vector: r_h = g x f_h
+        float rh_x = gy * fh_z - gz * fh_y;
+        float rh_y = gz * fh_x - gx * fh_z;
+        float rh_z = gx * fh_y - gy * fh_x;
+
+        // Projected horizontal magnetic components
+        float X_h = mx * fh_x + my * fh_y + mz * fh_z;
+        float Y_h = mx * rh_x + my * rh_y + mz * rh_z;
+
+        float heading = atan2f(-Y_h, X_h) * 57.29578f + mag_cal.declination;
+        while (heading < 0.0f) heading += 360.0f;
+        while (heading >= 360.0f) heading -= 360.0f;
+        target_yaw = heading;
+    } else {
+        // Fallback to 6-DOF IMU yaw
+        float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
+        target_yaw = yaw_math + 90.0f + mag_cal.declination;
+        while (target_yaw < 0.0f) target_yaw += 360.0f;
+        while (target_yaw >= 360.0f) target_yaw -= 360.0f;
+    }
+
+    // Zero-Deadband Continuous Circular Exponential Smoothing (alpha = 0.20) across 360-degree wrap-around
     if (!yaw_initialized) {
         orientation.yaw = target_yaw;
         yaw_initialized = true;
@@ -705,7 +754,7 @@ void SensorManager::computeEulerAngles() {
         float diff = target_yaw - orientation.yaw;
         while (diff < -180.0f) diff += 360.0f;
         while (diff > 180.0f) diff -= 360.0f;
-        orientation.yaw += 0.25f * diff;
+        orientation.yaw += 0.20f * diff;
         while (orientation.yaw < 0.0f) orientation.yaw += 360.0f;
         while (orientation.yaw >= 360.0f) orientation.yaw -= 360.0f;
     }

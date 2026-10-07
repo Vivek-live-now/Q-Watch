@@ -76,25 +76,22 @@ void tilt_game_update(float dt) {
     float diff_roll = telem.roll - s_neutral_roll;
     float diff_pitch = telem.pitch - s_neutral_pitch;
 
-    // Apply deadband so resting hand jitter does not drift ball
-    const float DEADBAND = 3.5f;
+    // Apply tight deadband so resting hand jitter does not drift ball
+    const float DEADBAND = 2.0f;
     if (fabsf(diff_roll) < DEADBAND) diff_roll = 0.0f;
     else diff_roll = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
 
     if (fabsf(diff_pitch) < DEADBAND) diff_pitch = 0.0f;
     else diff_pitch = (diff_pitch > 0.0f) ? (diff_pitch - DEADBAND) : (diff_pitch + DEADBAND);
 
-    // MPU-6500 Tilt physics
+    // Rate-of-change (dy/dx via gyro angular rate) + proportional tilt fusion
     // Roll moves X (+roll tilts right), Pitch moves Y (+pitch tilts down)
-    float ax = diff_roll * 0.15f;
-    float ay = diff_pitch * 0.15f;
+    float ax = (diff_roll * 0.12f) + (telem.gyro_x * 0.04f);
+    float ay = (diff_pitch * 0.12f) + (telem.gyro_y * 0.04f);
 
-    s_vel_x += ax * dt;
-    s_vel_y += ay * dt;
-
-    // Friction damping
-    s_vel_x *= 0.95f;
-    s_vel_y *= 0.95f;
+    // Velocity update with active damping
+    s_vel_x = (s_vel_x + ax * dt) * 0.94f;
+    s_vel_y = (s_vel_y + ay * dt) * 0.94f;
 
     s_ball_x += s_vel_x;
     s_ball_y += s_vel_y;

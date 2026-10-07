@@ -28,13 +28,14 @@ enum class AirMouseBleStatus {
 
 class AirMouseServerCallbacks : public BLEServerCallbacks {
 public:
-    AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag);
+    AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag, BLECharacteristic* mouse_char = nullptr);
     void onConnect(BLEServer* pServer) override;
     void onDisconnect(BLEServer* pServer) override;
 
 private:
     bool* connected;
     bool* was_connected;
+    BLECharacteristic* inputMouse;
 };
 
 class AirMouseManager {
@@ -54,8 +55,10 @@ public:
 
     void toggleMovement();
     void toggleMode();
+    void cycleSensitivity();
     void cycleSensitivityUp();
     void cycleSensitivityDown();
+    void setSensitivity(AirMouseSensitivity s) { sensitivity = s; }
     void recenter();
 
     void clickLeft();

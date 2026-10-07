@@ -301,10 +301,14 @@ void bounce_update(float dt) {
 
     if (s_btn_override_timer <= 0.0f) {
         float diff_roll = telem.roll - s_neutral_roll;
-        const float DEADBAND = 6.0f;
+        const float DEADBAND = 2.5f;
+        float prop_roll = 0.0f;
         if (fabsf(diff_roll) > DEADBAND) {
-            float roll_dir = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
-            s_ball_vx += roll_dir * 3.5f * dt;
+            prop_roll = (diff_roll > 0.0f) ? (diff_roll - DEADBAND) : (diff_roll + DEADBAND);
+        }
+        float roll_force = (prop_roll * 3.2f) + (telem.gyro_x * 0.85f);
+        if (fabsf(roll_force) > 1.0f) {
+            s_ball_vx += roll_force * dt;
         }
     }
 

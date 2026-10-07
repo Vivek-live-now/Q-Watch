@@ -213,13 +213,17 @@ void pacman_update(float dt) {
         float d_roll = telem.roll - s_neutral_roll;
         float d_pitch = telem.pitch - s_neutral_pitch;
 
-        if (fabsf(d_roll) > 16.0f || fabsf(d_pitch) > 16.0f) {
-            if (fabsf(d_roll) > fabsf(d_pitch)) {
-                if (d_roll > 16.0f)  s_pacman.next_dir = PAC_DIR_RIGHT;
-                else if (d_roll < -16.0f) s_pacman.next_dir = PAC_DIR_LEFT;
+        // Fused tilt and gyro flick rate-of-change steering
+        float roll_signal = d_roll + (telem.gyro_x * 0.25f);
+        float pitch_signal = d_pitch + (telem.gyro_y * 0.25f);
+
+        if (fabsf(roll_signal) > 12.0f || fabsf(pitch_signal) > 12.0f) {
+            if (fabsf(roll_signal) > fabsf(pitch_signal)) {
+                if (roll_signal > 12.0f)  s_pacman.next_dir = PAC_DIR_RIGHT;
+                else if (roll_signal < -12.0f) s_pacman.next_dir = PAC_DIR_LEFT;
             } else {
-                if (d_pitch > 16.0f) s_pacman.next_dir = PAC_DIR_DOWN;
-                else if (d_pitch < -16.0f) s_pacman.next_dir = PAC_DIR_UP;
+                if (pitch_signal > 12.0f) s_pacman.next_dir = PAC_DIR_DOWN;
+                else if (pitch_signal < -12.0f) s_pacman.next_dir = PAC_DIR_UP;
             }
         }
     }

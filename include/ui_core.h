@@ -12,7 +12,8 @@
 enum class Imu6500SubApp {
     SUBAPP_MENU,
     SUBAPP_ALTIMETER,
-    SUBAPP_AIRMOUSE
+    SUBAPP_AIRMOUSE,
+    SUBAPP_MOUSE_SETTINGS
 };
 
 enum class SettingsSubmenu {
@@ -149,6 +150,7 @@ public:
 
     Imu6500SubApp getImuSubApp() const { return imu_subapp; }
     int getImuSubAppSelection() const { return imu_subapp_selection; }
+    int getMouseSettingsSelection() const { return mouse_settings_selection; }
 
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
@@ -267,9 +269,9 @@ public:
         "Zero Altitude", "Zero Level IMU", "Calibrate Gyro", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
     };
 
-    static const int IMU_SUBAPP_COUNT = 2;
+    static const int IMU_SUBAPP_COUNT = 3;
     const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
-        "IMU / HORIZON", "AIR MOUSE"
+        "IMU / HORIZON", "AIR MOUSE", "MOUSE SETTINGS"
     };
 
     static const int CLOCK_MENU_ITEM_COUNT = 8;
@@ -397,6 +399,7 @@ private:
     UIState current_state;
     Imu6500SubApp imu_subapp;
     int imu_subapp_selection;
+    int mouse_settings_selection;
 
     uint32_t last_activity_time;
     bool display_off;
@@ -539,6 +542,7 @@ public:
     void handleGenericAppInput();
     void handleCompassInput();
     void handleAirMouseInput();
+    void handleMouseSettingsInput();
 
     void handleSettingsMainInput();
     void handleConnectivityInput();

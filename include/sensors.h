@@ -133,6 +133,7 @@ public:
     CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
+    bool isTiltedZMode() const { return tilted_z_mode; }
 
     EnvironmentData getEnvData() const { return env_data; }
     void zeroAltitude();
@@ -184,6 +185,7 @@ private:
     CalibrationOffsets offsets;
     OrientationData orientation;
     bool yaw_initialized;
+    bool tilted_z_mode;
 
     MagCalibration mag_cal;
 

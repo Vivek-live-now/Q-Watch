@@ -45,12 +45,18 @@ static const uint8_t _mouseReportDescriptor[] = {
   END_COLLECTION(0)
 };
 
-AirMouseServerCallbacks::AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag)
-    : connected(connected_flag), was_connected(was_connected_flag) {}
+AirMouseServerCallbacks::AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag, BLECharacteristic* mouse_char)
+    : connected(connected_flag), was_connected(was_connected_flag), inputMouse(mouse_char) {}
 
 void AirMouseServerCallbacks::onConnect(BLEServer* pServer) {
     if (connected) *connected = true;
     if (was_connected) *was_connected = true;
+    if (inputMouse) {
+        BLE2902* desc = (BLE2902*)inputMouse->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+        if (desc) {
+            desc->setNotifications(true);
+        }
+    }
 }
 
 void AirMouseServerCallbacks::onDisconnect(BLEServer* pServer) {
@@ -89,11 +95,10 @@ void AirMouseManager::start() {
 
     if (!pServer) {
         pServer = BLEDevice::createServer();
-        pServer->setCallbacks(new AirMouseServerCallbacks(&is_connected, &was_connected));
-
         hid = new BLEHIDDevice(pServer);
         inputMouse = hid->inputReport(0);
         inputMouse->addDescriptor(new BLE2902());
+        pServer->setCallbacks(new AirMouseServerCallbacks(&is_connected, &was_connected, inputMouse));
 
         hid->manufacturer()->setValue("Q-Branch");
         hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
@@ -172,6 +177,12 @@ void AirMouseManager::toggleMode() {
     }
 }
 
+void AirMouseManager::cycleSensitivity() {
+    if (sensitivity == AirMouseSensitivity::SENS_LOW) sensitivity = AirMouseSensitivity::SENS_MED;
+    else if (sensitivity == AirMouseSensitivity::SENS_MED) sensitivity = AirMouseSensitivity::SENS_HIGH;
+    else sensitivity = AirMouseSensitivity::SENS_LOW;
+}
+
 void AirMouseManager::cycleSensitivityUp() {
     if (sensitivity == AirMouseSensitivity::SENS_LOW) sensitivity = AirMouseSensitivity::SENS_MED;
     else if (sensitivity == AirMouseSensitivity::SENS_MED) sensitivity = AirMouseSensitivity::SENS_HIGH;
@@ -235,9 +246,9 @@ void AirMouseManager::scrollDown() {
 
 float AirMouseManager::getSensitivityMultiplier() const {
     switch (sensitivity) {
-        case AirMouseSensitivity::SENS_LOW:  return 0.5f;
+        case AirMouseSensitivity::SENS_LOW:  return 0.6f;
         case AirMouseSensitivity::SENS_MED:  return 1.0f;
-        case AirMouseSensitivity::SENS_HIGH: return 2.0f;
+        case AirMouseSensitivity::SENS_HIGH: return 1.8f;
         default: return 1.0f;
     }
 }
@@ -263,8 +274,8 @@ void AirMouseManager::loop() {
     float gx = cal.gy - offset_gy;
     float gy = cal.gx - offset_gx;
 
-    // Dead zone check (~5-10 deg/s threshold)
-    const float DEAD_ZONE = 6.0f; // deg/s
+    // Tight dead zone check (1.8 deg/s threshold) to eliminate resting drift without losing intentional movement
+    const float DEAD_ZONE = 1.8f; // deg/s
     if (fabsf(gx) < DEAD_ZONE) gx = 0.0f;
     else if (gx > 0) gx -= DEAD_ZONE;
     else gx += DEAD_ZONE;
@@ -274,14 +285,14 @@ void AirMouseManager::loop() {
     else gy += DEAD_ZONE;
 
     // Low-pass exponential smoothing
-    const float ALPHA = 0.35f;
+    const float ALPHA = 0.40f;
     smooth_dx = smooth_dx + ALPHA * (gx - smooth_dx);
     smooth_dy = smooth_dy + ALPHA * (gy - smooth_dy);
 
-    // Apply sensitivity multiplier
+    // Apply sensitivity multiplier and responsive cursor scaling gain
     float mult = getSensitivityMultiplier();
-    float raw_move_x = smooth_dx * mult * dt * 8.0f;
-    float raw_move_y = smooth_dy * mult * dt * 8.0f;
+    float raw_move_x = smooth_dx * mult * dt * 28.0f;
+    float raw_move_y = smooth_dy * mult * dt * 28.0f;
 
     accum_x += raw_move_x;
     accum_y += raw_move_y;

@@ -1063,6 +1063,11 @@ void DisplayManager::drawAppCompass() {
 
     String hdgStr = String((int)heading) + "°";
 
+    if (sensors.isTiltedZMode()) {
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(98, 7, "Z-AXIS");
+    }
+
     int cx = 64;
     int cy = 60;
     int r = 50;
@@ -1392,10 +1397,47 @@ void DisplayManager::drawAppAirMouse() {
 
     oled.setFont(u8g2_font_4x6_tr);
     if (!airMouse.isEnabled() || st == AirMouseBleStatus::DISCONNECTED) {
-        oled.drawStr(4, 63, "OK: RECONNECT BLE");
+        oled.drawStr(4, 63, "OK:RECONNECT L-C:EXT");
     } else {
-        oled.drawStr(4, 63, "OK:MOVE CANCEL:MODE");
+        oled.drawStr(4, 63, "OK:MVE C:SCRL L-C:EXT");
     }
+}
+
+void DisplayManager::drawAppMouseSettings() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "MOUSE SETTINGS");
+    oled.drawLine(0, 9, 128, 9);
+
+    int sel = ui.getMouseSettingsSelection();
+
+    AirMouseSensitivity sens = airMouse.getSensitivity();
+    const char* sens_str = (sens == AirMouseSensitivity::SENS_LOW) ? "LOW" :
+                           (sens == AirMouseSensitivity::SENS_MED) ? "MED" : "HIGH";
+
+    char sens_buf[32];
+    snprintf(sens_buf, sizeof(sens_buf), "Sens: %s", sens_str);
+
+    const char* items[3] = {
+        sens_buf,
+        "Recenter Gyro",
+        "Start Air Mouse"
+    };
+
+    oled.setFont(u8g2_font_6x10_tr);
+    for (int i = 0; i < 3; i++) {
+        int y = 23 + (i * 13);
+        if (i == sel) {
+            oled.drawBox(2, y - 9, 124, 12);
+            oled.setDrawColor(0);
+            oled.drawStr(6, y, items[i]);
+            oled.setDrawColor(1);
+        } else {
+            oled.drawStr(6, y, items[i]);
+        }
+    }
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 63, "OK:ACTION CANCEL:BACK");
 }
 
 void DisplayManager::drawAppMotion() {
@@ -1404,6 +1446,8 @@ void DisplayManager::drawAppMotion() {
         drawAppMotionMenu();
     } else if (sub == Imu6500SubApp::SUBAPP_AIRMOUSE) {
         drawAppAirMouse();
+    } else if (sub == Imu6500SubApp::SUBAPP_MOUSE_SETTINGS) {
+        drawAppMouseSettings();
     } else {
         MotionState s = ui.getMotionState();
         if (s == MotionState::PAGE_LEVEL) {
