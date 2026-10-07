@@ -33,13 +33,13 @@ enum class AirMouseBleStatus {
 
 class AirMouseServerCallbacks : public BLEServerCallbacks {
 public:
-    AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag, BLECharacteristic* mouse_char = nullptr);
+    AirMouseServerCallbacks(volatile bool* connected_flag, volatile bool* was_connected_flag, BLECharacteristic* mouse_char = nullptr);
     void onConnect(BLEServer* pServer) override;
     void onDisconnect(BLEServer* pServer) override;
 
 private:
-    bool* connected;
-    bool* was_connected;
+    volatile bool* connected;
+    volatile bool* was_connected;
     BLECharacteristic* inputMouse;
 };
 
@@ -68,6 +68,7 @@ public:
     void cycleSensitivityDown();
     void setSensitivity(AirMouseSensitivity s) { sensitivity = s; }
     void recenter();
+    void restartAdvertising();
 
     // Slider-like Sensitivity Adjustment
     float getSensitivityScale() const { return sensitivity_scale; }
@@ -128,8 +129,8 @@ public:
 
 private:
     bool enabled;
-    bool is_connected;
-    bool was_connected;
+    volatile bool is_connected;
+    volatile bool was_connected;
     bool movement_active;
     AirMouseMode mode;
     AirMouseSensitivity sensitivity;
@@ -155,6 +156,8 @@ private:
     BLEServer* pServer;
     BLEHIDDevice* hid;
     BLECharacteristic* inputMouse;
+    AirMouseServerCallbacks* pCallbacks;
+    BLESecurity* pSecurity;
     uint8_t buttons_state;
 
     // Recenter offsets (in gyro deg/s)
@@ -162,7 +165,7 @@ private:
     float offset_gy;
     float offset_gz;
 
-    // Anti-jitter filter state (1-Euro dynamic velocity model)
+    // Anti-jitter filter state (Adaptive velocity EMA model)
     float smooth_dx;
     float smooth_dy;
     float prev_omega;

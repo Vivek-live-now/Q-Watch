@@ -46,7 +46,7 @@ static const uint8_t _mouseReportDescriptor[] = {
   END_COLLECTION(0)
 };
 
-AirMouseServerCallbacks::AirMouseServerCallbacks(bool* connected_flag, bool* was_connected_flag, BLECharacteristic* mouse_char)
+AirMouseServerCallbacks::AirMouseServerCallbacks(volatile bool* connected_flag, volatile bool* was_connected_flag, BLECharacteristic* mouse_char)
     : connected(connected_flag), was_connected(was_connected_flag), inputMouse(mouse_char) {}
 
 void AirMouseServerCallbacks::onConnect(BLEServer* pServer) {
@@ -62,6 +62,12 @@ void AirMouseServerCallbacks::onConnect(BLEServer* pServer) {
 
 void AirMouseServerCallbacks::onDisconnect(BLEServer* pServer) {
     if (connected) *connected = false;
+    if (pServer) {
+        BLEAdvertising* pAdv = pServer->getAdvertising();
+        if (pAdv) {
+            pAdv->start();
+        }
+    }
 }
 
 AirMouseManager::AirMouseManager() :
@@ -87,6 +93,8 @@ AirMouseManager::AirMouseManager() :
     pServer(nullptr),
     hid(nullptr),
     inputMouse(nullptr),
+    pCallbacks(nullptr),
+    pSecurity(nullptr),
     buttons_state(0),
     offset_gx(0.0f),
     offset_gy(0.0f),
@@ -151,6 +159,8 @@ void AirMouseManager::togglePrecisionMode() { precision_mode = !precision_mode; 
 void AirMouseManager::start() {
     if (enabled) return;
 
+    loadPreferences();
+
     if (!BLEDevice::getInitialized()) {
         BLEDevice::init("Q-Watch Air Mouse");
     }
@@ -160,13 +170,14 @@ void AirMouseManager::start() {
         hid = new BLEHIDDevice(pServer);
         inputMouse = hid->inputReport(0);
         inputMouse->addDescriptor(new BLE2902());
-        pServer->setCallbacks(new AirMouseServerCallbacks(&is_connected, &was_connected, inputMouse));
+        pCallbacks = new AirMouseServerCallbacks(&is_connected, &was_connected, inputMouse);
+        pServer->setCallbacks(pCallbacks);
 
         hid->manufacturer()->setValue("Q-Branch");
         hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
         hid->hidInfo(0x00, 0x02);
 
-        BLESecurity* pSecurity = new BLESecurity();
+        pSecurity = new BLESecurity();
         pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
         pSecurity->setCapability(ESP_IO_CAP_NONE);
         pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
@@ -206,8 +217,21 @@ void AirMouseManager::start() {
     last_update_ms = millis();
 }
 
+void AirMouseManager::restartAdvertising() {
+    if (enabled && pServer) {
+        BLEAdvertising* pAdvertising = pServer->getAdvertising();
+        if (pAdvertising) {
+            pAdvertising->start();
+        }
+    }
+}
+
 void AirMouseManager::stop() {
     if (!enabled) return;
+
+    if (is_connected && inputMouse) {
+        sendReport(0, 0, 0, 0, 0);
+    }
 
     if (pServer) {
         BLEAdvertising* pAdvertising = pServer->getAdvertising();
@@ -217,6 +241,15 @@ void AirMouseManager::stop() {
     }
 
     BLEDevice::deinit(false);
+
+    if (pCallbacks) {
+        delete pCallbacks;
+        pCallbacks = nullptr;
+    }
+    if (pSecurity) {
+        delete pSecurity;
+        pSecurity = nullptr;
+    }
 
     pServer = nullptr;
     hid = nullptr;
@@ -236,6 +269,14 @@ AirMouseBleStatus AirMouseManager::getBleStatus() const {
 
 void AirMouseManager::toggleMovement() {
     movement_active = !movement_active;
+    if (!movement_active) {
+        if (buttons_state != 0 && is_connected) {
+            buttons_state = 0;
+            sendReport(0, 0, 0, 0, 0);
+        } else {
+            buttons_state = 0;
+        }
+    }
 }
 
 void AirMouseManager::toggleMovementPause() {
@@ -462,9 +503,13 @@ void AirMouseManager::loop() {
 
     uint32_t now = millis();
     float dt = (now - last_update_ms) / 1000.0f;
+
+    if (dt <= 0.001f) {
+        return;
+    }
     last_update_ms = now;
 
-    if (dt <= 0.001f || dt > 0.2f) {
+    if (dt > 0.2f) {
         dt = 0.01f;
     }
 
@@ -507,8 +552,9 @@ void AirMouseManager::loop() {
     }
 
     // 6-DOF True Stationary Check:
-    // If accel is steady 1.0g with minimal translational jerk and angular rate is low:
-    bool current_still = (accel_jitter < 0.03f && accel_delta < 0.04f && omega < (dynamic_deadband * 1.6f));
+    // Uses true physical 3-axis gyro angular velocity magnitude (independent of mapping and user dead-zone)
+    float true_gyro_omega = sqrtf(cal.gx * cal.gx + cal.gy * cal.gy + cal.gz * cal.gz);
+    bool current_still = (accel_jitter < 0.03f && accel_delta < 0.04f && true_gyro_omega < 1.2f);
     if (current_still) {
         stationary_samples++;
     } else {
@@ -547,7 +593,7 @@ void AirMouseManager::loop() {
         if (fabsf(accum_y) < 0.05f) accum_y = 0.0f;
     }
 
-    // 1-Euro / Dynamic Velocity Filter:
+    // Dynamic Velocity Filter:
     float alpha = 0.12f;
     if (precision_mode) {
         alpha = 0.07f;
@@ -594,16 +640,19 @@ void AirMouseManager::loop() {
     int move_y = (int)accum_y;
 
     if (move_x != 0 || move_y != 0) {
-        accum_x -= move_x;
-        accum_y -= move_y;
+        int clamped_x = move_x;
+        int clamped_y = move_y;
 
         // Clamp HID int8_t range (-127 to +127)
-        if (move_x > 127) move_x = 127;
-        if (move_x < -127) move_x = -127;
-        if (move_y > 127) move_y = 127;
-        if (move_y < -127) move_y = -127;
+        if (clamped_x > 127) clamped_x = 127;
+        if (clamped_x < -127) clamped_x = -127;
+        if (clamped_y > 127) clamped_y = 127;
+        if (clamped_y < -127) clamped_y = -127;
+
+        accum_x -= clamped_x;
+        accum_y -= clamped_y;
 
         // CRITICAL: Always send current buttons_state so click-and-drag / text-selection works!
-        sendReport(buttons_state, (signed char)move_x, (signed char)move_y, 0, 0);
+        sendReport(buttons_state, (signed char)clamped_x, (signed char)clamped_y, 0, 0);
     }
 }

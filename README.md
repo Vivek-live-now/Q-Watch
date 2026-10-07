@@ -73,16 +73,15 @@ A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
 *   **Sub-App Selector Shell:** IMU6500 operates as a parent menu containing two distinct sub-applications:
     *   **`ALTIMETER`:** Preserves the full artificial horizon / attitude indicator, altitude zero/reference, 3D compass integration, telemetry page, and IMU calibration/axis controls (including `Invert Z`).
     *   **`AIR MOUSE`:** Converts the watch into a wireless BLE HID air mouse remote for PCs, tablets, and mobile devices.
-*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(true)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
-*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (Gyro Y → X movement, Gyro X → Y movement) with dead-zone noise suppression (~6 °/s threshold), exponential low-pass smoothing, sensitivity multipliers (`LOW`: 0.5x, `MED`: 1.0x, `HIGH`: 2.0x), and integer accumulation clamped to HID range (-127 to +127).
+*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(false)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
+*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (combined Yaw+Roll and pitch) with slider-controlled dead-zone suppression (0.5° to 10.0°/s), ramped anti-dead-zone compensation (0.0° to 3.4°/s), 6-DOF true zero-drift auto-tracking, adaptive velocity smoothing, non-linear power curve acceleration, dedicated Precision Mode (linear 1:1, 0.35x micro-speed, heavy tremor filtering), and remainder-preserving integer accumulation clamped to HID range (-127 to +127).
 *   **Dual Mode & Controls:**
-    *   **`POINTER` Mode:** Short UP = Left Click; Short DOWN = Right Click.
-    *   **`SCROLL` Mode:** Short UP = Scroll Up; Short DOWN = Scroll Down.
+    *   **`POINTER` Mode:** UP = Left Click & Hold (full click-and-drag / text selection); DOWN = Right Click & Hold; Short OK = Back Click.
+    *   **`SCROLL` Mode:** UP = Scroll Up; DOWN = Scroll Down; Short OK = Back Click.
     *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
-    *   **Pause & Recenter:** Short OK toggles pointer/scroll activity ON/OFF; Long OK establishes an Air Mouse recenter offset without modifying global IMU calibration.
-    *   **Sensitivity Control:** Long UP / Long DOWN adjusts sensitivity levels (`LOW`, `MED`, `HIGH`).
+    *   **Pause & In-Situ Settings:** Long OK toggles pointer movement ON/OFF. When paused, UP/DOWN navigates settings, Short OK / Short CANCEL adjusts sliders and options (Sensitivity, Dead Zone, Anti-Dead Zone, Precision, Yaw+Roll, Axis Swaps, Recenter Gyro). Long CANCEL cleanly exits Air Mouse.
     *   **Visual 3D Vector Diagram Orientation Selectors:** Interactive 3D wireframe and vector arrow projections on the 128x64 OLED display for both Magnetometer (`SETTINGS -> SENSORS -> COMPASS CAL -> 3D Mount Orient`) and IMU (`MAIN MENU -> MOTION / ALTIMETER -> SETTINGS -> 3D Mount Orient`), featuring real-time live heading (`HDG: 000° N`) and pitch/roll telemetry (`P:%+03d° R:%+03d°`), 8 orthogonal mounting presets (including upside-down and inverted-Z configurations), and universal persistent saving across all watch faces, Q-Apps, and Q-Link companions.
-*   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, pressing short OK explicitly restarts advertising and reconnects.
+*   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, advertising automatically resumes, or pressing Short OK explicitly restarts advertising and reconnects.
 
 
 ### Milestone 8: Full IR Remote Subsystem & Bruce / Flipper Zero Compatibility

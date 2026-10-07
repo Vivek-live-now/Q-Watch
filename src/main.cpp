@@ -49,6 +49,7 @@ void setup() {
   irEngine.begin();
   timekeeping.begin();
   animEngine.begin();
+  airMouse.begin();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
   } else {

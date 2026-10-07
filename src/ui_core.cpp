@@ -3482,7 +3482,12 @@ void UICore::handleAirMouseInput() {
 
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            airMouse.clickBack();
+            if (!airMouse.isConnected()) {
+                airMouse.restartAdvertising();
+                showToast("[BLE RECONNECTING]", 1000);
+            } else {
+                airMouse.clickBack();
+            }
             needs_redraw = true;
         }
 
@@ -3502,7 +3507,12 @@ void UICore::handleAirMouseInput() {
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            airMouse.clickBack();
+            if (!airMouse.isConnected()) {
+                airMouse.restartAdvertising();
+                showToast("[BLE RECONNECTING]", 1000);
+            } else {
+                airMouse.clickBack();
+            }
             needs_redraw = true;
         }
     }
