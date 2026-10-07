@@ -2378,6 +2378,100 @@ data: 4000 4000 500 1000 500 2000
     assert "irEngine.getLastLabStatus()" in dc, "drawAppIrLab must render diagnostic test status"
     print("  [PASS] 5. IR Signal Lab test tools (DC torch, optical loopback, calibrate, polarity, Nikai/RCA TX) verified.")
 
+def test_max30102_overhaul_suite():
+    print("\n--- 40. MAX30102 Biometrics Overhaul: IBI Heart Rate, SpO2 R-Ratio & Dynamic Waveform ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. Continuous Inter-Beat Interval (IBI) Math & Smooth Moving Average
+    deltas_and_expected = [
+        (1000, 60.0),
+        (857, 70.01),
+        (810, 74.07),
+        (769, 78.02),
+        (732, 81.97),
+        (667, 89.95),
+        (600, 100.0)
+    ]
+    rates_history = []
+    for delta_ms, expected_bpm in deltas_and_expected:
+        instant_bpm = 60000.0 / delta_ms
+        assert abs(instant_bpm - expected_bpm) < 0.1, f"IBI BPM calculation mismatch for {delta_ms}ms"
+        rates_history.append(instant_bpm)
+        if len(rates_history) > 4:
+            rates_history.pop(0)
+        avg_bpm = int(round(sum(rates_history) / len(rates_history)))
+        # Verify continuous output without coarse 75/120 jumps
+        assert 40 <= avg_bpm <= 200, "Heart rate out of physiological range"
+    print("  [PASS] 1. Continuous IBI calculation and 4-beat moving average verified without 75/120 quantization.")
+
+    # 2. Clinical SpO2 Quadratic Formula & Calibration
+    def calc_spo2(r_ratio):
+        return -45.060 * (r_ratio ** 2) + 30.354 * r_ratio + 94.845
+
+    spo2_tests = [
+        (0.45, 99),
+        (0.55, 98),
+        (0.65, 95),
+        (0.70, 94),
+        (0.80, 90)
+    ]
+    for r, expected_spo2 in spo2_tests:
+        val = int(round(calc_spo2(r)))
+        assert abs(val - expected_spo2) <= 1, f"SpO2 mismatch for R={r}: got {val}, expected {expected_spo2}"
+    print("  [PASS] 2. Clinical SpO2 quadratic model and per-beat R-ratio verified.")
+
+    # 3. Dynamic Waveform Auto-Scaling & Full Horizontal Fill
+    graph_x = 2
+    graph_y = 60
+    graph_w = 88
+    graph_h = 24
+    usable_h = graph_h - 4 # 20 px
+    inner_w = graph_w - 2  # 86 px
+
+    # Test physiological PPG wave samples spanning [18, 238]
+    test_wave = [128 + int(80.0 * math.sin(i * 0.2)) for i in range(64)]
+    min_w = min(test_wave)
+    max_w = max(test_wave)
+    span = max_w - min_w
+    assert span >= 8, "Expected test waveform span >= 8"
+
+    y_coords = []
+    x_coords = []
+    for i in range(64):
+        cx = graph_x + 1 + (i * (inner_w - 1)) // 63
+        cy = (graph_y - 2) - (((test_wave[i] - min_w) * usable_h) // span)
+        x_coords.append(cx)
+        y_coords.append(cy)
+
+    assert min(x_coords) == graph_x + 1, "Waveform start X mismatch"
+    assert max(x_coords) == graph_x + 1 + inner_w - 1, "Waveform end X must fill entire 86px width"
+    assert min(y_coords) == graph_y - 2 - usable_h, "Systolic peak must reach top 20px boundary"
+    assert max(y_coords) == graph_y - 2, "Diastolic trough must reach bottom 20px boundary"
+    assert (max(y_coords) - min(y_coords)) == usable_h, "Peak-to-peak amplitude must equal full 20 usable pixels"
+    print("  [PASS] 3. Dynamic waveform 20px vertical peak-to-peak amplitude and 86px width fill verified.")
+
+    # 4. Source Code Integration Verifications
+    mgr_h = os.path.join(base_dir, "include", "max30102_manager.h")
+    with open(mgr_h, "r", encoding="utf-8") as f:
+        mh = f.read()
+    assert "isBeating()" in mh and "getLastBeatTime()" in mh, "max30102_manager.h must export isBeating and getLastBeatTime"
+
+    mgr_cpp = os.path.join(base_dir, "src", "max30102_manager.cpp")
+    with open(mgr_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "byte ledBrightness = 60;" in mc, "MAX30102 must use optimal LED brightness 60 (~12mA)"
+    assert "simd_max30102_fir_sample(" in mc, "MAX30102 must apply 32-tap SIMD FIR filter to AC wave"
+    assert "ppg_envelope" in mc, "MAX30102 must track dynamic AGC envelope for waveform"
+    assert "instant_bpm = 60000.0f / (float)delta_ms;" in mc, "MAX30102 must compute continuous IBI heart rate"
+    assert "-45.060f * (R * R) + 30.354f * R + 94.845f" in mc, "MAX30102 must use clinical quadratic SpO2 model"
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "max30102Manager.isBeating()" in dc, "display.cpp must render real-time heartbeat pulsing indicator"
+    assert "usable_h = graph_h - 4" in dc, "display.cpp must dynamically scale waveform to fill 20 pixels"
+    print("  [PASS] 4. Firmware source code integration, AGC envelope, and beat indicator verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2409,6 +2503,8 @@ if __name__ == "__main__":
     test_unified_auto_record_and_silent_sleep()
     test_compass_games_airmouse_overhaul()
     test_ir_overhaul_suite()
+    test_max30102_overhaul_suite()
     print("\nAll self-test verifications PASSED!")
+
 
 

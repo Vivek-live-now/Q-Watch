@@ -1227,14 +1227,36 @@ void DisplayManager::drawHealthPage1Live() {
     uint8_t waveform[64];
     max30102Manager.getPPGWaveformChronological(waveform);
 
-    int prev_x = graph_x + 1;
-    int prev_y = graph_y - 1 - ((waveform[0] * (graph_h - 2)) / 255);
+    // Dynamic auto-scaling across chronological buffer to make waveform real and big
+    uint8_t min_w = 255, max_w = 0;
+    for (int i = 0; i < 64; i++) {
+        if (waveform[i] < min_w) min_w = waveform[i];
+        if (waveform[i] > max_w) max_w = waveform[i];
+    }
+    int span = max_w - min_w;
 
-    for (int i = 1; i < 64 && i < (graph_w - 2); i++) {
-        int cx = graph_x + 1 + i;
-        int cy = graph_y - 1 - ((waveform[i] * (graph_h - 2)) / 255);
-        if (cy < graph_y - graph_h + 1) cy = graph_y - graph_h + 1;
-        if (cy > graph_y - 1) cy = graph_y - 1;
+    int usable_h = graph_h - 4; // 20 pixels vertical range inside 24px box
+    int baseline_y = graph_y - 1 - (graph_h / 2); // 47: centered baseline
+
+    auto getYCoord = [&](uint8_t sample) -> int {
+        if (span >= 8) {
+            // Full expansion across 20 vertical pixels
+            int y = (graph_y - 2) - (((int)(sample - min_w) * usable_h) / span);
+            if (y < graph_y - graph_h + 2) y = graph_y - graph_h + 2;
+            if (y > graph_y - 2) y = graph_y - 2;
+            return y;
+        } else {
+            return baseline_y;
+        }
+    };
+
+    int inner_w = graph_w - 2; // 86 pixels
+    int prev_x = graph_x + 1;
+    int prev_y = getYCoord(waveform[0]);
+
+    for (int i = 1; i < 64; i++) {
+        int cx = graph_x + 1 + (i * (inner_w - 1)) / 63;
+        int cy = getYCoord(waveform[i]);
 
         oled.drawLine(prev_x, prev_y, cx, cy);
         prev_x = cx;
@@ -1245,6 +1267,11 @@ void DisplayManager::drawHealthPage1Live() {
     oled.setFont(u8g2_font_4x6_tr);
     oled.drawStr(94, 42, tempStr.c_str());
     oled.drawStr(94, 52, "LIVE");
+    if (max30102Manager.isBeating()) {
+        oled.drawDisc(116, 50, 2); // Beating pulse dot
+    } else {
+        oled.drawCircle(116, 50, 2);
+    }
     oled.drawStr(94, 60, "1/2");
 }
 

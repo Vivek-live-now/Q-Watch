@@ -38,6 +38,10 @@ public:
     void disableSensor();
     bool isEnabled() const { return sensor_enabled; }
 
+    // Visual heart beat pulse detection for HUD
+    bool isBeating() const { return (last_beat_time > 0 && (millis() - last_beat_time) < 220); }
+    uint32_t getLastBeatTime() const { return last_beat_time; }
+
     // Background recording sample routine (for wake-from-sleep or interval logging)
     bool takeSampleAndSave(uint32_t duration_ms = 7000);
 
@@ -54,19 +58,47 @@ private:
     HealthMetrics current_metrics;
 
     // Live PPG Waveform Circular Buffer
-    uint8_t ppg_buffer[64];
+    static const int PPG_BUF_LEN = 64;
+    uint8_t ppg_buffer[PPG_BUF_LEN];
     int ppg_head;
 
     uint32_t last_sample_time;
     uint32_t last_temp_read_time;
 
-    // Heart rate and SpO2 calculation variables
-    static const int SAMPLE_SIZE = 100;
-    uint32_t red_samples[SAMPLE_SIZE];
-    uint32_t ir_samples[SAMPLE_SIZE];
-    int sample_idx;
+    // Real-time Beat Detection & IBI Tracking
+    uint32_t last_beat_time;
+    int16_t prev_filtered_ac;
+    int16_t cycle_peak;
+    uint32_t cycle_peak_time;
+    bool pulse_rising;
+    float dynamic_p2p;
+    float ppg_envelope;
 
-    void calculateBPMAndSpO2();
+    // Moving average buffers for BPM and SpO2
+    static const int BEAT_HIST_SIZE = 4;
+    float bpm_history[BEAT_HIST_SIZE];
+    int bpm_history_cnt;
+    int bpm_history_idx;
+
+    float spo2_history[BEAT_HIST_SIZE];
+    int spo2_history_cnt;
+    int spo2_history_idx;
+
+    // Current beat cycle metrics for SpO2 R-ratio calculation
+    uint32_t cycle_ir_min;
+    uint32_t cycle_ir_max;
+    uint32_t cycle_red_min;
+    uint32_t cycle_red_max;
+    uint64_t cycle_ir_dc_sum;
+    uint64_t cycle_red_dc_sum;
+    int cycle_samples;
+
+    // DC baseline tracking filter
+    uint32_t ir_dc_filter;
+    uint32_t red_dc_filter;
+
+    void processSample(uint32_t red, uint32_t ir);
+    void resetBeatState();
     void readTemperature();
 };
 
