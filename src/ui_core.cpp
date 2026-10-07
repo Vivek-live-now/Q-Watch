@@ -3167,12 +3167,16 @@ void UICore::handleCompassInput() {
         }
         needs_redraw = true;
     } else if (compass_state == CompassState::CAL_RESULT) {
-        if (up_evt == BTN_EVT_SHORT_PRESS) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
             sensors.saveCurrentCalibration();
+            soundManager.playNavSelect();
+            showToast("CAL SAVED");
             compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
             sensors.cancelMagCalibration();
+            soundManager.playNavBack();
+            showToast("CAL DISCARDED");
             compass_state = CompassState::PAGE_CAL_MENU;
             needs_redraw = true;
         }

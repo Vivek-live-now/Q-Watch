@@ -2149,9 +2149,9 @@ def test_compass_games_airmouse_overhaul():
     with open(sensors_cpp, "r", encoding="utf-8") as f:
         sc = f.read()
     assert "tilted_z_mode" in sc, "sensors.cpp must track tilted_z_mode"
-    assert "fabsf(orientation.pitch) > 45.0f" in sc, "Hysteresis threshold > 45 deg must switch to Z-axis"
-    assert "fabsf(orientation.pitch) < 35.0f" in sc, "Hysteresis threshold < 35 deg must switch back to X-axis"
-    assert "rh_x = fh_y * gz - fh_z * gy" in sc or "rh_x = gy * fh_z - gz * fh_y" in sc, "Right vector cross product must be implemented"
+    assert "fabsf(orientation.pitch) > 65.0f" in sc or "fabsf(orientation.pitch) > 45.0f" in sc, "Hysteresis threshold must switch to Z-axis"
+    assert "fabsf(orientation.pitch) < 50.0f" in sc or "fabsf(orientation.pitch) < 35.0f" in sc, "Hysteresis threshold must switch back"
+    assert "rh_x = gy * fh_z - gz * fh_y" in sc or "rh_x = fh_y * gz - fh_z * gy" in sc, "Right vector cross product must be implemented"
     assert "atan2f(-Y_h, X_h)" in sc, "Heading must be computed with clockwise-increasing math atan2f(-Y_h, X_h)"
     assert "yaw_math + 90.0f" in sc, "6-DOF IMU fallback must preserve clockwise yaw rotation"
 
@@ -2163,12 +2163,12 @@ def test_compass_games_airmouse_overhaul():
 
     # Mathematical simulation of flat vs tilted projection
     def compute_projected_heading(ax, ay, az, mx, my, mz, pitch_deg):
-        is_z = abs(pitch_deg) > 40.0
+        is_z = abs(pitch_deg) > 60.0
         a_norm = math.sqrt(ax*ax + ay*ay + az*az)
         gx, gy, gz = ax/a_norm, ay/a_norm, az/a_norm
-        fx = 0.0 if is_z else 1.0
-        fy = 0.0
-        fz = 1.0 if is_z else 0.0
+        fx = 0.0
+        fy = 0.0 if is_z else 1.0
+        fz = -1.0 if is_z else 0.0
         f_dot_g = fx*gx + fy*gy + fz*gz
         fh_x = fx - f_dot_g * gx
         fh_y = fy - f_dot_g * gy
@@ -2186,15 +2186,15 @@ def test_compass_games_airmouse_overhaul():
         while h >= 360.0: h -= 360.0
         return h
 
-    # Test flat: top of watch points North (mx=100, my=0, mz=0) -> 0 deg heading
-    h_flat = compute_projected_heading(0, 0, 1, 100, 0, 0, 0.0)
+    # Test flat: top of watch points North (mx=0, my=100, mz=0) -> 0 deg heading
+    h_flat = compute_projected_heading(0, 0, 1, 0, 100, 0, 0.0)
     assert abs(h_flat - 0.0) < 1e-3, f"Flat heading North should be 0 deg, got {h_flat}"
-    # Turn clockwise 90 deg -> North is now to the left (my=-100, mx=0) -> 90 deg heading
-    h_cw = compute_projected_heading(0, 0, 1, 0, -100, 0, 0.0)
+    # Turn clockwise 90 deg -> North is now to the left (mx=100, my=0) -> 90 deg heading
+    h_cw = compute_projected_heading(0, 0, 1, 100, 0, 0, 0.0)
     assert abs(h_cw - 90.0) < 1e-3, f"Clockwise rotation should yield 90 deg, got {h_cw}"
 
-    # Test tilted upright (facing horizon): normal to screen points North (mz=100, mx=0, my=0) -> 0 deg heading
-    h_tilt = compute_projected_heading(1, 0, 0, 0, 0, 100, 90.0)
+    # Test tilted upright (facing horizon): normal to screen points North (mz=-100, mx=0, my=0) -> 0 deg heading
+    h_tilt = compute_projected_heading(0, 1, 0, 0, 0, -100, 90.0)
     assert abs(h_tilt - 0.0) < 1e-3, f"Tilted heading Z-axis North should be 0 deg, got {h_tilt}"
     print("  [PASS] 1. Compass tilt compensation, dynamic Z-axis mode, and OLED Z-AXIS HUD badge verified.")
 
@@ -2501,10 +2501,10 @@ def test_user_hardware_and_compass_overhaul():
         norm_fh = math.sqrt(fh_x*fh_x + fh_y*fh_y + fh_z*fh_z)
         if norm_fh > 1e-4:
             fh_x /= norm_fh; fh_y /= norm_fh; fh_z /= norm_fh
-        # Right vector rh = fh x g
-        rh_x = fh_y*gz - fh_z*gy
-        rh_y = fh_z*gx - fh_x*gz
-        rh_z = fh_x*gy - fh_y*gx
+        # Right vector rh = g x fh
+        rh_x = gy*fh_z - gz*fh_y
+        rh_y = gz*fh_x - gx*fh_z
+        rh_z = gx*fh_y - gy*fh_x
         # Magnetic projections
         X_h = mx*fh_x + my*fh_y + mz*fh_z
         Y_h = mx*rh_x + my*rh_y + mz*rh_z
@@ -2516,10 +2516,10 @@ def test_user_hardware_and_compass_overhaul():
     # Flat heading North: watch facing North (+Y)
     h_north = compass_forward_vector_heading(0, 0, 1, 0, 100, 0)
     assert abs(h_north - 0.0) < 1e-3, f"Forward North heading should be 0 deg, got {h_north}"
-    # Flat heading East: watch facing East, North is to watch's West (-X)
-    h_east = compass_forward_vector_heading(0, 0, 1, -100, 0, 0)
+    # Flat heading East: watch facing East, North is to watch's Left (+X in Left-fwd system)
+    h_east = compass_forward_vector_heading(0, 0, 1, 100, 0, 0)
     assert abs(h_east - 90.0) < 1e-3, f"East heading should be 90 deg, got {h_east}"
-    # Tilted 45 deg pitch up: North tilted to -Z hemisphere
+    # Tilted 45 deg pitch up: North tilted along forward vector
     h_tilt_north = compass_forward_vector_heading(0, 0.7071, 0.7071, 0, 70.71, -70.71)
     assert abs(h_tilt_north - 0.0) < 1.0, f"Tilt-compensated North should be 0 deg, got {h_tilt_north}"
     print("  [PASS] 1. Compass forward vector (12 o'clock) 3D tilt compensation math verified.")

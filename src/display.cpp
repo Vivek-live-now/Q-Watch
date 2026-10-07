@@ -2606,12 +2606,15 @@ void DisplayManager::drawAppCompassCalMenu() {
 
 void DisplayManager::drawAppCompassCalSweep() {
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(10, 25, "ROTATE FIGURE 8");
-    oled.drawStr(10, 35, "ALL AXES");
+    oled.drawStr(10, 22, "ROTATE FIGURE 8");
+    oled.drawStr(10, 32, "ACROSS ALL AXES");
 
-    oled.drawFrame(10, 45, 108, 6);
+    oled.drawFrame(10, 42, 108, 6);
     int p = sensors.getCalProgress();
-    oled.drawBox(10, 45, (p * 108) / 100, 6);
+    oled.drawBox(10, 42, (p * 108) / 100, 6);
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(10, 58, "PRESS OK TO CANCEL");
 }
 
 void DisplayManager::drawAppCompassCalResult() {
@@ -2619,14 +2622,19 @@ void DisplayManager::drawAppCompassCalResult() {
 
     MagCalResult res = sensors.getCalResult();
 
-    oled.drawStr(10, 22, "Coverage:");
-    oled.drawStr(60, 22, res.coverage_ok ? "GOOD" : "POOR");
+    oled.drawStr(10, 18, "Coverage:");
+    oled.drawStr(65, 18, res.coverage_ok ? "GOOD" : "POOR");
 
-    oled.drawStr(10, 32, "Field:");
-    oled.drawStr(60, 32, res.field_ok ? "GOOD" : "ERR");
+    oled.drawStr(10, 28, "Field:");
+    oled.drawStr(65, 28, res.field_ok ? "GOOD" : "ERR");
 
-    oled.drawStr(10, 42, "Overall:");
-    oled.drawStr(60, 42, res.is_good ? "OK" : "BAD");
+    oled.drawStr(10, 38, "Overall:");
+    oled.drawStr(65, 38, res.is_good ? "OK" : "BAD");
+
+    // Clear instruction banner
+    oled.drawHLine(0, 48, 128);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 58, "UP/OK: SAVE    DN: CANCEL");
 }
 
 void DisplayManager::drawAppCompassTelemetry() {

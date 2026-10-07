@@ -808,10 +808,11 @@ void SensorManager::computeEulerAngles() {
     orientation.roll = raw_roll - offsets.roll_offset;
     orientation.pitch = raw_pitch - offsets.pitch_offset;
 
-    // Hysteresis: Dynamic reference axis switch between X-axis (Flat) and Z-axis (Tilted)
-    if (!tilted_z_mode && fabsf(orientation.pitch) > 45.0f) {
+    // Hysteresis: Dynamic reference axis switch between Y-axis (Flat/Normal) and Z-axis (Tilted Upright)
+    // Steep threshold (>65 deg) avoids false triggerings during normal wrist glancing (30-50 deg)
+    if (!tilted_z_mode && fabsf(orientation.pitch) > 65.0f && fabsf(orientation.roll) < 50.0f) {
         tilted_z_mode = true;
-    } else if (tilted_z_mode && fabsf(orientation.pitch) < 35.0f) {
+    } else if (tilted_z_mode && (fabsf(orientation.pitch) < 50.0f || fabsf(orientation.roll) >= 60.0f)) {
         tilted_z_mode = false;
     }
 
@@ -827,10 +828,12 @@ void SensorManager::computeEulerAngles() {
         float gy = (a_norm > 1e-4f) ? (ay / a_norm) : 0.0f;
         float gz = (a_norm > 1e-4f) ? (az / a_norm) : 1.0f;
 
-        // Forward reference vector: +Y is 12 o'clock (top edge of watch face)
+        // Forward reference vector:
+        // Flat/Normal: +Y is 12 o'clock (top edge of watch face)
+        // Tilted Z Mode: when watch is held upright facing horizon, forward vector is -Z (line of sight through watch)
         float fx = 0.0f;
-        float fy = 1.0f;
-        float fz = 0.0f;
+        float fy = tilted_z_mode ? 0.0f : 1.0f;
+        float fz = tilted_z_mode ? (orientation.pitch > 0.0f ? -1.0f : 1.0f) : 0.0f;
 
         // Project forward reference onto horizontal plane: f_h = f - (f . g) g
         float f_dot_g = fx * gx + fy * gy + fz * gz;
@@ -847,10 +850,10 @@ void SensorManager::computeEulerAngles() {
             fh_x = fx; fh_y = fy; fh_z = fz;
         }
 
-        // Horizontal Right unit vector: r_h = f_h x g
-        float rh_x = fh_y * gz - fh_z * gy;
-        float rh_y = fh_z * gx - fh_x * gz;
-        float rh_z = fh_x * gy - fh_y * gx;
+        // Horizontal Right unit vector: r_h = g x f_h
+        float rh_x = gy * fh_z - gz * fh_y;
+        float rh_y = gz * fh_x - gx * fh_z;
+        float rh_z = gx * fh_y - gy * fh_x;
 
         // Projected horizontal magnetic components
         float X_h = mx * fh_x + my * fh_y + mz * fh_z;
