@@ -38,3 +38,12 @@ jobs:
 
       - name: Build Q-Watch
         run: pio run -e esp32s3_supermini
+
+      - name: Upload Firmware Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwatch-firmware-esp32s3
+          path: |
+            .pio/build/esp32s3_supermini/firmware.bin
+            .pio/build/esp32s3_supermini/bootloader.bin
+            .pio/build/esp32s3_supermini/partitions.bin
