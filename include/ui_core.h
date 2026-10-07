@@ -174,6 +174,7 @@ public:
     int getIrScrollOffset() const { return ir_scroll_offset; }
     const IrRemoteFile& getIrActiveRemote() const { return ir_active_remote; }
     const IrButton& getIrCapturedButton() const { return ir_captured_btn; }
+    const std::vector<String>& getIrFileList() const { return ir_file_list; }
     void setIrActiveRemotePath(const String& path);
     void setIrQuickRemoteName(const String& name) { ir_quick_remote_name = name; }
     void setIrQuickButtonName(const String& name) { ir_quick_button_name = name; }

@@ -346,19 +346,15 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
             } else {
                 last_beat_time = cycle_peak_time;
             }
-                    }
 
-                    // Reset cycle accumulators for next beat
-                    cycle_ir_min = 0xFFFFFFFF;
-                    cycle_ir_max = 0;
-                    cycle_red_min = 0xFFFFFFFF;
-                    cycle_red_max = 0;
-                    cycle_ir_dc_sum = 0;
-                    cycle_red_dc_sum = 0;
-                    cycle_samples = 0;
-                }
-            }
-            last_beat_time = cycle_peak_time;
+            // Reset cycle accumulators for next beat
+            cycle_ir_min = 0xFFFFFFFF;
+            cycle_ir_max = 0;
+            cycle_red_min = 0xFFFFFFFF;
+            cycle_red_max = 0;
+            cycle_ir_dc_sum = 0;
+            cycle_red_dc_sum = 0;
+            cycle_samples = 0;
         }
     }
 
