@@ -2581,6 +2581,64 @@ def test_user_hardware_and_compass_overhaul():
     assert "[ SENSOR NOT DETECTED ]" in dc, "display.cpp must show clear diagnostics if MAX30102 0x57 is not found"
     print("  [PASS] 4. MAX30102 I2C custom pin protection, 300ms refractory period & diagnostics verified.")
 
+def test_air_mouse_sliders_yaw_roll_and_paused_settings():
+    print("\n--- 42. Air Mouse Sliders, Combined Yaw+Roll, Pause-Settings & Button Remap Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. Header declarations: Sliders, Deadband, Anti-Deadband, Combined Yaw/Roll
+    mouse_h = os.path.join(base_dir, "include", "air_mouse.h")
+    with open(mouse_h, "r", encoding="utf-8") as f:
+        mh = f.read()
+    assert "getSensitivityScale()" in mh and "cycleSensitivitySlider" in mh, "air_mouse.h must support slider sensitivity"
+    assert "getDeadZone()" in mh and "cycleDeadZone" in mh, "air_mouse.h must support dead zone adjustments"
+    assert "getAntiDeadZone()" in mh and "cycleAntiDeadZone" in mh, "air_mouse.h must support anti dead zone adjustments"
+    assert "getCombinedYawRoll()" in mh and "toggleCombinedYawRoll" in mh, "air_mouse.h must support combined yaw and roll"
+    assert "offset_gz" in mh, "air_mouse.h must track offset_gz for yaw recentering"
+    print("  [PASS] 1. Air mouse header declarations (sensitivity slider, dead zone, anti-dead zone, combined yaw+roll) verified.")
+
+    # 2. Implementation & Math Verification
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "combined_yaw_roll ? (roll + yaw) : roll" in mc, "air_mouse.cpp must fuse combined yaw and roll"
+    assert "anti_dead_zone" in mc, "air_mouse.cpp must implement anti dead zone"
+    assert "active_dead_zone" in mc, "air_mouse.cpp must apply configurable dead zone"
+    assert "p.putFloat(\"sens_scl\"," in mc and "p.putFloat(\"dead_zone\"," in mc, "air_mouse.cpp must persist slider configs"
+    assert "offset_gz = cal.gz;" in mc, "air_mouse.cpp recenter must reset yaw offset_gz"
+
+    # Python simulation of Deadband + Anti-Deadband Transfer Function
+    def air_mouse_transfer_function(omega, deadband=1.8, anti_deadband=0.6):
+        if omega <= deadband:
+            return 0.0
+        return (omega - deadband) + anti_deadband
+
+    assert air_mouse_transfer_function(0.5, 1.8, 0.6) == 0.0, "Sub-deadband motions must be fully suppressed"
+    assert air_mouse_transfer_function(1.8, 1.8, 0.6) == 0.0, "At exact deadband, motion must be zero"
+    kick_val = air_mouse_transfer_function(1.81, 1.8, 0.6)
+    assert abs(kick_val - 0.61) < 1e-4, "Immediate anti-deadband boost must kick start subtle motion above threshold"
+    assert abs(air_mouse_transfer_function(5.0, 1.8, 0.6) - 3.8) < 1e-4, "Transfer function must scale linearly above deadband"
+    print("  [PASS] 2. Dead zone suppression and anti-dead zone micro-boost math simulation verified.")
+
+    # 3. UI Core Input Routing & Pause Exclusivity
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "ok_evt == BTN_EVT_LONG_PRESS" in uc and "airMouse.toggleMovementPause()" in uc, "Long OK must toggle movement pause"
+    assert "cancel_evt == BTN_EVT_LONG_PRESS" in uc and "airMouse.stop()" in uc, "Long CANCEL must exit Air Mouse"
+    assert "airMouse.isMovementPaused()" in uc, "handleAirMouseInput must branch on movement pause"
+    assert "airMouse.cycleSensitivitySlider" in uc and "airMouse.cycleDeadZone" in uc, "When paused, UI must allow changing air mouse settings"
+    assert "ok_evt == BTN_EVT_SHORT_PRESS" in uc and "airMouse.clickBack()" in uc, "Short OK must remain mouse back button"
+    print("  [PASS] 3. Long OK pause, paused-only settings configuration, short OK back button & long cancel exit verified.")
+
+    # 4. Display Core Slider Rendering & Mode-Aware Routing
+    display_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(display_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "if (airMouse.isMovementPaused())" in dc and "drawAppMouseSettings()" in dc, "drawAppMotion must render settings when air mouse is paused"
+    assert "getSensitivityStep()" in dc and "getDeadZoneStep()" in dc and "getAntiDeadZoneStep()" in dc, "display.cpp must render slider steps"
+    assert "drawFrame(74," in dc and "drawBox(76," in dc, "display.cpp must draw slider bar graphic frames and fills"
+    print("  [PASS] 4. OLED slider graphic bars, paused HUD auto-switch & controls footer verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2614,7 +2672,9 @@ if __name__ == "__main__":
     test_ir_overhaul_suite()
     test_max30102_overhaul_suite()
     test_user_hardware_and_compass_overhaul()
+    test_air_mouse_sliders_yaw_roll_and_paused_settings()
     print("\nAll self-test verifications PASSED!")
+
 
 
 

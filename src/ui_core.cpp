@@ -3367,8 +3367,8 @@ void UICore::handleAirMouseInput() {
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
 
-    // Control button (CANCEL) double-tap: Exit Air Mouse and tear down BLE
-    if (cancel_evt == BTN_EVT_DOUBLE_TAP) {
+    // Control button (CANCEL) long press: Exit Air Mouse and tear down BLE
+    if (cancel_evt == BTN_EVT_LONG_PRESS || cancel_evt == BTN_EVT_DOUBLE_TAP) {
         soundManager.playNavBack();
         airMouse.stop();
         imu_subapp = Imu6500SubApp::SUBAPP_MENU;
@@ -3377,8 +3377,8 @@ void UICore::handleAirMouseInput() {
         return;
     }
 
-    // Control button (CANCEL) long tap: Pause/Freeze mouse pointer movement
-    if (cancel_evt == BTN_EVT_LONG_PRESS) {
+    // OK button long press: Toggle Pause / Resume
+    if (ok_evt == BTN_EVT_LONG_PRESS) {
         soundManager.playNavSelect();
         airMouse.toggleMovementPause();
         showToast(airMouse.isMovementActive() ? "[POINTER RESUMED]" : "[POINTER PAUSED]", 1000);
@@ -3386,6 +3386,73 @@ void UICore::handleAirMouseInput() {
         return;
     }
 
+    // When ONLY paused: allow navigating and changing the Air Mouse settings!
+    if (airMouse.isMovementPaused()) {
+        if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+            mouse_settings_selection--;
+            if (mouse_settings_selection < 0) mouse_settings_selection = 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+            mouse_settings_selection++;
+            if (mouse_settings_selection > 7) mouse_settings_selection = 7;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (mouse_settings_selection == 0) {
+                airMouse.cycleSensitivitySlider(true);
+            } else if (mouse_settings_selection == 1) {
+                airMouse.cycleDeadZone(true);
+            } else if (mouse_settings_selection == 2) {
+                airMouse.cycleAntiDeadZone(true);
+            } else if (mouse_settings_selection == 3) {
+                airMouse.toggleCombinedYawRoll();
+                showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
+            } else if (mouse_settings_selection == 4) {
+                airMouse.toggleSwapXY();
+                showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
+            } else if (mouse_settings_selection == 5) {
+                airMouse.toggleInvX();
+                showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
+            } else if (mouse_settings_selection == 6) {
+                airMouse.toggleInvY();
+                showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
+            } else if (mouse_settings_selection == 7) {
+                airMouse.recenter();
+                showToast("[GYRO RECENTERED]", 1000);
+            }
+            needs_redraw = true;
+        } else if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            if (mouse_settings_selection == 0) {
+                airMouse.cycleSensitivitySlider(false);
+            } else if (mouse_settings_selection == 1) {
+                airMouse.cycleDeadZone(false);
+            } else if (mouse_settings_selection == 2) {
+                airMouse.cycleAntiDeadZone(false);
+            } else if (mouse_settings_selection == 3) {
+                airMouse.toggleCombinedYawRoll();
+                showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
+            } else if (mouse_settings_selection == 4) {
+                airMouse.toggleSwapXY();
+                showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
+            } else if (mouse_settings_selection == 5) {
+                airMouse.toggleInvX();
+                showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
+            } else if (mouse_settings_selection == 6) {
+                airMouse.toggleInvY();
+                showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
+            } else if (mouse_settings_selection == 7) {
+                airMouse.recenter();
+                showToast("[GYRO RECENTERED]", 1000);
+            }
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    // Active (NOT paused):
     // Single click CANCEL toggles between Pointer Mode and Scroll Mode
     if (cancel_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
@@ -3400,21 +3467,25 @@ void UICore::handleAirMouseInput() {
         // Continuous Button Hold (Full mouse drag & drop, text select capabilities):
         // UP: Left click & hold (Button 1: 0x01)
         // DN: Right click & hold (Button 2: 0x02)
-        // OK: Back click & hold (Button 4: 0x08)
+        // Short OK: Back click (Button 4: 0x08)
         bool up_held = btnManager.isPressed(BTN_ID_UP);
         bool dn_held = btnManager.isPressed(BTN_ID_DN);
-        bool ok_held = btnManager.isPressed(BTN_ID_OK);
 
         airMouse.setButton(MOUSE_BUTTON_LEFT, up_held);
         airMouse.setButton(MOUSE_BUTTON_RIGHT, dn_held);
-        airMouse.setButton(MOUSE_BUTTON_BACK, ok_held);
 
-        if (up_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            airMouse.clickBack();
+            needs_redraw = true;
+        }
+
+        if (up_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
             needs_redraw = true;
         }
     } else {
-        // SCROLL Mode: UP scrolls up, DOWN scrolls down, OK clicks Back
+        // SCROLL Mode: UP scrolls up, DOWN scrolls down, Short OK clicks Back
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
             soundManager.playNavMove();
             airMouse.scrollUp();
@@ -3451,26 +3522,33 @@ void UICore::handleMouseSettingsInput() {
         needs_redraw = true;
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         mouse_settings_selection++;
-        if (mouse_settings_selection > 5) mouse_settings_selection = 5;
+        if (mouse_settings_selection > 8) mouse_settings_selection = 8;
         soundManager.playNavMove();
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (mouse_settings_selection == 0) {
-            airMouse.cycleSensitivity();
+            airMouse.cycleSensitivitySlider(true);
         } else if (mouse_settings_selection == 1) {
+            airMouse.cycleDeadZone(true);
+        } else if (mouse_settings_selection == 2) {
+            airMouse.cycleAntiDeadZone(true);
+        } else if (mouse_settings_selection == 3) {
+            airMouse.toggleCombinedYawRoll();
+            showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
+        } else if (mouse_settings_selection == 4) {
             airMouse.toggleSwapXY();
             showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
-        } else if (mouse_settings_selection == 2) {
+        } else if (mouse_settings_selection == 5) {
             airMouse.toggleInvX();
             showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
-        } else if (mouse_settings_selection == 3) {
+        } else if (mouse_settings_selection == 6) {
             airMouse.toggleInvY();
             showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
-        } else if (mouse_settings_selection == 4) {
+        } else if (mouse_settings_selection == 7) {
             airMouse.recenter();
             showToast("[GYRO RECENTERED]", 1000);
-        } else if (mouse_settings_selection == 5) {
+        } else if (mouse_settings_selection == 8) {
             imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
             if (!airMouse.isEnabled()) airMouse.start();
         }

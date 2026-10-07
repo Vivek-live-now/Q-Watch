@@ -71,6 +71,10 @@ AirMouseManager::AirMouseManager() :
     movement_active(true),
     mode(AirMouseMode::POINTER),
     sensitivity(AirMouseSensitivity::SENS_MED),
+    sensitivity_scale(1.3f),
+    dead_zone(1.8f),
+    anti_dead_zone(0.6f),
+    combined_yaw_roll(true),
     swap_xy(false),
     inv_x(false),
     inv_y(false),
@@ -80,6 +84,7 @@ AirMouseManager::AirMouseManager() :
     buttons_state(0),
     offset_gx(0.0f),
     offset_gy(0.0f),
+    offset_gz(0.0f),
     smooth_dx(0.0f),
     smooth_dy(0.0f),
     prev_omega(0.0f),
@@ -101,6 +106,10 @@ void AirMouseManager::loadPreferences() {
     inv_y = p.getBool("inv_y", false);
     int sens = p.getInt("sens", (int)AirMouseSensitivity::SENS_MED);
     sensitivity = (AirMouseSensitivity)sens;
+    sensitivity_scale = p.getFloat("sens_scl", 1.3f);
+    dead_zone = p.getFloat("dead_zone", 1.8f);
+    anti_dead_zone = p.getFloat("anti_dz", 0.6f);
+    combined_yaw_roll = p.getBool("comb_yr", true);
     p.end();
 }
 
@@ -111,6 +120,10 @@ void AirMouseManager::savePreferences() {
     p.putBool("inv_x", inv_x);
     p.putBool("inv_y", inv_y);
     p.putInt("sens", (int)sensitivity);
+    p.putFloat("sens_scl", sensitivity_scale);
+    p.putFloat("dead_zone", dead_zone);
+    p.putFloat("anti_dz", anti_dead_zone);
+    p.putBool("comb_yr", combined_yaw_roll);
     p.end();
 }
 
@@ -120,6 +133,9 @@ void AirMouseManager::setInvY(bool inv) { inv_y = inv; savePreferences(); }
 void AirMouseManager::toggleSwapXY() { swap_xy = !swap_xy; savePreferences(); }
 void AirMouseManager::toggleInvX() { inv_x = !inv_x; savePreferences(); }
 void AirMouseManager::toggleInvY() { inv_y = !inv_y; savePreferences(); }
+
+void AirMouseManager::setCombinedYawRoll(bool enable) { combined_yaw_roll = enable; savePreferences(); }
+void AirMouseManager::toggleCombinedYawRoll() { combined_yaw_roll = !combined_yaw_roll; savePreferences(); }
 
 void AirMouseManager::start() {
     if (enabled) return;
@@ -164,6 +180,7 @@ void AirMouseManager::start() {
     movement_active = true;
     offset_gx = 0.0f;
     offset_gy = 0.0f;
+    offset_gz = 0.0f;
     smooth_dx = 0.0f;
     smooth_dy = 0.0f;
     accum_x = 0.0f;
@@ -216,26 +233,131 @@ void AirMouseManager::toggleMode() {
     }
 }
 
+static const float kSensLevels[] = {0.5f, 0.8f, 1.0f, 1.3f, 1.6f, 2.0f, 2.5f, 3.2f};
+static const int kNumSensLevels = 8;
+
+static const float kDeadZoneLevels[] = {0.5f, 0.9f, 1.4f, 1.8f, 2.2f, 2.6f, 3.2f, 4.0f};
+static const int kNumDeadZoneLevels = 8;
+
+static const float kAntiDeadLevels[] = {0.0f, 0.3f, 0.6f, 1.0f, 1.5f, 2.0f, 2.6f, 3.4f};
+static const int kNumAntiDeadLevels = 8;
+
+int AirMouseManager::getSensitivityStep() const {
+    int closest = 0;
+    float min_diff = 999.0f;
+    for (int i = 0; i < kNumSensLevels; i++) {
+        float diff = fabsf(sensitivity_scale - kSensLevels[i]);
+        if (diff < min_diff) {
+            min_diff = diff;
+            closest = i;
+        }
+    }
+    return closest;
+}
+
+int AirMouseManager::getSensitivityLevelsCount() const {
+    return kNumSensLevels;
+}
+
+void AirMouseManager::setSensitivityScale(float s) {
+    sensitivity_scale = s;
+    if (sensitivity_scale <= 0.8f) sensitivity = AirMouseSensitivity::SENS_LOW;
+    else if (sensitivity_scale >= 2.0f) sensitivity = AirMouseSensitivity::SENS_HIGH;
+    else sensitivity = AirMouseSensitivity::SENS_MED;
+    savePreferences();
+}
+
+void AirMouseManager::cycleSensitivitySlider(bool up) {
+    int cur = getSensitivityStep();
+    if (up) {
+        cur = (cur + 1) % kNumSensLevels;
+    } else {
+        cur = (cur + kNumSensLevels - 1) % kNumSensLevels;
+    }
+    setSensitivityScale(kSensLevels[cur]);
+}
+
 void AirMouseManager::cycleSensitivity() {
-    if (sensitivity == AirMouseSensitivity::SENS_LOW) sensitivity = AirMouseSensitivity::SENS_MED;
-    else if (sensitivity == AirMouseSensitivity::SENS_MED) sensitivity = AirMouseSensitivity::SENS_HIGH;
-    else sensitivity = AirMouseSensitivity::SENS_LOW;
+    cycleSensitivitySlider(true);
 }
 
 void AirMouseManager::cycleSensitivityUp() {
-    if (sensitivity == AirMouseSensitivity::SENS_LOW) sensitivity = AirMouseSensitivity::SENS_MED;
-    else if (sensitivity == AirMouseSensitivity::SENS_MED) sensitivity = AirMouseSensitivity::SENS_HIGH;
+    cycleSensitivitySlider(true);
 }
 
 void AirMouseManager::cycleSensitivityDown() {
-    if (sensitivity == AirMouseSensitivity::SENS_HIGH) sensitivity = AirMouseSensitivity::SENS_MED;
-    else if (sensitivity == AirMouseSensitivity::SENS_MED) sensitivity = AirMouseSensitivity::SENS_LOW;
+    cycleSensitivitySlider(false);
+}
+
+int AirMouseManager::getDeadZoneStep() const {
+    int closest = 0;
+    float min_diff = 999.0f;
+    for (int i = 0; i < kNumDeadZoneLevels; i++) {
+        float diff = fabsf(dead_zone - kDeadZoneLevels[i]);
+        if (diff < min_diff) {
+            min_diff = diff;
+            closest = i;
+        }
+    }
+    return closest;
+}
+
+int AirMouseManager::getDeadZoneLevelsCount() const {
+    return kNumDeadZoneLevels;
+}
+
+void AirMouseManager::setDeadZone(float dz) {
+    dead_zone = dz;
+    savePreferences();
+}
+
+void AirMouseManager::cycleDeadZone(bool up) {
+    int cur = getDeadZoneStep();
+    if (up) {
+        cur = (cur + 1) % kNumDeadZoneLevels;
+    } else {
+        cur = (cur + kNumDeadZoneLevels - 1) % kNumDeadZoneLevels;
+    }
+    setDeadZone(kDeadZoneLevels[cur]);
+}
+
+int AirMouseManager::getAntiDeadZoneStep() const {
+    int closest = 0;
+    float min_diff = 999.0f;
+    for (int i = 0; i < kNumAntiDeadLevels; i++) {
+        float diff = fabsf(anti_dead_zone - kAntiDeadLevels[i]);
+        if (diff < min_diff) {
+            min_diff = diff;
+            closest = i;
+        }
+    }
+    return closest;
+}
+
+int AirMouseManager::getAntiDeadZoneLevelsCount() const {
+    return kNumAntiDeadLevels;
+}
+
+void AirMouseManager::setAntiDeadZone(float adz) {
+    anti_dead_zone = adz;
+    savePreferences();
+}
+
+void AirMouseManager::cycleAntiDeadZone(bool up) {
+    int cur = getAntiDeadZoneStep();
+    if (up) {
+        cur = (cur + 1) % kNumAntiDeadLevels;
+    } else {
+        cur = (cur + kNumAntiDeadLevels - 1) % kNumAntiDeadLevels;
+    }
+    setAntiDeadZone(kAntiDeadLevels[cur]);
 }
 
 void AirMouseManager::recenter() {
     CalibratedSensorData cal = sensors.getCalData();
     offset_gx = cal.gx;
     offset_gy = cal.gy;
+    offset_gz = cal.gz;
     smooth_dx = 0.0f;
     smooth_dy = 0.0f;
     accum_x = 0.0f;
@@ -304,6 +426,9 @@ void AirMouseManager::scrollDown() {
 }
 
 float AirMouseManager::getSensitivityMultiplier() const {
+    if (sensitivity_scale > 0.01f) {
+        return sensitivity_scale;
+    }
     switch (sensitivity) {
         case AirMouseSensitivity::SENS_LOW:  return 0.6f;
         case AirMouseSensitivity::SENS_MED:  return 1.0f;
@@ -329,9 +454,14 @@ void AirMouseManager::loop() {
     CalibratedSensorData cal = sensors.getCalData();
 
     // Raw calibrated gyro values minus recenter offset
-    // Watch frame: Gyro Y -> horizontal roll/pan, Gyro X -> vertical pitch/tilt
-    float raw_gx = cal.gy - offset_gy;
-    float raw_gy = cal.gx - offset_gx;
+    // Watch frame: Gyro Y -> roll, Gyro X -> pitch/tilt, Gyro Z -> yaw
+    float roll = cal.gy - offset_gy;
+    float pitch = cal.gx - offset_gx;
+    float yaw = -(cal.gz - offset_gz);
+
+    // Combined yaw and roll for intuitive horizontal pointing
+    float raw_gx = combined_yaw_roll ? (roll + yaw) : roll;
+    float raw_gy = pitch;
 
     // Accelerometer Stability & Tremor Fusion:
     // When the watch is resting or user is aiming at a small target, ||accel|| is steady 1.0g
@@ -343,18 +473,20 @@ void AirMouseManager::loop() {
     // Angular velocity magnitude (deg/s)
     float omega = sqrtf(raw_gx * raw_gx + raw_gy * raw_gy);
 
-    // Adaptive deadband:
+    // Adaptive deadband with user dead zone and anti dead zone:
     // If hand is resting / aiming steadily, suppress noise completely
-    const float DEAD_ZONE = 1.8f; // deg/s
-    float dynamic_deadband = DEAD_ZONE;
+    const float DEAD_ZONE = 1.8f; // base reference
+    float active_dead_zone = (dead_zone > 0.01f) ? dead_zone : DEAD_ZONE;
+    float dynamic_deadband = active_dead_zone;
     if (accel_jitter < 0.035f && omega < 4.0f) {
-        dynamic_deadband = DEAD_ZONE + 0.3f; // Extra steady deadband during resting hand
+        dynamic_deadband = active_dead_zone + 0.3f; // Extra steady deadband during resting hand
     }
 
     float gx = 0.0f;
     float gy = 0.0f;
     if (omega > dynamic_deadband) {
-        float scale = (omega - dynamic_deadband) / omega;
+        float effective_omega = (omega - dynamic_deadband) + anti_dead_zone;
+        float scale = effective_omega / omega;
         gx = raw_gx * scale;
         gy = raw_gy * scale;
     }

@@ -69,6 +69,32 @@ public:
     void setSensitivity(AirMouseSensitivity s) { sensitivity = s; }
     void recenter();
 
+    // Slider-like Sensitivity Adjustment
+    float getSensitivityScale() const { return sensitivity_scale; }
+    void setSensitivityScale(float s);
+    void cycleSensitivitySlider(bool up = true);
+    int getSensitivityStep() const;
+    int getSensitivityLevelsCount() const;
+
+    // Dead Zone Adjustment
+    float getDeadZone() const { return dead_zone; }
+    void setDeadZone(float dz);
+    void cycleDeadZone(bool up = true);
+    int getDeadZoneStep() const;
+    int getDeadZoneLevelsCount() const;
+
+    // Anti Dead Zone Adjustment
+    float getAntiDeadZone() const { return anti_dead_zone; }
+    void setAntiDeadZone(float adz);
+    void cycleAntiDeadZone(bool up = true);
+    int getAntiDeadZoneStep() const;
+    int getAntiDeadZoneLevelsCount() const;
+
+    // Combined Yaw and Roll
+    bool getCombinedYawRoll() const { return combined_yaw_roll; }
+    void setCombinedYawRoll(bool enable);
+    void toggleCombinedYawRoll();
+
     // Axis swapping & inversion
     bool getSwapXY() const { return swap_xy; }
     bool getInvX() const { return inv_x; }
@@ -99,6 +125,10 @@ private:
     bool movement_active;
     AirMouseMode mode;
     AirMouseSensitivity sensitivity;
+    float sensitivity_scale;
+    float dead_zone;
+    float anti_dead_zone;
+    bool combined_yaw_roll;
 
     // Axis Mapping
     bool swap_xy;
@@ -114,6 +144,7 @@ private:
     // Recenter offsets (in gyro deg/s)
     float offset_gx;
     float offset_gy;
+    float offset_gz;
 
     // Anti-jitter filter state (1-Euro dynamic velocity model)
     float smooth_dx;

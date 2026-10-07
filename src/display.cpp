@@ -1419,41 +1419,50 @@ void DisplayManager::drawAppAirMouse() {
     String mode_str = "MODE: ";
     mode_str += (airMouse.getMode() == AirMouseMode::POINTER) ? "POINTER" : "SCROLL";
 
-    String sens_str = "SENS: ";
-    AirMouseSensitivity sens = airMouse.getSensitivity();
-    if (sens == AirMouseSensitivity::SENS_LOW) sens_str += "LOW";
-    else if (sens == AirMouseSensitivity::SENS_MED) sens_str += "MED";
-    else sens_str += "HIGH";
+    char sens_str[32];
+    snprintf(sens_str, sizeof(sens_str), "SENS: %.1fx", airMouse.getSensitivityScale());
 
     String move_str = "MOVE: ";
     move_str += airMouse.isMovementActive() ? "ACTIVE" : "PAUSED";
 
     oled.drawStr(4, 21, ble_str.c_str());
     oled.drawStr(4, 32, mode_str.c_str());
-    oled.drawStr(4, 43, sens_str.c_str());
+    oled.drawStr(4, 43, sens_str);
     oled.drawStr(4, 54, move_str.c_str());
 
     oled.setFont(u8g2_font_4x6_tr);
     if (!airMouse.isEnabled() || st == AirMouseBleStatus::DISCONNECTED) {
-        oled.drawStr(4, 63, "OK:RECONNECT 2xC:EXIT");
+        oled.drawStr(4, 63, "OK:RECONNECT L-C:EXIT");
     } else {
-        oled.drawStr(4, 63, "U:L D:R OK:BK L-C:PAUS");
+        oled.drawStr(4, 63, "U:L D:R OK:BK L-OK:PAUS"); // OK:BK L-C:PAUS
     }
 }
 
 void DisplayManager::drawAppMouseSettings() {
+    bool in_air_mouse = (ui.getImuSubApp() == Imu6500SubApp::SUBAPP_AIRMOUSE);
+
     oled.setFont(u8g2_font_5x7_tr);
-    oled.drawStr(2, 7, "MOUSE SETTINGS");
+    if (in_air_mouse) {
+        oled.drawStr(2, 7, "MOUSE [PAUSED]");
+    } else {
+        oled.drawStr(2, 7, "MOUSE SETTINGS");
+    }
     oled.drawLine(0, 9, 128, 9);
 
     int sel = ui.getMouseSettingsSelection();
-
-    AirMouseSensitivity sens = airMouse.getSensitivity();
-    const char* sens_str = (sens == AirMouseSensitivity::SENS_LOW) ? "LOW" :
-                           (sens == AirMouseSensitivity::SENS_MED) ? "MED" : "HIGH";
+    int total_items = in_air_mouse ? 8 : 9;
 
     char sens_buf[32];
-    snprintf(sens_buf, sizeof(sens_buf), "Sens: %s", sens_str);
+    snprintf(sens_buf, sizeof(sens_buf), "Sens: %.1fx", airMouse.getSensitivityScale());
+
+    char dead_buf[32];
+    snprintf(dead_buf, sizeof(dead_buf), "Dead: %.1f\xb0", airMouse.getDeadZone());
+
+    char anti_buf[32];
+    snprintf(anti_buf, sizeof(anti_buf), "Anti: %.1f\xb0", airMouse.getAntiDeadZone());
+
+    char yr_buf[32];
+    snprintf(yr_buf, sizeof(yr_buf), "Yaw+Roll: %s", airMouse.getCombinedYawRoll() ? "ON" : "OFF");
 
     char swap_buf[32];
     snprintf(swap_buf, sizeof(swap_buf), "Swap X/Y: %s", airMouse.getSwapXY() ? "ON" : "OFF");
@@ -1464,8 +1473,11 @@ void DisplayManager::drawAppMouseSettings() {
     char invy_buf[32];
     snprintf(invy_buf, sizeof(invy_buf), "Invert Y: %s", airMouse.getInvY() ? "ON" : "OFF");
 
-    const char* items[6] = {
+    const char* items[9] = {
         sens_buf,
+        dead_buf,
+        anti_buf,
+        yr_buf,
         swap_buf,
         invx_buf,
         invy_buf,
@@ -1475,20 +1487,69 @@ void DisplayManager::drawAppMouseSettings() {
 
     int offset = (sel >= 4) ? sel - 3 : 0;
     oled.setFont(u8g2_font_6x10_tr);
-    for (int i = offset; i < offset + 4 && i < 6; i++) {
+    for (int i = offset; i < offset + 4 && i < total_items; i++) {
         int y = 22 + ((i - offset) * 10);
         if (i == sel) {
             oled.drawBox(2, y - 8, 120, 10);
             oled.setDrawColor(0);
-            oled.drawStr(6, y, items[i]);
+            oled.drawStr(4, y, items[i]);
+            if (i == 0) {
+                int step = airMouse.getSensitivityStep();
+                int max_s = airMouse.getSensitivityLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            } else if (i == 1) {
+                int step = airMouse.getDeadZoneStep();
+                int max_s = airMouse.getDeadZoneLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            } else if (i == 2) {
+                int step = airMouse.getAntiDeadZoneStep();
+                int max_s = airMouse.getAntiDeadZoneLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            }
             oled.setDrawColor(1);
         } else {
-            oled.drawStr(6, y, items[i]);
+            oled.drawStr(4, y, items[i]);
+            if (i == 0) {
+                int step = airMouse.getSensitivityStep();
+                int max_s = airMouse.getSensitivityLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            } else if (i == 1) {
+                int step = airMouse.getDeadZoneStep();
+                int max_s = airMouse.getDeadZoneLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            } else if (i == 2) {
+                int step = airMouse.getAntiDeadZoneStep();
+                int max_s = airMouse.getAntiDeadZoneLevelsCount() - 1;
+                oled.drawFrame(74, y - 7, 44, 6);
+                int bar_w = ((step + 1) * 40) / (max_s + 1);
+                oled.drawBox(76, y - 5, bar_w, 2);
+            }
         }
     }
 
+    if (total_items > 4) {
+        int scroll_h = 36;
+        int scroll_y = 13 + ((float)offset / (total_items - 4)) * (scroll_h - 10);
+        oled.drawFrame(124, 13, 3, scroll_h);
+        oled.drawBox(124, scroll_y, 3, 10);
+    }
+
     oled.setFont(u8g2_font_4x6_tr);
-    oled.drawStr(4, 63, "OK:TOGGLE CANCEL:BACK");
+    if (in_air_mouse) {
+        oled.drawStr(4, 63, "OK:ADJ L-OK:RESUM L-C:EXT");
+    } else {
+        oled.drawStr(4, 63, "OK:TOGGLE CANCEL:BACK");
+    }
 }
 
 void DisplayManager::drawAppMotion() {
@@ -1496,7 +1557,11 @@ void DisplayManager::drawAppMotion() {
     if (sub == Imu6500SubApp::SUBAPP_MENU) {
         drawAppMotionMenu();
     } else if (sub == Imu6500SubApp::SUBAPP_AIRMOUSE) {
-        drawAppAirMouse();
+        if (airMouse.isMovementPaused()) {
+            drawAppMouseSettings();
+        } else {
+            drawAppAirMouse();
+        }
     } else if (sub == Imu6500SubApp::SUBAPP_MOUSE_SETTINGS) {
         drawAppMouseSettings();
     } else {
