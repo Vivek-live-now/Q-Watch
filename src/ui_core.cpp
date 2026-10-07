@@ -106,6 +106,9 @@ UICore::UICore() :
 }
 
 void UICore::setIrActiveRemotePath(const String& path) {
+    if (ir_file_list.empty()) {
+        ir_file_list = irEngine.listIrFiles();
+    }
     irEngine.parseIrFile(path, ir_active_remote);
     ir_selection = 0;
     ir_scroll_offset = 0;
@@ -377,6 +380,14 @@ void UICore::loop() {
                 current_state = UIState::MAIN_MENU;
                 menu_selection = 6;
                 menu_scroll_offset = 4;
+            } else if (ir_submenu == IrSubmenu::REMOTE_VIEW) {
+                ir_submenu = IrSubmenu::IR_FILES;
+                ir_selection = 0;
+                ir_scroll_offset = 0;
+            } else if (ir_submenu == IrSubmenu::IR_FILES || ir_submenu == IrSubmenu::RECENT || ir_submenu == IrSubmenu::FAVORITES) {
+                ir_submenu = IrSubmenu::CUSTOM_IR;
+                ir_selection = 0;
+                ir_scroll_offset = 0;
             } else {
                 ir_submenu = IrSubmenu::MAIN;
                 ir_selection = 0;
@@ -2054,6 +2065,19 @@ void UICore::handleHealthInput() {
             health_page = 1;
             max30102Manager.disableSensor();
             needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            if (!max30102Manager.isAvailable()) {
+                if (max30102Manager.retryInit()) {
+                    showToast("[MAX30102 CONNECTED]", 1200);
+                } else {
+                    showToast("[PROBE FAILED: NACK]", 1200);
+                }
+            } else {
+                max30102Manager.enableSensor();
+                showToast("[RE-INITIALIZING]", 1000);
+            }
+            needs_redraw = true;
         }
     } else {
         if (up_evt == BTN_EVT_SHORT_PRESS) {
@@ -3343,12 +3367,21 @@ void UICore::handleAirMouseInput() {
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
 
-    // Long press CANCEL exits Air Mouse and tears down BLE
-    if (cancel_evt == BTN_EVT_LONG_PRESS) {
+    // Control button (CANCEL) double-tap: Exit Air Mouse and tear down BLE
+    if (cancel_evt == BTN_EVT_DOUBLE_TAP) {
         soundManager.playNavBack();
         airMouse.stop();
         imu_subapp = Imu6500SubApp::SUBAPP_MENU;
-        showToast("[AIR MOUSE STOPPED]", 1000);
+        showToast("[AIR MOUSE EXIT]", 1000);
+        needs_redraw = true;
+        return;
+    }
+
+    // Control button (CANCEL) long tap: Pause/Freeze mouse pointer movement
+    if (cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavSelect();
+        airMouse.toggleMovementPause();
+        showToast(airMouse.isMovementActive() ? "[POINTER RESUMED]" : "[POINTER PAUSED]", 1000);
         needs_redraw = true;
         return;
     }
@@ -3362,34 +3395,26 @@ void UICore::handleAirMouseInput() {
         return;
     }
 
-    // OK click: reconnect BLE if disconnected, or toggle movement pause/active
-    if (ok_evt == BTN_EVT_SHORT_PRESS) {
-        soundManager.playNavSelect();
-        if (!airMouse.isEnabled() || airMouse.getBleStatus() == AirMouseBleStatus::DISCONNECTED) {
-            if (airMouse.isEnabled()) airMouse.stop();
-            airMouse.start();
-            showToast("[BLE ADVERTISING]", 1000);
-        } else {
-            airMouse.toggleMovement();
-            showToast(airMouse.isMovementActive() ? "[POINTER RESUMED]" : "[POINTER PAUSED]", 1000);
-        }
-        needs_redraw = true;
-        return;
-    }
-
     // Mode-specific button controls:
     if (airMouse.getMode() == AirMouseMode::POINTER) {
-        if (up_evt == BTN_EVT_SHORT_PRESS) {
+        // Continuous Button Hold (Full mouse drag & drop, text select capabilities):
+        // UP: Left click & hold (Button 1: 0x01)
+        // DN: Right click & hold (Button 2: 0x02)
+        // OK: Back click & hold (Button 4: 0x08)
+        bool up_held = btnManager.isPressed(BTN_ID_UP);
+        bool dn_held = btnManager.isPressed(BTN_ID_DN);
+        bool ok_held = btnManager.isPressed(BTN_ID_OK);
+
+        airMouse.setButton(MOUSE_BUTTON_LEFT, up_held);
+        airMouse.setButton(MOUSE_BUTTON_RIGHT, dn_held);
+        airMouse.setButton(MOUSE_BUTTON_BACK, ok_held);
+
+        if (up_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
             soundManager.playNavSelect();
-            airMouse.clickLeft();
-            needs_redraw = true;
-        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
-            soundManager.playNavSelect();
-            airMouse.clickRight();
             needs_redraw = true;
         }
     } else {
-        // SCROLL Mode: UP scrolls up, DOWN scrolls down
+        // SCROLL Mode: UP scrolls up, DOWN scrolls down, OK clicks Back
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
             soundManager.playNavMove();
             airMouse.scrollUp();
@@ -3397,6 +3422,10 @@ void UICore::handleAirMouseInput() {
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             soundManager.playNavMove();
             airMouse.scrollDown();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            airMouse.clickBack();
             needs_redraw = true;
         }
     }
@@ -3422,7 +3451,7 @@ void UICore::handleMouseSettingsInput() {
         needs_redraw = true;
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         mouse_settings_selection++;
-        if (mouse_settings_selection > 2) mouse_settings_selection = 2;
+        if (mouse_settings_selection > 5) mouse_settings_selection = 5;
         soundManager.playNavMove();
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
@@ -3430,9 +3459,18 @@ void UICore::handleMouseSettingsInput() {
         if (mouse_settings_selection == 0) {
             airMouse.cycleSensitivity();
         } else if (mouse_settings_selection == 1) {
+            airMouse.toggleSwapXY();
+            showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
+        } else if (mouse_settings_selection == 2) {
+            airMouse.toggleInvX();
+            showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
+        } else if (mouse_settings_selection == 3) {
+            airMouse.toggleInvY();
+            showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
+        } else if (mouse_settings_selection == 4) {
             airMouse.recenter();
             showToast("[GYRO RECENTERED]", 1000);
-        } else if (mouse_settings_selection == 2) {
+        } else if (mouse_settings_selection == 5) {
             imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
             if (!airMouse.isEnabled()) airMouse.start();
         }

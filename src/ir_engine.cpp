@@ -627,11 +627,27 @@ bool IREngine::appendButtonToIrFile(const String& path, const IrButton& btn) {
 std::vector<String> IREngine::listIrFiles() {
     std::vector<String> files;
     FileInfo entries[32];
-    size_t count = fileManager.listDir("/ir", entries, 32);
 
-    for (size_t i = 0; i < count; i++) {
+    // Check /ir directory
+    if (fileManager.exists("/ir")) {
+        size_t count = fileManager.listDir("/ir", entries, 32);
+        for (size_t i = 0; i < count; i++) {
+            if (!entries[i].isDir && entries[i].name.endsWith(".ir")) {
+                files.push_back("/ir/" + entries[i].name);
+            }
+        }
+    }
+
+    // Also check root / directory
+    size_t count_root = fileManager.listDir("/", entries, 32);
+    for (size_t i = 0; i < count_root; i++) {
         if (!entries[i].isDir && entries[i].name.endsWith(".ir")) {
-            files.push_back("/ir/" + entries[i].name);
+            String path = "/" + entries[i].name;
+            bool exists_in_list = false;
+            for (const auto& f : files) {
+                if (f == path) { exists_in_list = true; break; }
+            }
+            if (!exists_in_list) files.push_back(path);
         }
     }
     return files;

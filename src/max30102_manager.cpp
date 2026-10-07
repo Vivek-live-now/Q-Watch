@@ -41,22 +41,58 @@ MAX30102Manager::MAX30102Manager() :
 }
 
 void MAX30102Manager::begin() {
-    // Sensor shared I2C bus setup handled in SensorManager (400kHz Wire)
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(10);
+
+    // Direct probe of 0x57 address
+    Wire.beginTransmission(0x57);
+    bool ack_57 = (Wire.endTransmission() == 0);
+
     if (particleSensor.begin(Wire, I2C_SPEED_FAST)) {
         sensor_ok = true;
-        Serial.println("MAX30102 sensor detected at I2C address 0x57.");
-        disableSensor();
+        Serial.println("MAX30102 sensor detected at I2C address 0x57 (Fast 400kHz).");
+    } else if (ack_57) {
+        delay(10);
+        if (particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
+            sensor_ok = true;
+            Serial.println("MAX30102 sensor detected at I2C address 0x57 (Standard 100kHz).");
+        }
     } else {
         sensor_ok = false;
-        Serial.println("MAX30102 sensor not found on I2C bus.");
+        Serial.println("MAX30102 sensor not found on I2C bus (0x57 NACK).");
     }
+
+    // CRITICAL: Reassert custom ESP32 pins (Wire.begin(15, 16)) because SparkFun begin() calls _i2cPort->begin()
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(10);
+
+    if (sensor_ok) {
+        disableSensor();
+    }
+}
+
+bool MAX30102Manager::retryInit() {
+    begin();
+    if (sensor_ok) {
+        enableSensor();
+        return true;
+    }
+    return false;
 }
 
 void MAX30102Manager::enableSensor() {
     if (!sensor_ok || sensor_enabled) return;
 
-    // Set configuration for high signal-to-noise ratio:
-    // ledBrightness = 60 (0x3C, ~12mA): Strong optical penetration for prominent AC pulse
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(10);
+
+    particleSensor.wakeUp();
+
+    // Configuration for prominent AC pulse & stable optical reading:
+    // ledBrightness = 50 (~10mA): Optimal signal without photodiode saturation
     // sampleAverage = 4: 4x hardware oversampling
     // ledMode = 2: Dual Red + IR LEDs
     // sampleRate = 100: 100Hz / 4 = 25 sps effective rate
@@ -70,7 +106,14 @@ void MAX30102Manager::enableSensor() {
     int adcRange = 4096;
 
     particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+    particleSensor.clearFIFO();
     particleSensor.enableDIETEMPRDY();
+
+    // Reassert custom pins
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(10);
+
     sensor_enabled = true;
     resetBeatState();
     readTemperature();
@@ -152,8 +195,8 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
     current_metrics.ir_value = ir;
 
     // Hysteresis finger detection:
-    // Requires IR > 25000 and RED > 10000 to acquire; releases when IR drops below 20000.
-    bool finger_present = current_metrics.finger_detected ? (ir > 20000) : (ir > 25000 && red > 10000);
+    // Requires IR > 10000 to acquire; releases when IR drops below 7000.
+    bool finger_present = current_metrics.finger_detected ? (ir > 7000) : (ir > 10000);
 
     if (!finger_present) {
         if (current_metrics.finger_detected) {
@@ -164,13 +207,14 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
         }
         ppg_buffer[ppg_head] = 128;
         ppg_head = (ppg_head + 1) % PPG_BUF_LEN;
+        prev_filtered_ac = 0;
         return;
     }
 
     current_metrics.finger_detected = true;
 
     // Slow baseline DC tracking (~2.5 sec time constant at 25Hz)
-    if (ir_dc_filter == 50000 && ir > 20000) {
+    if (ir_dc_filter == 50000 && ir > 7000) {
         ir_dc_filter = ir;
         red_dc_filter = red;
     } else {
@@ -235,37 +279,32 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
             cycle_peak_time = now;
         }
 
-        // Peak confirmed when signal drops below 65% of peak or falls below threshold
-        if (filtered_ac < (cycle_peak * 65) / 100 || filtered_ac < threshold) {
+        // Peak confirmed when signal drops below 60% of peak or falls below threshold
+        if (filtered_ac < (cycle_peak * 60) / 100 || filtered_ac < threshold) {
             pulse_rising = false;
 
             if (last_beat_time > 0) {
                 uint32_t delta_ms = cycle_peak_time - last_beat_time;
-                // Physiological human heart rate: 40 BPM (1500ms) to 210 BPM (285ms)
-                if (delta_ms >= 285 && delta_ms <= 1500) {
+                // Physiological human heart rate: 40 BPM (1500ms) to 200 BPM (300ms)
+                // Refractory period: Ignore reflections / dicrotic notch within 300ms (delta_ms < 300 rejected)
+                if (delta_ms >= 300 && delta_ms <= 1600) {
                     float instant_bpm = 60000.0f / (float)delta_ms;
 
                     if (bpm_history_cnt == 0) {
-                        for (int k = 0; k < BEAT_HIST_SIZE; k++) bpm_history[k] = instant_bpm;
+                        bpm_history[0] = instant_bpm;
                         bpm_history_cnt = 1;
                         bpm_history_idx = 1;
                     } else {
-                        float cur_avg = 0;
-                        for (int k = 0; k < bpm_history_cnt; k++) cur_avg += bpm_history[k];
-                        cur_avg /= bpm_history_cnt;
-
-                        // Reject motion glitches (> 35 BPM sudden jump) once seeded
-                        if (fabsf(instant_bpm - cur_avg) <= 35.0f || bpm_history_cnt < 2) {
-                            bpm_history[bpm_history_idx] = instant_bpm;
-                            bpm_history_idx = (bpm_history_idx + 1) % BEAT_HIST_SIZE;
-                            if (bpm_history_cnt < BEAT_HIST_SIZE) bpm_history_cnt++;
-                        }
+                        bpm_history[bpm_history_idx] = instant_bpm;
+                        bpm_history_idx = (bpm_history_idx + 1) % BEAT_HIST_SIZE;
+                        if (bpm_history_cnt < BEAT_HIST_SIZE) bpm_history_cnt++;
                     }
 
                     float final_bpm = 0;
                     for (int k = 0; k < bpm_history_cnt; k++) final_bpm += bpm_history[k];
                     final_bpm /= bpm_history_cnt;
                     current_metrics.bpm = (int)(final_bpm + 0.5f);
+                    last_beat_time = cycle_peak_time;
 
                     // SpO2 calculation for completed beat cycle
                     if (cycle_samples >= 8) {
@@ -274,16 +313,15 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
                         uint32_t ir_dc = (uint32_t)(cycle_ir_dc_sum / cycle_samples);
                         uint32_t red_dc = (uint32_t)(cycle_red_dc_sum / cycle_samples);
 
-                        if (ir_ac >= 20 && red_ac >= 20 && ir_dc > 10000 && red_dc > 10000) {
+                        if (ir_ac >= 15 && red_ac >= 15 && ir_dc > 7000 && red_dc > 7000) {
                             float r_red = (float)red_ac / (float)red_dc;
                             float r_ir = (float)ir_ac / (float)ir_dc;
                             if (r_ir > 0.00001f) {
                                 float R = r_red / r_ir;
-                                // Clinical quadratic approximation (Maxim Integrated standard table fit)
                                 float calc_spo2 = -45.060f * (R * R) + 30.354f * R + 94.845f;
                                 if (calc_spo2 >= 70.0f && calc_spo2 <= 100.0f) {
                                     if (spo2_history_cnt == 0) {
-                                        for (int k = 0; k < BEAT_HIST_SIZE; k++) spo2_history[k] = calc_spo2;
+                                        spo2_history[0] = calc_spo2;
                                         spo2_history_cnt = 1;
                                         spo2_history_idx = 1;
                                     } else {
@@ -299,6 +337,15 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
                                 }
                             }
                         }
+                    }
+                } else if (delta_ms > 1600) {
+                    bpm_history_cnt = 0;
+                    bpm_history_idx = 0;
+                    last_beat_time = cycle_peak_time;
+                }
+            } else {
+                last_beat_time = cycle_peak_time;
+            }
                     }
 
                     // Reset cycle accumulators for next beat

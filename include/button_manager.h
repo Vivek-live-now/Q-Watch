@@ -40,6 +40,7 @@ public:
     ComboEvent getComboEvent();
     void injectEvent(ButtonID id, ButtonEvent evt);
     bool isWokenFromSleep() const { return woken_from_sleep; }
+    bool isPressed(ButtonID id) const;
 
 private:
     struct ButtonState {

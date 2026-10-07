@@ -194,6 +194,7 @@ size_t FileManager::listDir(const String& path, FileInfo* results, size_t maxRes
 
     File root = LittleFS.open(normalizePath(path));
     if (!root || !root.isDirectory()) {
+        if (root) root.close();
         return 0;
     }
 
@@ -206,8 +207,11 @@ size_t FileManager::listDir(const String& path, FileInfo* results, size_t maxRes
         results[count].isDir = file.isDirectory();
 
         count++;
+        file.close();
         file = root.openNextFile();
     }
+    if (file) file.close();
+    root.close();
 
     return count;
 }

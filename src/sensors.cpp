@@ -7,29 +7,61 @@
 SensorManager sensors;
 
 // MPU-6500 Addresses & Registers
-#define MPU6500_ADDR        0x68
-#define MPU6500_PWR_MGMT_1  0x6B
-#define MPU6500_ACCEL_XOUT_H 0x3B
-#define MPU6500_GYRO_CONFIG 0x1B
-#define MPU6500_ACCEL_CONFIG 0x1C
+#define MPU6500_ADDR_PRIMARY   0x68
+#define MPU6500_ADDR_SECONDARY 0x69
+#define MPU6500_SMPLRT_DIV     0x19
+#define MPU6500_CONFIG         0x1A
+#define MPU6500_GYRO_CONFIG    0x1B
+#define MPU6500_ACCEL_CONFIG   0x1C
+#define MPU6500_ACCEL_CONFIG_2 0x1D
+#define MPU6500_INT_PIN_CFG    0x37
+#define MPU6500_INT_ENABLE     0x38
+#define MPU6500_ACCEL_XOUT_H   0x3B
+#define MPU6500_PWR_MGMT_1     0x6B
+#define MPU6500_PWR_MGMT_2     0x6C
+#define MPU6500_WHO_AM_I       0x75
+#define MPU6500_ADDR           0x68
 
 // QMC5883P Addresses & Registers (0x2C)
-#define QMC5883P_ADDR       0x2C
-#define QMC5883P_DATA_START 0x01
-#define QMC5883P_MODE       0x0A
-#define QMC5883P_CONFIG     0x0B
+#define QMC5883P_ADDR          0x2C
+#define QMC5883P_DATA_START    0x01
+#define QMC5883P_MODE          0x0A
+#define QMC5883P_CONFIG        0x0B
+
+// QMC5883L Addresses & Registers (0x0D)
+#define QMC5883L_ADDR          0x0D
+#define QMC5883L_DATA_START    0x00
+#define QMC5883L_STATUS        0x06
+#define QMC5883L_CONFIG_1      0x09
+#define QMC5883L_CONFIG_2      0x0A
+#define QMC5883L_SET_RESET     0x0B
+
+// HMC5883L Addresses & Registers (0x1E)
+#define HMC5883L_ADDR          0x1E
+#define HMC5883L_CONFIG_A      0x00
+#define HMC5883L_CONFIG_B      0x01
+#define HMC5883L_MODE          0x02
+#define HMC5883L_DATA_START    0x03
 
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
     offsets.accel_bias_x = 0; offsets.accel_bias_y = 0; offsets.accel_bias_z = 0;
     offsets.pitch_offset = 0; offsets.roll_offset = 0;
     offsets.swap_xy = false; offsets.inv_x = false; offsets.inv_y = false; offsets.inv_z = false;
+}
 
+const char* SensorManager::getMagChipName() const {
+    switch (mag_type) {
+        case MagChipType::QMC5883P: return "QMC5883P";
+        case MagChipType::QMC5883L: return "QMC5883L";
+        case MagChipType::HMC5883L: return "HMC5883L";
+        default: return "NONE";
+    }
 }
 
 uint8_t SensorManager::readRegister(uint8_t deviceAddr, uint8_t regAddr) {
@@ -258,28 +290,98 @@ void SensorManager::begin() {
         Serial.println("BME280 not detected at 0x76.");
     }
 
-    // MPU-6500 Init
-    Wire.beginTransmission(MPU6500_ADDR);
-    if (Wire.endTransmission() == 0) {
-        writeRegister(MPU6500_ADDR, MPU6500_PWR_MGMT_1, 0x00); // Wake
+    // MPU-6500 / MPU-9250 / MPU-6050 Init
+    uint8_t mpu_addrs[] = {MPU6500_ADDR_PRIMARY, MPU6500_ADDR_SECONDARY};
+    mpu_ok = false;
+    for (uint8_t addr : mpu_addrs) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            mpu_i2c_addr = addr;
+            mpu_ok = true;
+            break;
+        }
+    }
+
+    if (mpu_ok) {
+        // Reset device
+        writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x80);
+        delay(30);
+
+        // Wake and auto-select optimal clock source (PLL with gyro reference)
+        writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x01);
         delay(10);
-        writeRegister(MPU6500_ADDR, MPU6500_GYRO_CONFIG, 0x18); // 2000dps
-        writeRegister(MPU6500_ADDR, MPU6500_ACCEL_CONFIG, 0x10); // 8G
-        mpu_ok = true;
-        Serial.println("MPU-6500 Ready.");
+        writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_2, 0x00); // Enable all 6 axes
+
+        // Hardware DLPF: Gyro 42Hz filter (delay 4.8ms, 1kHz Fs, DLPF_CFG = 3, 42 Hz)
+        writeRegister(mpu_i2c_addr, MPU6500_CONFIG, 0x03);
+
+        // Hardware DLPF: Accel 44.8Hz filter (delay 4.88ms, 1kHz Fs, A_DLPF_CFG = 3, 44.8 Hz)
+        writeRegister(mpu_i2c_addr, MPU6500_ACCEL_CONFIG_2, 0x03);
+
+        // Sample Rate Divider: 1000Hz / (1 + 4) = 200 Hz
+        writeRegister(mpu_i2c_addr, MPU6500_SMPLRT_DIV, 0x04);
+
+        // Ranges: Gyro ±2000 dps (0x18), Accel ±8g (0x10)
+        writeRegister(mpu_i2c_addr, MPU6500_GYRO_CONFIG, 0x18);
+        writeRegister(mpu_i2c_addr, MPU6500_ACCEL_CONFIG, 0x10);
+
+        uint8_t who = readRegister(mpu_i2c_addr, MPU6500_WHO_AM_I);
+        Serial.printf("MPU Ready at 0x%02X (WHO_AM_I: 0x%02X, 42Hz DLPF enabled).\n", mpu_i2c_addr, who);
 
         // Perform Gyro Zero-Rate Calibration
         calibrateGyro();
+    } else {
+        Serial.println("MPU not detected on 0x68 or 0x69.");
     }
 
-    // QMC5883P Init
+    // Magnetometer Multi-Chip Auto-Detection (QMC5883P: 0x2C, QMC5883L: 0x0D, HMC5883L: 0x1E)
+    mag_ok = false;
+    mag_type = MagChipType::NONE;
+
+    // 1. Try QMC5883P (0x2C)
     Wire.beginTransmission(QMC5883P_ADDR);
     if (Wire.endTransmission() == 0) {
-        writeRegister(QMC5883P_ADDR, QMC5883P_MODE, 0xCF);   // Continuous, 200Hz
+        mag_i2c_addr = QMC5883P_ADDR;
+        mag_type = MagChipType::QMC5883P;
+        writeRegister(mag_i2c_addr, QMC5883P_CONFIG, 0x08); // Set/Reset, 8G
         delay(10);
-        writeRegister(QMC5883P_ADDR, QMC5883P_CONFIG, 0x08); // Set/Reset, 8G
+        writeRegister(mag_i2c_addr, QMC5883P_MODE, 0xCF);   // Continuous, 200Hz, 8G, OSR=512
         mag_ok = true;
-        Serial.println("QMC5883P Ready.");
+        Serial.println("QMC5883P Magnetometer Ready at 0x2C.");
+    }
+
+    // 2. Try QMC5883L (0x0D)
+    if (!mag_ok) {
+        Wire.beginTransmission(QMC5883L_ADDR);
+        if (Wire.endTransmission() == 0) {
+            mag_i2c_addr = QMC5883L_ADDR;
+            mag_type = MagChipType::QMC5883L;
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_2, 0x80); // Soft reset
+            delay(10);
+            writeRegister(mag_i2c_addr, QMC5883L_SET_RESET, 0x01); // SET/RESET period
+            delay(5);
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1D); // Continuous, 200Hz, 8G, OSR=512
+            mag_ok = true;
+            Serial.println("QMC5883L Magnetometer Ready at 0x0D.");
+        }
+    }
+
+    // 3. Try HMC5883L (0x1E)
+    if (!mag_ok) {
+        Wire.beginTransmission(HMC5883L_ADDR);
+        if (Wire.endTransmission() == 0) {
+            mag_i2c_addr = HMC5883L_ADDR;
+            mag_type = MagChipType::HMC5883L;
+            writeRegister(mag_i2c_addr, HMC5883L_CONFIG_A, 0x78); // 8 samples average, 75Hz
+            writeRegister(mag_i2c_addr, HMC5883L_CONFIG_B, 0x20); // Gain 1.3 Gauss
+            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x00);     // Continuous measurement
+            mag_ok = true;
+            Serial.println("HMC5883L Magnetometer Ready at 0x1E.");
+        }
+    }
+
+    if (!mag_ok) {
+        Serial.println("No Magnetometer detected at 0x2C, 0x0D, or 0x1E.");
     }
 }
 
@@ -438,10 +540,10 @@ void SensorManager::updateBmeHistory() {
 
 void SensorManager::readMpu() {
     if (!mpu_ok) return;
-    Wire.beginTransmission(MPU6500_ADDR);
+    Wire.beginTransmission(mpu_i2c_addr);
     Wire.write(MPU6500_ACCEL_XOUT_H);
     Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)MPU6500_ADDR, (uint8_t)14);
+    Wire.requestFrom((uint8_t)mpu_i2c_addr, (uint8_t)14);
 
     if (Wire.available() == 14) {
         raw_data.ax = (Wire.read() << 8) | Wire.read();
@@ -456,19 +558,39 @@ void SensorManager::readMpu() {
 
 void SensorManager::readMag() {
     if (!mag_ok) return;
-    Wire.beginTransmission(QMC5883P_ADDR);
-    Wire.write(QMC5883P_DATA_START);
-    Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)QMC5883P_ADDR, (uint8_t)6);
 
-    if (Wire.available() == 6) {
-        uint8_t xl = Wire.read(); uint8_t xh = Wire.read();
-        uint8_t yl = Wire.read(); uint8_t yh = Wire.read();
-        uint8_t zl = Wire.read(); uint8_t zh = Wire.read();
+    if (mag_type == MagChipType::QMC5883P || mag_type == MagChipType::QMC5883L) {
+        uint8_t start_reg = (mag_type == MagChipType::QMC5883P) ? QMC5883P_DATA_START : QMC5883L_DATA_START;
+        Wire.beginTransmission(mag_i2c_addr);
+        Wire.write(start_reg);
+        Wire.endTransmission(false);
+        Wire.requestFrom((uint8_t)mag_i2c_addr, (uint8_t)6);
 
-        raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
-        raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
-        raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
+        if (Wire.available() == 6) {
+            uint8_t xl = Wire.read(); uint8_t xh = Wire.read();
+            uint8_t yl = Wire.read(); uint8_t yh = Wire.read();
+            uint8_t zl = Wire.read(); uint8_t zh = Wire.read();
+
+            raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
+            raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
+            raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
+        }
+    } else if (mag_type == MagChipType::HMC5883L) {
+        Wire.beginTransmission(mag_i2c_addr);
+        Wire.write(HMC5883L_DATA_START);
+        Wire.endTransmission(false);
+        Wire.requestFrom((uint8_t)mag_i2c_addr, (uint8_t)6);
+
+        if (Wire.available() == 6) {
+            // HMC5883L: X_MSB, X_LSB, Z_MSB, Z_LSB, Y_MSB, Y_LSB
+            uint8_t xh = Wire.read(); uint8_t xl = Wire.read();
+            uint8_t zh = Wire.read(); uint8_t zl = Wire.read();
+            uint8_t yh = Wire.read(); uint8_t yl = Wire.read();
+
+            raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
+            raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
+            raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
+        }
     }
 }
 
@@ -705,10 +827,10 @@ void SensorManager::computeEulerAngles() {
         float gy = (a_norm > 1e-4f) ? (ay / a_norm) : 0.0f;
         float gz = (a_norm > 1e-4f) ? (az / a_norm) : 1.0f;
 
-        // Forward reference vector: +X in Flat Mode, +Z in Tilted Mode (facing horizon)
-        float fx = tilted_z_mode ? 0.0f : 1.0f;
-        float fy = 0.0f;
-        float fz = tilted_z_mode ? 1.0f : 0.0f;
+        // Forward reference vector: +Y is 12 o'clock (top edge of watch face)
+        float fx = 0.0f;
+        float fy = 1.0f;
+        float fz = 0.0f;
 
         // Project forward reference onto horizontal plane: f_h = f - (f . g) g
         float f_dot_g = fx * gx + fy * gy + fz * gz;
@@ -725,10 +847,10 @@ void SensorManager::computeEulerAngles() {
             fh_x = fx; fh_y = fy; fh_z = fz;
         }
 
-        // Horizontal Right unit vector: r_h = g x f_h
-        float rh_x = gy * fh_z - gz * fh_y;
-        float rh_y = gz * fh_x - gx * fh_z;
-        float rh_z = gx * fh_y - gy * fh_x;
+        // Horizontal Right unit vector: r_h = f_h x g
+        float rh_x = fh_y * gz - fh_z * gy;
+        float rh_y = fh_z * gx - fh_x * gz;
+        float rh_z = fh_x * gy - fh_y * gx;
 
         // Projected horizontal magnetic components
         float X_h = mx * fh_x + my * fh_y + mz * fh_z;
@@ -874,26 +996,26 @@ OrientationData SensorManager::getOrientation() const {
 void SensorManager::setupMpuInterrupt() {
     if (!mpu_ok) return;
     // Configure INT pin: Active Low (bit 7 = 1), Open Drain (bit 6 = 1), Latch until cleared (bit 5 = 1), Clear on any read (bit 4 = 1)
-    writeRegister(MPU6500_ADDR, 0x37, 0xF0);
+    writeRegister(mpu_i2c_addr, 0x37, 0xF0);
 }
 
 void SensorManager::enableMotionInterruptForSleep() {
     if (!mpu_ok) return;
     // Set INT pin active low open-drain latched
-    writeRegister(MPU6500_ADDR, 0x37, 0xF0);
+    writeRegister(mpu_i2c_addr, 0x37, 0xF0);
 
     // Set motion threshold (WOM_THR 0x1F)
-    writeRegister(MPU6500_ADDR, 0x1F, 0x20); // ~62.5mg threshold
+    writeRegister(mpu_i2c_addr, 0x1F, 0x20); // ~62.5mg threshold
 
     // Enable Accel hardware intelligence control (ACCEL_INTEL_CTRL 0x69)
-    writeRegister(MPU6500_ADDR, 0x69, 0xC0); // Enable WOM logic and compare with previous sample
+    writeRegister(mpu_i2c_addr, 0x69, 0xC0); // Enable WOM logic and compare with previous sample
 
     // Enable WOM interrupt in INT_ENABLE (0x38)
-    writeRegister(MPU6500_ADDR, 0x38, 0x40); // Bit 6 = WOM_EN
+    writeRegister(mpu_i2c_addr, 0x38, 0x40); // Bit 6 = WOM_EN
 }
 
 void SensorManager::clearMpuInterrupt() {
     if (!mpu_ok) return;
     // Read INT_STATUS register (0x3A) to clear interrupt
-    readRegister(MPU6500_ADDR, 0x3A);
+    readRegister(mpu_i2c_addr, 0x3A);
 }

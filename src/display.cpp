@@ -1189,13 +1189,26 @@ void DisplayManager::drawHealthPage1Live() {
     oled.setFont(u8g2_font_5x7_tr);
     oled.drawStr(2, 17, "HEALTH MONITOR");
 
+    if (!max30102Manager.isAvailable()) {
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(6, 30, "[ SENSOR NOT DETECTED ]");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(6, 42, "I2C 0x57 NACK / NOT FOUND");
+        oled.drawStr(6, 52, "Check 3.3V power & pullup");
+        oled.drawStr(6, 62, "OK:RETRY PROBE  CANCEL:BACK");
+        return;
+    }
+
     if (!m.finger_detected) {
         oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(10, 32, "[ NO FINGER DETECTED ]");
+        oled.drawStr(6, 30, "[ PLACE FINGER ]");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(10, 44, "Place finger on MAX30102");
+        char diag_buf[48];
+        snprintf(diag_buf, sizeof(diag_buf), "RAW IR: %u  RAW RED: %u", (unsigned int)m.ir_value, (unsigned int)m.red_value);
+        oled.drawStr(6, 42, diag_buf);
         String tempStr = "SENSOR TEMP: " + String(m.temperature, 1) + " C";
-        oled.drawStr(10, 54, tempStr.c_str());
+        oled.drawStr(6, 52, tempStr.c_str());
+        oled.drawStr(6, 62, "Touch MAX30102 firmly");
         return;
     }
 
@@ -1203,31 +1216,29 @@ void DisplayManager::drawHealthPage1Live() {
     oled.setFont(u8g2_font_6x10_tr);
     String bpmStr = "BPM: " + String(m.bpm > 0 ? String(m.bpm) : "--");
     String spo2Str = "SpO2: " + String(m.spo2 > 0 ? String(m.spo2) + "%" : "--");
-    String tempStr = "DIE: " + String(m.temperature, 1) + "C";
 
     oled.drawStr(2, 26, bpmStr.c_str());
     oled.drawStr(65, 26, spo2Str.c_str());
 
     // Horizontal SpO2 Progress Indicator Bar
-    oled.drawFrame(65, 28, 61, 5);
+    oled.drawFrame(65, 28, 61, 4);
     if (m.spo2 > 0) {
         int fill_w = (m.spo2 * 57) / 100;
         if (fill_w > 57) fill_w = 57;
-        if (fill_w > 0) oled.drawBox(67, 30, fill_w, 2);
+        if (fill_w > 0) oled.drawBox(67, 29, fill_w, 2);
     }
 
-    // PPG Pulse Waveform Graph (Real-time live chronological buffer)
+    // PPG Pulse Waveform Graph - Expanded, Real & Big!
     int graph_x = 2;
-    int graph_y = 60;
-    int graph_w = 88;
-    int graph_h = 24;
+    int graph_y = 62;
+    int graph_w = 98;
+    int graph_h = 28;
 
     oled.drawFrame(graph_x, graph_y - graph_h, graph_w, graph_h + 1);
 
     uint8_t waveform[64];
     max30102Manager.getPPGWaveformChronological(waveform);
 
-    // Dynamic auto-scaling across chronological buffer to make waveform real and big
     uint8_t min_w = 255, max_w = 0;
     for (int i = 0; i < 64; i++) {
         if (waveform[i] < min_w) min_w = waveform[i];
@@ -1235,12 +1246,11 @@ void DisplayManager::drawHealthPage1Live() {
     }
     int span = max_w - min_w;
 
-    int usable_h = graph_h - 4; // 20 pixels vertical range inside 24px box
-    int baseline_y = graph_y - 1 - (graph_h / 2); // 47: centered baseline
+    int usable_h = graph_h - 4; // 24 vertical pixels
+    int baseline_y = graph_y - 1 - (graph_h / 2);
 
     auto getYCoord = [&](uint8_t sample) -> int {
-        if (span >= 8) {
-            // Full expansion across 20 vertical pixels
+        if (span >= 6) {
             int y = (graph_y - 2) - (((int)(sample - min_w) * usable_h) / span);
             if (y < graph_y - graph_h + 2) y = graph_y - graph_h + 2;
             if (y > graph_y - 2) y = graph_y - 2;
@@ -1250,7 +1260,7 @@ void DisplayManager::drawHealthPage1Live() {
         }
     };
 
-    int inner_w = graph_w - 2; // 86 pixels
+    int inner_w = graph_w - 2; // 96 pixels
     int prev_x = graph_x + 1;
     int prev_y = getYCoord(waveform[0]);
 
@@ -1265,14 +1275,15 @@ void DisplayManager::drawHealthPage1Live() {
 
     // Right column info
     oled.setFont(u8g2_font_4x6_tr);
-    oled.drawStr(94, 42, tempStr.c_str());
-    oled.drawStr(94, 52, "LIVE");
+    String tempStr = "DIE:" + String(m.temperature, 0) + "C";
+    oled.drawStr(102, 38, tempStr.c_str());
+    oled.drawStr(102, 48, "PULSE");
     if (max30102Manager.isBeating()) {
-        oled.drawDisc(116, 50, 2); // Beating pulse dot
+        oled.drawDisc(122, 46, 2); // Beating pulse dot
     } else {
-        oled.drawCircle(116, 50, 2);
+        oled.drawCircle(122, 46, 2);
     }
-    oled.drawStr(94, 60, "1/2");
+    oled.drawStr(102, 59, "1/2");
 }
 
 void DisplayManager::drawHealthPage2History() {
@@ -1415,7 +1426,7 @@ void DisplayManager::drawAppAirMouse() {
     else sens_str += "HIGH";
 
     String move_str = "MOVE: ";
-    move_str += airMouse.isMovementActive() ? "ON" : "OFF";
+    move_str += airMouse.isMovementActive() ? "ACTIVE" : "PAUSED";
 
     oled.drawStr(4, 21, ble_str.c_str());
     oled.drawStr(4, 32, mode_str.c_str());
@@ -1424,9 +1435,9 @@ void DisplayManager::drawAppAirMouse() {
 
     oled.setFont(u8g2_font_4x6_tr);
     if (!airMouse.isEnabled() || st == AirMouseBleStatus::DISCONNECTED) {
-        oled.drawStr(4, 63, "OK:RECONNECT L-C:EXT");
+        oled.drawStr(4, 63, "OK:RECONNECT 2xC:EXIT");
     } else {
-        oled.drawStr(4, 63, "OK:MVE C:SCRL L-C:EXT");
+        oled.drawStr(4, 63, "U:L D:R OK:BK L-C:PAUS");
     }
 }
 
@@ -1444,17 +1455,30 @@ void DisplayManager::drawAppMouseSettings() {
     char sens_buf[32];
     snprintf(sens_buf, sizeof(sens_buf), "Sens: %s", sens_str);
 
-    const char* items[3] = {
+    char swap_buf[32];
+    snprintf(swap_buf, sizeof(swap_buf), "Swap X/Y: %s", airMouse.getSwapXY() ? "ON" : "OFF");
+
+    char invx_buf[32];
+    snprintf(invx_buf, sizeof(invx_buf), "Invert X: %s", airMouse.getInvX() ? "ON" : "OFF");
+
+    char invy_buf[32];
+    snprintf(invy_buf, sizeof(invy_buf), "Invert Y: %s", airMouse.getInvY() ? "ON" : "OFF");
+
+    const char* items[6] = {
         sens_buf,
+        swap_buf,
+        invx_buf,
+        invy_buf,
         "Recenter Gyro",
         "Start Air Mouse"
     };
 
+    int offset = (sel >= 4) ? sel - 3 : 0;
     oled.setFont(u8g2_font_6x10_tr);
-    for (int i = 0; i < 3; i++) {
-        int y = 23 + (i * 13);
+    for (int i = offset; i < offset + 4 && i < 6; i++) {
+        int y = 22 + ((i - offset) * 10);
         if (i == sel) {
-            oled.drawBox(2, y - 9, 124, 12);
+            oled.drawBox(2, y - 8, 120, 10);
             oled.setDrawColor(0);
             oled.drawStr(6, y, items[i]);
             oled.setDrawColor(1);
@@ -1464,7 +1488,7 @@ void DisplayManager::drawAppMouseSettings() {
     }
 
     oled.setFont(u8g2_font_4x6_tr);
-    oled.drawStr(4, 63, "OK:ACTION CANCEL:BACK");
+    oled.drawStr(4, 63, "OK:TOGGLE CANCEL:BACK");
 }
 
 void DisplayManager::drawAppMotion() {
@@ -2033,7 +2057,7 @@ void DisplayManager::drawAppIR() {
             oled.drawStr(2, 17, "IR FILES (/ir)");
             oled.drawLine(0, 19, 128, 19);
 
-            std::vector<String> list = irEngine.listIrFiles();
+            const std::vector<String>& list = ui.getIrFileList();
             int count = list.size();
             oled.setFont(u8g2_font_6x10_tr);
             if (count == 0) {
@@ -2553,6 +2577,8 @@ void DisplayManager::drawAppCompassTelemetry() {
 
     MagCalibration mcal = sensors.getMagCalibration();
     oled.drawStr(65, 42, ("DEC:" + String(mcal.declination, 1)).c_str());
+
+    oled.drawStr(2, 52, ("CHIP: " + String(sensors.getMagChipName())).c_str());
 }
 
 void DisplayManager::drawAppCompassDeclination() {

@@ -2151,7 +2151,7 @@ def test_compass_games_airmouse_overhaul():
     assert "tilted_z_mode" in sc, "sensors.cpp must track tilted_z_mode"
     assert "fabsf(orientation.pitch) > 45.0f" in sc, "Hysteresis threshold > 45 deg must switch to Z-axis"
     assert "fabsf(orientation.pitch) < 35.0f" in sc, "Hysteresis threshold < 35 deg must switch back to X-axis"
-    assert "rh_x = gy * fh_z - gz * fh_y" in sc, "Right vector cross product must be implemented"
+    assert "rh_x = fh_y * gz - fh_z * gy" in sc or "rh_x = gy * fh_z - gz * fh_y" in sc, "Right vector cross product must be implemented"
     assert "atan2f(-Y_h, X_h)" in sc, "Heading must be computed with clockwise-increasing math atan2f(-Y_h, X_h)"
     assert "yaw_math + 90.0f" in sc, "6-DOF IMU fallback must preserve clockwise yaw rotation"
 
@@ -2266,7 +2266,7 @@ def test_compass_games_airmouse_overhaul():
     assert "!(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE)" in uc, "Global cancel must not intercept active air mouse"
 
     assert "drawAppMouseSettings()" in dc, "display.cpp must implement drawAppMouseSettings"
-    assert "OK:MVE C:SCRL L-C:EXT" in dc, "Air mouse HUD footer must show OK:MVE C:SCRL L-C:EXT"
+    assert ("OK:MVE C:SCRL L-C:EXT" in dc or "OK:BK L-C:PAUS" in dc), "Air mouse HUD footer must show controls guide"
     print("  [PASS] 3. Air Mouse BLE2902, single-click scroll toggle, long-cancel exit & dedicated settings page verified.")
 
 def test_ir_overhaul_suite():
@@ -2472,6 +2472,115 @@ def test_max30102_overhaul_suite():
     assert "usable_h = graph_h - 4" in dc, "display.cpp must dynamically scale waveform to fill 20 pixels"
     print("  [PASS] 4. Firmware source code integration, AGC envelope, and beat indicator verified.")
 
+def test_user_hardware_and_compass_overhaul():
+    print("\n--- 41. User Hardware Overhaul: Compass 3D, IMU-6500 DLPF, Air Mouse Fusion/Swap, MAX30102 & IR Fixes ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. File Manager & IR Remote LittleFS File Descriptor Cleanup
+    fm_cpp = os.path.join(base_dir, "src", "file_manager.cpp")
+    with open(fm_cpp, "r", encoding="utf-8") as f:
+        fmc = f.read()
+    assert "file.close();" in fmc and "root.close();" in fmc, "FileManager::listDir must explicitly close file and root descriptors to prevent LittleFS exhaustion"
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "ui.getIrFileList()" in dc, "display.cpp IrSubmenu::IR_FILES must use cached file list to prevent LittleFS hang"
+
+    # 2. Compass 3D Vector Projection Tilt Compensation & Multi-Chip Detection
+    def compass_forward_vector_heading(ax, ay, az, mx, my, mz):
+        # Watch forward is along +Y (12 o'clock on watch face)
+        norm_a = math.sqrt(ax*ax + ay*ay + az*az)
+        gx, gy, gz = ax/norm_a, ay/norm_a, az/norm_a
+        # Forward vector f = (0, 1, 0)
+        fx, fy, fz = 0.0, 1.0, 0.0
+        f_dot_g = fx*gx + fy*gy + fz*gz
+        fh_x = fx - f_dot_g * gx
+        fh_y = fy - f_dot_g * gy
+        fh_z = fz - f_dot_g * gz
+        norm_fh = math.sqrt(fh_x*fh_x + fh_y*fh_y + fh_z*fh_z)
+        if norm_fh > 1e-4:
+            fh_x /= norm_fh; fh_y /= norm_fh; fh_z /= norm_fh
+        # Right vector rh = fh x g
+        rh_x = fh_y*gz - fh_z*gy
+        rh_y = fh_z*gx - fh_x*gz
+        rh_z = fh_x*gy - fh_y*gx
+        # Magnetic projections
+        X_h = mx*fh_x + my*fh_y + mz*fh_z
+        Y_h = mx*rh_x + my*rh_y + mz*rh_z
+        h = math.degrees(math.atan2(-Y_h, X_h))
+        while h < 0: h += 360.0
+        while h >= 360.0: h -= 360.0
+        return h
+
+    # Flat heading North: watch facing North (+Y)
+    h_north = compass_forward_vector_heading(0, 0, 1, 0, 100, 0)
+    assert abs(h_north - 0.0) < 1e-3, f"Forward North heading should be 0 deg, got {h_north}"
+    # Flat heading East: watch facing East, North is to watch's West (-X)
+    h_east = compass_forward_vector_heading(0, 0, 1, -100, 0, 0)
+    assert abs(h_east - 90.0) < 1e-3, f"East heading should be 90 deg, got {h_east}"
+    # Tilted 45 deg pitch up: North tilted to -Z hemisphere
+    h_tilt_north = compass_forward_vector_heading(0, 0.7071, 0.7071, 0, 70.71, -70.71)
+    assert abs(h_tilt_north - 0.0) < 1.0, f"Tilt-compensated North should be 0 deg, got {h_tilt_north}"
+    print("  [PASS] 1. Compass forward vector (12 o'clock) 3D tilt compensation math verified.")
+
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    sensors_h = os.path.join(base_dir, "include", "sensors.h")
+    with open(sensors_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "MAG_CHIP_QMC5883P" in sh and "MAG_CHIP_QMC5883L" in sh and "MAG_CHIP_HMC5883L" in sh, "sensors.h must declare multi-chip magnetometer types"
+    assert "getMagChipName()" in sh and "getMagChipName()" in sc, "sensors must provide getMagChipName"
+    assert "DLPF_CFG = 3" in sc and "42 Hz" in sc, "MPU-6500 gyro hardware DLPF 42Hz must be configured"
+    assert "A_DLPF_CFG = 3" in sc and "44.8 Hz" in sc, "MPU-6500 accel hardware DLPF 44.8Hz must be configured"
+    print("  [PASS] 2. Multi-chip magnetometer detection (QMC5883P/L, HMC5883L) and MPU-6500 DLPF verified.")
+
+    # 3. Air Mouse Overhaul: Axis Swapping, Fusion Filter, Full Mouse Clicks & Button Mapping
+    mouse_h = os.path.join(base_dir, "include", "air_mouse.h")
+    with open(mouse_h, "r", encoding="utf-8") as f:
+        mh = f.read()
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "getSwapXY()" in mh and "setSwapXY(" in mh, "air_mouse.h must support getSwapXY and setSwapXY"
+    assert "getInvX()" in mh and "setInvX(" in mh, "air_mouse.h must support getInvX and setInvX"
+    assert "getInvY()" in mh and "setInvY(" in mh, "air_mouse.h must support getInvY and setInvY"
+    assert "clickBack()" in mh and "clickBack()" in mc, "air_mouse must implement clickBack for OK button"
+    assert "toggleMovementPause()" in mh and "toggleMovementPause()" in mc, "air_mouse must implement movement pause"
+    assert "setButton(" in mh and "setButton(" in mc, "air_mouse must implement persistent setButton"
+    assert "powf(speed, 0.45f)" in mc, "air_mouse.cpp must apply non-linear power-law acceleration curve"
+    assert "accel_jitter" in mc, "air_mouse.cpp must fuse accelerometer stability for resting jitter suppression"
+    assert "swap_xy ?" in mc, "air_mouse.cpp must apply axis swapping"
+
+    btn_h = os.path.join(base_dir, "include", "button_manager.h")
+    with open(btn_h, "r", encoding="utf-8") as f:
+        bh = f.read()
+    assert "isPressed(ButtonID id)" in bh, "button_manager.h must provide isPressed for continuous click & hold tracking"
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "airMouse.clickBack()" in uc or "MOUSE_BUTTON_BACK" in uc, "handleAirMouseInput must map OK button to Back"
+    assert "airMouse.toggleMovementPause()" in uc, "handleAirMouseInput must toggle movement pause on long control press"
+    assert "airMouse.setButton(MOUSE_BUTTON_LEFT" in uc, "handleAirMouseInput must support click-and-hold left drag"
+    assert "airMouse.setButton(MOUSE_BUTTON_RIGHT" in uc, "handleAirMouseInput must support click-and-hold right drag"
+    print("  [PASS] 3. Air Mouse axis swapping, gyro-accel tremor fusion, click-and-hold & button mapping verified.")
+
+    # 4. MAX30102 Diagnostics & 75/120 BPM Glitch Resolution
+    max_h = os.path.join(base_dir, "include", "max30102_manager.h")
+    with open(max_h, "r", encoding="utf-8") as f:
+        maxh = f.read()
+    max_cpp = os.path.join(base_dir, "src", "max30102_manager.cpp")
+    with open(max_cpp, "r", encoding="utf-8") as f:
+        maxc = f.read()
+    assert ("Wire.begin(15, 16)" in maxc or "Wire.begin(I2C_SDA, I2C_SCL)" in maxc), "max30102_manager.cpp must re-assert ESP32 custom I2C pins"
+    assert ("delta_ms < 300" in maxc or "delta_ms >= 300" in maxc), "max30102_manager.cpp must enforce 300ms refractory period to reject dicrotic notch"
+    assert "retryInit()" in maxh and "retryInit()" in maxc, "max30102_manager must expose retryInit for I2C bus recovery"
+    assert "RAW IR" in dc and "RAW RED" in dc, "display.cpp must render raw photodiode telemetry when finger is absent"
+    assert "[ SENSOR NOT DETECTED ]" in dc, "display.cpp must show clear diagnostics if MAX30102 0x57 is not found"
+    print("  [PASS] 4. MAX30102 I2C custom pin protection, 300ms refractory period & diagnostics verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2504,6 +2613,7 @@ if __name__ == "__main__":
     test_compass_games_airmouse_overhaul()
     test_ir_overhaul_suite()
     test_max30102_overhaul_suite()
+    test_user_hardware_and_compass_overhaul()
     print("\nAll self-test verifications PASSED!")
 
 

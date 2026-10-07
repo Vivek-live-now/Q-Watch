@@ -39,6 +39,18 @@ struct CalibratedSensorData {
     float mx, my, mz; // in uT (or arbitrary normalized units)
 };
 
+#define MAG_CHIP_NONE      0
+#define MAG_CHIP_QMC5883P  1
+#define MAG_CHIP_QMC5883L  2
+#define MAG_CHIP_HMC5883L  3
+
+enum class MagChipType {
+    NONE = 0,
+    QMC5883P,  // 0x2C (MAG_CHIP_QMC5883P)
+    QMC5883L,  // 0x0D (MAG_CHIP_QMC5883L)
+    HMC5883L   // 0x1E (MAG_CHIP_HMC5883L)
+};
+
 enum class MagCalState {
     IDLE,
     SWEEPING,
@@ -133,6 +145,8 @@ public:
     CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
+    MagChipType getMagChipType() const { return mag_type; }
+    const char* getMagChipName() const;
     bool isTiltedZMode() const { return tilted_z_mode; }
 
     EnvironmentData getEnvData() const { return env_data; }
@@ -163,6 +177,9 @@ private:
     bool mpu_ok;
     bool mag_ok;
     bool bme_ok;
+    MagChipType mag_type;
+    uint8_t mag_i2c_addr;
+    uint8_t mpu_i2c_addr;
 
     Adafruit_BME280 bme;
     EnvironmentData env_data;

@@ -37,6 +37,7 @@ public:
     void enableSensor();
     void disableSensor();
     bool isEnabled() const { return sensor_enabled; }
+    bool retryInit();
 
     // Visual heart beat pulse detection for HUD
     bool isBeating() const { return (last_beat_time > 0 && (millis() - last_beat_time) < 220); }

@@ -168,3 +168,7 @@ void ButtonManager::injectEvent(ButtonID id, ButtonEvent evt) {
     }
 }
 
+bool ButtonManager::isPressed(ButtonID id) const {
+    if (id < 0 || id >= BTN_COUNT) return false;
+    return buttons[id].current_state == LOW;
+}

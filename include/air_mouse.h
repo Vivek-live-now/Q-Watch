@@ -8,6 +8,11 @@
 #include <BLE2902.h>
 #include <BLEHIDDevice.h>
 
+#define MOUSE_BUTTON_LEFT   0x01
+#define MOUSE_BUTTON_RIGHT  0x02
+#define MOUSE_BUTTON_MIDDLE 0x04
+#define MOUSE_BUTTON_BACK   0x08
+
 enum class AirMouseMode {
     POINTER,
     SCROLL
@@ -51,9 +56,12 @@ public:
     bool isEnabled() const { return enabled; }
     bool isConnected() const { return is_connected; }
     bool isMovementActive() const { return movement_active; }
+    bool isMovementPaused() const { return !movement_active; }
     AirMouseBleStatus getBleStatus() const;
 
     void toggleMovement();
+    void toggleMovementPause();
+    void setMovementActive(bool active) { movement_active = active; }
     void toggleMode();
     void cycleSensitivity();
     void cycleSensitivityUp();
@@ -61,10 +69,25 @@ public:
     void setSensitivity(AirMouseSensitivity s) { sensitivity = s; }
     void recenter();
 
+    // Axis swapping & inversion
+    bool getSwapXY() const { return swap_xy; }
+    bool getInvX() const { return inv_x; }
+    bool getInvY() const { return inv_y; }
+    void setSwapXY(bool swap);
+    void setInvX(bool inv);
+    void setInvY(bool inv);
+    void toggleSwapXY();
+    void toggleInvX();
+    void toggleInvY();
+
+    // Full Mouse Capabilities (Click and Hold / Drag & Drop / Back)
+    void setButton(uint8_t button_mask, bool pressed);
     void clickLeft();
     void clickRight();
+    void clickBack();
     void scrollUp();
     void scrollDown();
+    uint8_t getButtons() const { return buttons_state; }
 
     AirMouseMode getMode() const { return mode; }
     AirMouseSensitivity getSensitivity() const { return sensitivity; }
@@ -77,6 +100,11 @@ private:
     AirMouseMode mode;
     AirMouseSensitivity sensitivity;
 
+    // Axis Mapping
+    bool swap_xy;
+    bool inv_x;
+    bool inv_y;
+
     // BLE HID Objects
     BLEServer* pServer;
     BLEHIDDevice* hid;
@@ -87,9 +115,13 @@ private:
     float offset_gx;
     float offset_gy;
 
-    // Smoothing filter memory
+    // Anti-jitter filter state (1-Euro dynamic velocity model)
     float smooth_dx;
     float smooth_dy;
+    float prev_omega;
+
+    // Accelerometer tremor baseline
+    float resting_accel_norm;
 
     // Accumulators for sub-integer cursor movement
     float accum_x;
@@ -99,6 +131,8 @@ private:
 
     float getSensitivityMultiplier() const;
     void sendReport(uint8_t buttons, signed char x, signed char y, signed char wheel, signed char hWheel);
+    void loadPreferences();
+    void savePreferences();
 };
 
 extern AirMouseManager airMouse;
