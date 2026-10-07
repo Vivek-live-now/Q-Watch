@@ -1002,14 +1002,68 @@ void UICore::handleIrLabInput() {
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         if (ir_selection == 0) {
-            if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
-            else irEngine.startCarrierTest(38000);
+            if (irEngine.isCarrierTestActive() && irEngine.getCarrierFreq() == 38000) {
+                irEngine.stopCarrierTest();
+                irEngine.setLastLabStatus("CARRIER OFF");
+                showToast("[CARRIER 38k OFF]", 1000);
+            } else {
+                if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
+                irEngine.startCarrierTest(38000);
+                irEngine.setLastLabStatus("CARRIER 38k ON");
+                showToast("[CARRIER 38k ON]", 1000);
+            }
         } else if (ir_selection == 1) {
-            if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
-            else irEngine.startCarrierTest(36000);
+            if (irEngine.isCarrierTestActive() && irEngine.getCarrierFreq() == 36000) {
+                irEngine.stopCarrierTest();
+                irEngine.setLastLabStatus("CARRIER OFF");
+                showToast("[CARRIER 36k OFF]", 1000);
+            } else {
+                if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
+                irEngine.startCarrierTest(36000);
+                irEngine.setLastLabStatus("CARRIER 36k ON");
+                showToast("[CARRIER 36k ON]", 1000);
+            }
         } else if (ir_selection == 2) {
-            if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
-            else irEngine.startCarrierTest(40000);
+            if (irEngine.isCarrierTestActive() && irEngine.getCarrierFreq() == 40000) {
+                irEngine.stopCarrierTest();
+                irEngine.setLastLabStatus("CARRIER OFF");
+                showToast("[CARRIER 40k OFF]", 1000);
+            } else {
+                if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
+                irEngine.startCarrierTest(40000);
+                irEngine.setLastLabStatus("CARRIER 40k ON");
+                showToast("[CARRIER 40k ON]", 1000);
+            }
+        } else if (ir_selection == 3) {
+            irEngine.pulseLedDc(1500);
+            irEngine.setLastLabStatus("DC TORCH OK");
+            showToast("[LED DC ON 1.5s]", 1500);
+        } else if (ir_selection == 4) {
+            String lb_res;
+            bool ok = irEngine.runLoopbackTest(lb_res);
+            irEngine.setLastLabStatus(lb_res);
+            showToast(ok ? "[LB: PASS]" : "[LB: FAIL]", 1500);
+        } else if (ir_selection == 5) {
+            int8_t off = irEngine.runCalibration(38000);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "CAL OFFSET: %d us", off);
+            irEngine.setLastLabStatus(buf);
+            char toast_buf[32];
+            snprintf(toast_buf, sizeof(toast_buf), "[OFFSET: %d us]", off);
+            showToast(toast_buf, 1500);
+        } else if (ir_selection == 6) {
+            irEngine.togglePolarity();
+            bool inv = irEngine.isPolarityInverted();
+            irEngine.setLastLabStatus(inv ? "POLARITY: INVERTED" : "POLARITY: NORMAL");
+            showToast(inv ? "[POL: INVERTED]" : "[POL: NORMAL]", 1500);
+        } else if (ir_selection == 7) {
+            bool ok = irEngine.sendParsed("NIKAI", 0, 0x807F, 24);
+            irEngine.setLastLabStatus(ok ? "TX: NIKAI 24b OK" : "TX: NIKAI FAIL");
+            showToast(ok ? "[TX NIKAI 24b]" : "[TX FAIL]", 1200);
+        } else if (ir_selection == 8) {
+            bool ok = irEngine.sendParsed("RCA", 4, 0x0C, 24);
+            irEngine.setLastLabStatus(ok ? "TX: RCA 24b OK" : "TX: RCA FAIL");
+            showToast(ok ? "[TX RCA 24b]" : "[TX FAIL]", 1200);
         } else {
             showToast("[LAB OK]", 1200);
         }

@@ -330,9 +330,11 @@ public:
         "Browse /ir", "Recent", "Favorites", "Search"
     };
 
-    static const int IR_LAB_ITEM_COUNT = 5;
+    static const int IR_LAB_ITEM_COUNT = 9;
     const char* ir_lab_items[IR_LAB_ITEM_COUNT] = {
-        "Carrier 38 kHz", "Carrier 36 kHz", "Carrier 40 kHz", "Raw -> Parsed", "IR Config"
+        "Carrier 38 kHz", "Carrier 36 kHz", "Carrier 40 kHz",
+        "LED Torch (DC)", "Loopback Test", "Calibrate 38k",
+        "Invert Polarity", "Test Nikai 24b", "Test RCA 24b"
     };
 
     static const int SETTINGS_MAIN_ITEM_COUNT = 6;

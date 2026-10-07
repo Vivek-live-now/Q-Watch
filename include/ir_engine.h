@@ -37,6 +37,8 @@ struct IrRemoteFile {
     std::vector<IrButton> buttons;
 };
 
+#define DECODE_TYPE_RCA ((decode_type_t)999)
+
 struct TvBGoneCode {
     const char* brand;
     decode_type_t type;
@@ -54,6 +56,7 @@ public:
     // Transmission
     bool sendButton(const IrButton& btn);
     bool sendParsed(const String& protocol, uint32_t address, uint32_t command, uint16_t nbits);
+    bool sendRCA(uint32_t address, uint32_t command, uint16_t repeats = 1);
     bool sendRaw(const uint16_t* timings, size_t count, uint32_t frequency = 0);
 
     // File IO (.ir Flipper / Bruce format)
@@ -91,16 +94,33 @@ public:
     bool isCarrierTestActive() const { return carrier_test_active; }
     uint32_t getCarrierFreq() const { return carrier_freq; }
 
+    void pulseLedDc(uint32_t duration_ms = 1500);
+    bool runLoopbackTest(String& out_result);
+    int8_t runCalibration(uint32_t freq_hz = 38000);
+    int8_t getCalibratedOffset() const { return calibrated_offset; }
+    bool isPolarityInverted() const { return polarity_inverted; }
+    void setPolarityInverted(bool inv);
+    void togglePolarity();
+    String getLastLabStatus() const { return last_lab_status; }
+    void setLastLabStatus(const String& s) { last_lab_status = s; }
+
     // Helper conversion & protocol translation
     static decode_type_t strToDecodeType(const String& proto);
     static String decodeTypeToStr(decode_type_t type, uint16_t nbits = 32);
     static uint32_t parseFlipperHexBytes(const String& val);
+    static uint16_t getProtocolDefaultBits(const String& proto);
+    static bool decodeRCAFromRaw(const uint16_t* raw_arr, size_t len, uint32_t& out_address, uint32_t& out_command);
 
 private:
     IRsend irsend;
     IRrecv irrecv;
     decode_results results;
     bool capturing;
+
+    // Diagnostics & Hardware Config
+    int8_t calibrated_offset;
+    bool polarity_inverted;
+    String last_lab_status;
 
     // TV-B-Gone state
     bool tv_bgone_running;

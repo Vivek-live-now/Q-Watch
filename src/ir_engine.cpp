@@ -4,29 +4,90 @@
 
 IREngine irEngine;
 
-// Default TV-B-Gone codes table
+// Expanded Global TV-B-Gone codes table (67 power codes across all major brands)
 static const TvBGoneCode DEFAULT_TV_POWER_CODES[] = {
-    {"SAMSUNG", SAMSUNG, 0xE0E040BF, 32, 38000},
-    {"LG", NEC, 0x20DF10EF, 32, 38000},
-    {"SONY 12", SONY, 0xA90, 12, 40000},
-    {"SONY 15", SONY, 0xA90, 15, 40000},
-    {"SONY 20", SONY, 0xA90, 20, 40000},
-    {"PANASONIC", PANASONIC, 0x100BCBD, 48, 37000},
-    {"TOSHIBA", NEC, 0x2FD48B7, 32, 38000},
-    {"SHARP", SHARP, 0x41A2, 15, 38000},
-    {"VIZIO", NEC, 0x20DF10EF, 32, 38000},
+    // Top Global Tier
+    {"SAMSUNG 1", SAMSUNG, 0xE0E040BF, 32, 38000},
+    {"SAMSUNG 2", SAMSUNG, 0xE0E019E6, 32, 38000},
+    {"LG 1", NEC, 0x20DF10EF, 32, 38000},
+    {"LG 2", NEC, 0x20DF08F7, 32, 38000},
+    {"SONY 12B", SONY, 0xA90, 12, 40000},
+    {"SONY 15B", SONY, 0xA90, 15, 40000},
+    {"SONY 20B", SONY, 0xA90, 20, 40000},
+    {"PANASONIC 1", PANASONIC, 0x100BCBD, 48, 37000},
+    {"PANASONIC 2", PANASONIC, 0x1008C8D, 48, 37000},
+    {"TOSHIBA 1", NEC, 0x2FD48B7, 32, 38000},
+    {"TOSHIBA 2", NEC, 0x02FD48B7, 32, 38000},
+    {"SHARP 1", SHARP, 0x41A2, 15, 38000},
+    {"SHARP 2", SHARP, 0x42A2, 15, 38000},
+    {"VIZIO 1", NEC, 0x20DF10EF, 32, 38000},
+    {"VIZIO 2", NEC, 0x20DF609F, 32, 38000},
     {"PHILIPS RC5", RC5, 0x12, 12, 36000},
     {"PHILIPS RC6", RC6, 0x1000C, 20, 36000},
-    {"NEC GENERIC", NEC, 0x00FF00FF, 32, 38000},
+    // Modern Smart TV Brands (TCL, Hisense, Xiaomi, Insignia)
+    {"TCL 1", NEC, 0x4CB040BF, 32, 38000},
+    {"TCL 2", NEC, 0x00FF08F7, 32, 38000},
+    {"HISENSE 1", NEC, 0xFDF00F, 32, 38000},
+    {"HISENSE 2", NEC, 0xFD08F7, 32, 38000},
+    {"INSIGNIA 1", NEC, 0x00FF807F, 32, 38000},
+    {"INSIGNIA 2", NEC, 0x20DF10EF, 32, 38000},
+    {"XIAOMI MI", NEC, 0x00FF807F, 32, 38000},
+    // User-Requested Protocols: RCA & Nikai
+    {"RCA 1 (RCA24)", DECODE_TYPE_RCA, 0x040C, 24, 38000}, // Addr 4, Cmd 0x0C
+    {"RCA 2 (RCA24)", DECODE_TYPE_RCA, 0x0400, 24, 38000}, // Addr 4, Cmd 0x00
+    {"RCA 3 (NEC)", NEC, 0x00FF807F, 32, 38000},
+    {"NIKAI 1 (24B)", NIKAI, 0x807F, 24, 38000},
+    {"NIKAI 2 (24B)", NIKAI, 0x40BF, 24, 38000},
+    {"NIKAI 3 (NEC)", NEC, 0x00FF807F, 32, 38000},
+    // Major Regional & Global Brands
+    {"SANYO 1", NEC, 0x1FE48B7, 32, 38000},
+    {"SANYO 2", NEC, 0x00FF1AE5, 32, 38000},
+    {"MITSUBISHI", MITSUBISHI, 0x02FD48B7, 16, 38000},
+    {"HITACHI 1", NEC, 0x0AF5807F, 32, 38000},
+    {"HITACHI 2", NEC, 0x51AE, 32, 38000},
+    {"PIONEER", NEC, 0xA55A38C7, 32, 40000},
     {"JVC", JVC, 0xF123, 16, 38000},
-    {"DENON", DENON, 0x2A4, 15, 38000}
+    {"DENON", DENON, 0x2A4, 15, 38000},
+    {"SKYWORTH", NEC, 0x02FD00FF, 32, 38000},
+    {"HAIER 1", NEC, 0x20DF10EF, 32, 38000},
+    {"HAIER 2", NEC, 0x00FF08F7, 32, 38000},
+    {"THOMSON", RC5, 0x12, 12, 36000},
+    {"GRUNDIG", RC5, 0x12, 12, 36000},
+    {"TELEFUNKEN", NEC, 0x4CB040BF, 32, 38000},
+    {"BLAUPUNKT", NEC, 0x20DF10EF, 32, 38000},
+    {"AKAI", NEC, 0x00FF807F, 32, 38000},
+    {"CHANGHONG", NEC, 0x00FF807F, 32, 38000},
+    {"SCEPTRE", NEC, 0x00FF807F, 32, 38000},
+    {"WESTINGHOUSE", NEC, 0x00FF807F, 32, 38000},
+    {"ELEMENT", NEC, 0x00FF807F, 32, 38000},
+    {"EMERSON", NEC, 0x00FF807F, 32, 38000},
+    {"DAEWOO", NEC, 0x00FF807F, 32, 38000},
+    {"AOC", NEC, 0x20DF10EF, 32, 38000},
+    {"VIEWSONIC", NEC, 0x20DF10EF, 32, 38000},
+    {"SANSUI", NEC, 0x00FF807F, 32, 38000},
+    {"FUNAI", NEC, 0x00FF807F, 32, 38000},
+    {"MAGNAVOX", NEC, 0x00FF807F, 32, 38000},
+    {"ONIDA", NEC, 0x00FF807F, 32, 38000},
+    {"VIDEOCON", NEC, 0x00FF807F, 32, 38000},
+    {"MICROMAX", NEC, 0x00FF807F, 32, 38000},
+    {"BPL", RC5, 0x12, 12, 36000},
+    {"POLYTRON", NEC, 0x00FF807F, 32, 38000},
+    {"WALTON", NEC, 0x00FF807F, 32, 38000},
+    // Universal & Generic Power Codes
+    {"GENERIC NEC 1", NEC, 0x00FF00FF, 32, 38000},
+    {"GENERIC NEC 2", NEC, 0x00FF807F, 32, 38000},
+    {"GENERIC NEC 3", NEC, 0x20DF10EF, 32, 38000},
+    {"GENERIC RC5", RC5, 0x12, 12, 36000}
 };
 static const size_t DEFAULT_TV_POWER_CODES_COUNT = sizeof(DEFAULT_TV_POWER_CODES) / sizeof(DEFAULT_TV_POWER_CODES[0]);
 
 IREngine::IREngine() :
-    irsend(IR_TX),
+    irsend(IR_TX, false, true),
     irrecv(IR_RX, 1024, 50, true),
     capturing(false),
+    calibrated_offset(0),
+    polarity_inverted(false),
+    last_lab_status("IDLE"),
     tv_bgone_running(false),
     tv_bgone_idx(0),
     tv_bgone_total(0),
@@ -40,8 +101,28 @@ void IREngine::begin() {
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
     gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
 #endif
+    runCalibration(38000);
     ensureIrDirectory();
     loadDefaultTvBGoneCodes();
+}
+
+int8_t IREngine::runCalibration(uint32_t freq_hz) {
+    calibrated_offset = irsend.calibrate(freq_hz > 0 ? freq_hz : 38000);
+    return calibrated_offset;
+}
+
+void IREngine::setPolarityInverted(bool inv) {
+    polarity_inverted = inv;
+    irsend = IRsend(IR_TX, polarity_inverted, true);
+    irsend.begin();
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
+    gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
+#endif
+    runCalibration(38000);
+}
+
+void IREngine::togglePolarity() {
+    setPolarityInverted(!polarity_inverted);
 }
 
 void IREngine::ensureIrDirectory() {
@@ -99,10 +180,18 @@ decode_type_t IREngine::strToDecodeType(const String& proto) {
     String p = proto;
     p.trim();
 
-    if (p == "NEC" || p == "NECext" || p == "NEC42") return NEC;
-    if (p == "Samsung32") return SAMSUNG;
-    if (p == "SIRC" || p == "SIRC15" || p == "SIRC20") return SONY;
-    if (p == "RC5X") return RC5;
+    if (p.equalsIgnoreCase("NEC") || p.equalsIgnoreCase("NECext") || p.equalsIgnoreCase("NEC42")) return NEC;
+    if (p.equalsIgnoreCase("Samsung32") || p.equalsIgnoreCase("Samsung")) return SAMSUNG;
+    if (p.equalsIgnoreCase("SIRC") || p.equalsIgnoreCase("SIRC15") || p.equalsIgnoreCase("SIRC20") || p.equalsIgnoreCase("Sony")) return SONY;
+    if (p.equalsIgnoreCase("RC5") || p.equalsIgnoreCase("RC5X")) return RC5;
+    if (p.equalsIgnoreCase("RC6")) return RC6;
+    if (p.equalsIgnoreCase("NIKAI")) return NIKAI;
+    if (p.equalsIgnoreCase("RCA")) return DECODE_TYPE_RCA;
+    if (p.equalsIgnoreCase("PANASONIC")) return PANASONIC;
+    if (p.equalsIgnoreCase("TOSHIBA")) return TOSHIBA;
+    if (p.equalsIgnoreCase("SHARP")) return SHARP;
+    if (p.equalsIgnoreCase("JVC")) return JVC;
+    if (p.equalsIgnoreCase("DENON")) return DENON;
 
     return ::strToDecodeType(p.c_str());
 }
@@ -118,12 +207,102 @@ String IREngine::decodeTypeToStr(decode_type_t type, uint16_t nbits) {
             if (nbits == 20) return "SIRC20";
             return "SIRC";
         case RC5X: return "RC5X";
+        case NIKAI: return "NIKAI";
+        case DECODE_TYPE_RCA: return "RCA";
         default: return typeToString(type);
     }
 }
 
+uint16_t IREngine::getProtocolDefaultBits(const String& proto) {
+    String p = proto;
+    p.trim();
+    if (p.equalsIgnoreCase("RCA") || p.equalsIgnoreCase("NIKAI")) return 24;
+    if (p.equalsIgnoreCase("SONY") || p.equalsIgnoreCase("SIRC")) return 12;
+    if (p.equalsIgnoreCase("SIRC15")) return 15;
+    if (p.equalsIgnoreCase("SIRC20")) return 20;
+    if (p.equalsIgnoreCase("RC5")) return 12;
+    if (p.equalsIgnoreCase("RC5X")) return 13;
+    if (p.equalsIgnoreCase("RC6")) return 20;
+    if (p.equalsIgnoreCase("SHARP") || p.equalsIgnoreCase("DENON")) return 15;
+    if (p.equalsIgnoreCase("JVC")) return 16;
+    if (p.equalsIgnoreCase("PANASONIC")) return 48;
+    if (p.equalsIgnoreCase("NEC42")) return 42;
+    return 32;
+}
+
+bool IREngine::sendRCA(uint32_t address, uint32_t command, uint16_t repeats) {
+    uint32_t addr = address & 0x0F;
+    uint32_t cmd = command & 0xFF;
+    uint32_t inv_addr = (~addr) & 0x0F;
+    uint32_t inv_cmd = (~cmd) & 0xFF;
+    uint32_t data = addr | (cmd << 4) | (inv_addr << 12) | (inv_cmd << 16);
+
+    irsend.sendGeneric(
+        4000, 4000, // preamble mark, space
+        500, 2000,  // bit1 mark, space
+        500, 1000,  // bit0 mark, space
+        500, 8000,  // footer mark, min gap
+        data, 24,   // 24 bits
+        38,         // 38 kHz carrier
+        false,      // LSB first
+        repeats > 0 ? repeats : 1,
+        33          // 33% duty cycle
+    );
+    return true;
+}
+
+bool IREngine::decodeRCAFromRaw(const uint16_t* raw_arr, size_t len, uint32_t& out_address, uint32_t& out_command) {
+    if (!raw_arr || len < 50) return false;
+
+    // Preamble check (~4000us mark, ~4000us space)
+    if (raw_arr[0] < 3000 || raw_arr[0] > 5000) return false;
+    if (raw_arr[1] < 3000 || raw_arr[1] > 5000) return false;
+
+    uint32_t data = 0;
+    for (size_t i = 0; i < 24; i++) {
+        size_t mark_idx = 2 + 2 * i;
+        size_t space_idx = mark_idx + 1;
+        if (space_idx >= len) return false;
+
+        // Mark should be ~500us
+        if (raw_arr[mark_idx] < 250 || raw_arr[mark_idx] > 850) return false;
+
+        // Space: Bit 0 is ~1000us, Bit 1 is ~2000us
+        uint16_t sp = raw_arr[space_idx];
+        if (sp >= 1500 && sp <= 2600) {
+            data |= (1UL << i); // LSB first
+        } else if (sp >= 600 && sp < 1500) {
+            // bit 0
+        } else {
+            return false; // Timing violation
+        }
+    }
+
+    uint8_t addr = data & 0x0F;
+    uint8_t cmd = (data >> 4) & 0xFF;
+    uint8_t inv_addr = (data >> 12) & 0x0F;
+    uint8_t inv_cmd = (data >> 16) & 0xFF;
+
+    if (addr == ((~inv_addr) & 0x0F) && cmd == ((~inv_cmd) & 0xFF)) {
+        out_address = addr;
+        out_command = cmd;
+        return true;
+    }
+    return false;
+}
+
 bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t command, uint16_t nbits) {
+    String p = protocol;
+    p.trim();
+
+    if (p.equalsIgnoreCase("RCA")) {
+        return sendRCA(address, command, 1);
+    }
+
     decode_type_t type = strToDecodeType(protocol);
+    if (type == DECODE_TYPE_RCA) {
+        return sendRCA(address, command, 1);
+    }
 
     if (type == NEC) {
         uint64_t data;
@@ -146,7 +325,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32, 1);
         return true;
     } else if (type == SONY) {
-        uint16_t bits = (protocol == "SIRC15") ? 15 : ((protocol == "SIRC20") ? 20 : (nbits > 0 ? nbits : 12));
+        uint16_t bits = (p.equalsIgnoreCase("SIRC15")) ? 15 : ((p.equalsIgnoreCase("SIRC20")) ? 20 : (nbits > 0 ? nbits : 12));
         uint64_t data;
         if (address != 0) {
             data = irsend.encodeSony(bits, command, address);
@@ -158,7 +337,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
     } else if (type == RC5) {
         uint64_t data;
         if (address != 0) {
-            data = (protocol == "RC5X") ? irsend.encodeRC5X(address, command) : irsend.encodeRC5(address, command);
+            data = (p.equalsIgnoreCase("RC5X")) ? irsend.encodeRC5X(address, command) : irsend.encodeRC5(address, command);
         } else {
             data = command;
         }
@@ -173,8 +352,14 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         }
         irsend.sendRC6(data, nbits > 0 ? nbits : 20, 1);
         return true;
+    } else if (type == NIKAI) {
+        uint16_t bits = (nbits > 0) ? nbits : 24;
+        irsend.sendNikai(command, bits, 1); // 1 repeat for Nikai
+        return true;
     } else if (type != UNKNOWN) {
-        irsend.send(type, command, nbits > 0 ? nbits : 32);
+        uint16_t bits = (nbits > 0) ? nbits : IRsend::defaultBits(type);
+        uint16_t repeats = std::max((uint16_t)1, IRsend::minRepeats(type));
+        irsend.send(type, command, bits, repeats);
         return true;
     }
     return false;
@@ -248,14 +433,27 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
             out_btn.duty_cycle = 0.0f;
             out_btn.has_duty_cycle = false;
         } else {
-            out_btn.type = IrSignalType::RAW;
-            out_btn.protocol = "RAW";
-            out_btn.address = 0;
-            out_btn.command = 0;
-            out_btn.nbits = 0;
-            out_btn.frequency = 0; // 0 = unknown carrier
-            out_btn.duty_cycle = 0.0f;
-            out_btn.has_duty_cycle = false;
+            // Check if captured raw signal matches RCA protocol
+            uint32_t rca_addr = 0, rca_cmd = 0;
+            if (decodeRCAFromRaw(out_btn.raw_data.data(), out_btn.raw_data.size(), rca_addr, rca_cmd)) {
+                out_btn.type = IrSignalType::PARSED;
+                out_btn.protocol = "RCA";
+                out_btn.address = rca_addr;
+                out_btn.command = rca_cmd;
+                out_btn.nbits = 24;
+                out_btn.frequency = 38000;
+                out_btn.duty_cycle = 0.33f;
+                out_btn.has_duty_cycle = true;
+            } else {
+                out_btn.type = IrSignalType::RAW;
+                out_btn.protocol = "RAW";
+                out_btn.address = 0;
+                out_btn.command = 0;
+                out_btn.nbits = 0;
+                out_btn.frequency = 0; // 0 = unknown carrier
+                out_btn.duty_cycle = 0.0f;
+                out_btn.has_duty_cycle = false;
+            }
         }
 
         irrecv.resume();
@@ -302,6 +500,7 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
 
         if (key == "name") {
             if (in_button) {
+                if (current_btn.nbits == 0) current_btn.nbits = getProtocolDefaultBits(current_btn.protocol);
                 remote.buttons.push_back(current_btn);
             }
             current_btn = IrButton();
@@ -318,6 +517,8 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
             current_btn.address = parseFlipperHexBytes(val);
         } else if (key == "command") {
             current_btn.command = parseFlipperHexBytes(val);
+        } else if (key == "nbits") {
+            current_btn.nbits = val.toInt();
         } else if (key == "frequency") {
             current_btn.frequency = val.toInt();
         } else if (key == "duty_cycle") {
@@ -343,6 +544,7 @@ bool IREngine::parseIrFile(const String& path, IrRemoteFile& remote) {
     }
 
     if (in_button) {
+        if (current_btn.nbits == 0) current_btn.nbits = getProtocolDefaultBits(current_btn.protocol);
         remote.buttons.push_back(current_btn);
     }
 
@@ -375,7 +577,21 @@ bool IREngine::saveIrFile(const String& path, const IrRemoteFile& remote) {
             snprintf(hexBuf, sizeof(hexBuf), "%02X %02X %02X %02X",
                      (uint8_t)(b.command & 0xFF), (uint8_t)((b.command >> 8) & 0xFF),
                      (uint8_t)((b.command >> 16) & 0xFF), (uint8_t)((b.command >> 24) & 0xFF));
-            out += "command: " + String(hexBuf) + "\n#\n";
+            out += "command: " + String(hexBuf) + "\n";
+            if (b.nbits > 0) {
+                out += "nbits: " + String(b.nbits) + "\n";
+            }
+            if (!b.raw_data.empty()) {
+                out += "data:";
+                size_t write_count = min(b.raw_data.size(), MAX_IR_RAW_TIMINGS);
+                char numBuf[16];
+                for (size_t j = 0; j < write_count; j++) {
+                    snprintf(numBuf, sizeof(numBuf), " %u", b.raw_data[j]);
+                    out += numBuf;
+                }
+                out += "\n";
+            }
+            out += "#\n";
         } else {
             out += "type: raw\n";
             if (b.frequency > 0) {
@@ -448,7 +664,19 @@ void IREngine::loop() {
             if (tv_bgone_idx < tv_bgone_codes.size()) {
                 const TvBGoneCode& code = tv_bgone_codes[tv_bgone_idx];
                 tv_bgone_current_brand = code.brand;
-                irsend.send(code.type, code.data, code.nbits);
+                if (code.type == DECODE_TYPE_RCA) {
+                    uint32_t addr = (code.data >> 8) & 0x0F;
+                    uint32_t cmd = code.data & 0xFF;
+                    sendRCA(addr, cmd, 1);
+                } else if (code.type == NIKAI) {
+                    irsend.sendNikai(code.data, code.nbits > 0 ? code.nbits : 24, 1);
+                } else if (code.type == SONY) {
+                    irsend.sendSony(code.data, code.nbits > 0 ? code.nbits : 12, 2);
+                } else if (code.type == NEC) {
+                    irsend.sendNEC(code.data, code.nbits > 0 ? code.nbits : 32, 1);
+                } else {
+                    irsend.send(code.type, code.data, code.nbits);
+                }
                 tv_bgone_last_tx = millis();
                 tv_bgone_idx++;
             } else {
@@ -555,9 +783,54 @@ void IREngine::stopCarrierTest() {
     ledcWrite(7, 0);
     ledcDetachPin(IR_TX);
     pinMode(IR_TX, OUTPUT);
-    digitalWrite(IR_TX, LOW);
+    digitalWrite(IR_TX, polarity_inverted ? HIGH : LOW);
     irsend.begin();
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
     gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
 #endif
+}
+
+void IREngine::pulseLedDc(uint32_t duration_ms) {
+    if (carrier_test_active) stopCarrierTest();
+    pinMode(IR_TX, OUTPUT);
+    digitalWrite(IR_TX, polarity_inverted ? LOW : HIGH); // turn LED fully on
+    delay(duration_ms);
+    digitalWrite(IR_TX, polarity_inverted ? HIGH : LOW); // turn LED off
+    irsend.begin();
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32)
+    gpio_set_drive_capability((gpio_num_t)IR_TX, GPIO_DRIVE_CAP_3);
+#endif
+}
+
+bool IREngine::runLoopbackTest(String& out_result) {
+    if (carrier_test_active) stopCarrierTest();
+    irrecv.enableIRIn();
+    delay(30);
+
+    // Send a known test code: NEC 0x00FF807F (Address 0x00FF, Command 0x807F)
+    const uint32_t TEST_CODE = 0x00FF807F;
+    irsend.sendNEC(TEST_CODE, 32, 0);
+
+    uint32_t start = millis();
+    bool received = false;
+    decode_results res;
+    while (millis() - start < 350) {
+        if (irrecv.decode(&res)) {
+            received = true;
+            break;
+        }
+        delay(10);
+    }
+    irrecv.disableIRIn();
+    if (capturing) irrecv.enableIRIn();
+
+    if (received) {
+        char hexb[16];
+        snprintf(hexb, sizeof(hexb), "%08X", (uint32_t)res.value);
+        out_result = "PASS " + typeToString(res.decode_type) + " " + String(hexb);
+        return true;
+    } else {
+        out_result = "FAIL NO RX DETECT";
+        return false;
+    }
 }

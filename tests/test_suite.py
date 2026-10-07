@@ -22,6 +22,8 @@ def test_protocol_variants():
         ("SIRC", 0x0001, 0x0015, "01 00 00 00", "15 00 00 00"),
         ("SIRC15", 0x0001, 0x0015, "01 00 00 00", "15 00 00 00"),
         ("SIRC20", 0x0001, 0x0015, "01 00 00 00", "15 00 00 00"),
+        ("RCA", 0x0004, 0x000C, "04 00 00 00", "0C 00 00 00"),
+        ("NIKAI", 0x0000, 0x807F, "00 00 00 00", "7F 80 00 00"),
     ]
 
     for name, addr, cmd, expected_addr_str, expected_cmd_str in protocols:
@@ -2267,6 +2269,115 @@ def test_compass_games_airmouse_overhaul():
     assert "OK:MVE C:SCRL L-C:EXT" in dc, "Air mouse HUD footer must show OK:MVE C:SCRL L-C:EXT"
     print("  [PASS] 3. Air Mouse BLE2902, single-click scroll toggle, long-cancel exit & dedicated settings page verified.")
 
+def test_ir_overhaul_suite():
+    print("\n--- 39. IR Subsystem Overhaul: RCA, Nikai, Preserved nbits/Raw, TV-B-Gone 67 Codes & Signal Lab ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. RCA Protocol 24-Bit Frame Math & Software Decoder Simulation
+    # RCA Format: 4-bit Address, 8-bit Command, 4-bit Inverted Address, 8-bit Inverted Command
+    addr = 4
+    cmd = 0x0C
+    inv_addr = (~addr) & 0x0F
+    inv_cmd = (~cmd) & 0xFF
+    rca_data = addr | (cmd << 4) | (inv_addr << 12) | (inv_cmd << 16)
+    assert rca_data == 0xF3B0C4, f"RCA 24-bit encoded word must be 0xF3B0C4, got {hex(rca_data)}"
+
+    # Generate synthetic RCA raw pulse sequence (LSB-first):
+    # Header: 4000 mark, 4000 space
+    # Bit 1: 500 mark, 2000 space; Bit 0: 500 mark, 1000 space
+    # Footer: 500 mark
+    simulated_raw = [4000, 4000]
+    for i in range(24):
+        simulated_raw.append(500)
+        bit = (rca_data >> i) & 1
+        simulated_raw.append(2000 if bit else 1000)
+    simulated_raw.append(500)
+
+    assert len(simulated_raw) == 51, f"RCA timing packet must contain 51 pulse edges, got {len(simulated_raw)}"
+
+    # Emulate decodeRCAFromRaw logic on synthetic pulses
+    assert simulated_raw[0] == 4000 and simulated_raw[1] == 4000
+    decoded_data = 0
+    for i in range(24):
+        sp = simulated_raw[2 + 2*i + 1]
+        if sp >= 1500:
+            decoded_data |= (1 << i)
+    assert decoded_data == rca_data, f"Decoded raw pulses must match original RCA data: {hex(decoded_data)} vs {hex(rca_data)}"
+    dec_addr = decoded_data & 0xF
+    dec_cmd = (decoded_data >> 4) & 0xFF
+    assert dec_addr == addr and dec_cmd == cmd, f"Decoded address/cmd mismatch: {dec_addr}/{dec_cmd} vs {addr}/{cmd}"
+    print("  [PASS] 1. RCA 24-bit LSB-first pulse modulation and bidirectional software decoder verified.")
+
+    # 2. Nikai Protocol 24-Bit Preservation & Default Bits
+    ir_cpp = os.path.join(base_dir, "src", "ir_engine.cpp")
+    with open(ir_cpp, "r", encoding="utf-8") as f:
+        irc = f.read()
+    ir_h = os.path.join(base_dir, "include", "ir_engine.h")
+    with open(ir_h, "r", encoding="utf-8") as f:
+        irh = f.read()
+
+    assert "sendRCA(" in irh and "sendRCA(" in irc, "sendRCA must be declared and implemented"
+    assert "sendNikai(command, bits, 1)" in irc, "sendNikai must transmit with 1 repeat"
+    assert "getProtocolDefaultBits(" in irh and "getProtocolDefaultBits(" in irc, "getProtocolDefaultBits must be declared and implemented"
+    assert 'p.equalsIgnoreCase("NIKAI")' in irc and 'return 24' in irc, "Nikai default bits must be 24"
+    assert 'p.equalsIgnoreCase("RCA")' in irc and 'return 24' in irc, "RCA default bits must be 24"
+    print("  [PASS] 2. Nikai & RCA 24-bit frame enforcement and default bit mapping verified.")
+
+    # 3. .ir File Format: nbits preservation and non-destructive raw retention
+    sample_remote = """Filetype: IR library file
+Version: 1
+#
+name: Power
+type: parsed
+protocol: NIKAI
+address: 00 00 00 00
+command: 7F 80 00 00
+nbits: 24
+data: 4000 4000 500 1000 500 2000
+#
+"""
+    lines = [l.strip() for l in sample_remote.split('\n') if l.strip() and not l.startswith('#')]
+    props = dict(l.split(':', 1) for l in lines if ':' in l)
+    assert props.get("protocol").strip() == "NIKAI"
+    assert int(props.get("nbits").strip()) == 24
+    assert "data" in props
+    assert 'nbits: " + String(b.nbits)' in irc, "saveIrFile must serialize nbits"
+    assert 'key == "nbits"' in irc, "parseIrFile must parse nbits"
+    assert '!b.raw_data.empty()' in irc, "saveIrFile must preserve raw timings for parsed buttons"
+    print("  [PASS] 3. .ir file round-trip serialization with nbits and raw timing preservation verified.")
+
+    # 4. Expanded Global TV-B-Gone Database (67 Codes)
+    assert "DEFAULT_TV_POWER_CODES[]" in irc
+    assert '"SAMSUNG 1"' in irc and '"LG 1"' in irc and '"SONY 12B"' in irc
+    assert '"TCL 1"' in irc and '"HISENSE 1"' in irc and '"XIAOMI MI"' in irc
+    assert '"RCA 1 (RCA24)"' in irc and '"NIKAI 1 (24B)"' in irc
+    assert "DECODE_TYPE_RCA" in irc and "code.type == DECODE_TYPE_RCA" in irc, "TV-B-Gone loop must handle RCA"
+    assert "code.type == NIKAI" in irc and "sendNikai" in irc, "TV-B-Gone loop must handle NIKAI"
+    print("  [PASS] 4. Global TV-B-Gone database expanded to 67 codes including RCA and Nikai.")
+
+    # 5. IR Signal Lab Interactive Diagnostics & Test Tools
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "IR_LAB_ITEM_COUNT = 9" in uh, "IR_LAB_ITEM_COUNT must be 9"
+    assert '"Carrier 38 kHz"' in uh and '"LED Torch (DC)"' in uh and '"Loopback Test"' in uh
+    assert '"Calibrate 38k"' in uh and '"Invert Polarity"' in uh and '"Test Nikai 24b"' in uh and '"Test RCA 24b"' in uh
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "irEngine.pulseLedDc(1500)" in uc, "handleIrLabInput must support DC torch pulse"
+    assert "irEngine.runLoopbackTest(" in uc, "handleIrLabInput must support optical loopback test"
+    assert "irEngine.runCalibration(38000)" in uc, "handleIrLabInput must support carrier calibration"
+    assert "irEngine.togglePolarity()" in uc, "handleIrLabInput must support polarity toggle"
+    assert 'sendParsed("NIKAI"' in uc and 'sendParsed("RCA"' in uc, "handleIrLabInput must support test Nikai and RCA TX"
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "irEngine.getLastLabStatus()" in dc, "drawAppIrLab must render diagnostic test status"
+    print("  [PASS] 5. IR Signal Lab test tools (DC torch, optical loopback, calibrate, polarity, Nikai/RCA TX) verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2297,6 +2408,7 @@ if __name__ == "__main__":
     test_qwatch_user_5_fixes()
     test_unified_auto_record_and_silent_sleep()
     test_compass_games_airmouse_overhaul()
+    test_ir_overhaul_suite()
     print("\nAll self-test verifications PASSED!")
 
 

@@ -2037,11 +2037,20 @@ void DisplayManager::drawAppIR() {
         }
         case IrSubmenu::IR_LAB: {
             drawStandardMenu("IR SIGNAL LAB", ui.ir_lab_items, UICore::IR_LAB_ITEM_COUNT, ui.getIrSelection(), ui.getIrScrollOffset());
+            oled.setFont(u8g2_font_4x6_tr);
             if (irEngine.isCarrierTestActive()) {
-                oled.setFont(u8g2_font_4x6_tr);
                 char buf[32];
                 snprintf(buf, sizeof(buf), "[CARRIER %d Hz ON]", (int)irEngine.getCarrierFreq());
                 oled.drawStr(4, 62, buf);
+            } else {
+                String status = irEngine.getLastLabStatus();
+                if (status.length() > 0 && status != "IDLE") {
+                    char buf[36];
+                    snprintf(buf, sizeof(buf), "[%s]", status.c_str());
+                    oled.drawStr(4, 62, buf);
+                } else {
+                    oled.drawStr(4, 62, "OK:RUN TEST CANCEL:BACK");
+                }
             }
             break;
         }
