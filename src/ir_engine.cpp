@@ -187,11 +187,6 @@ decode_type_t IREngine::strToDecodeType(const String& proto) {
     if (p.equalsIgnoreCase("RC6")) return RC6;
     if (p.equalsIgnoreCase("NIKAI")) return NIKAI;
     if (p.equalsIgnoreCase("RCA")) return DECODE_TYPE_RCA;
-    if (p.equalsIgnoreCase("PANASONIC")) return PANASONIC;
-    if (p.equalsIgnoreCase("TOSHIBA")) return TOSHIBA;
-    if (p.equalsIgnoreCase("SHARP")) return SHARP;
-    if (p.equalsIgnoreCase("JVC")) return JVC;
-    if (p.equalsIgnoreCase("DENON")) return DENON;
 
     return ::strToDecodeType(p.c_str());
 }
