@@ -71,10 +71,16 @@ AirMouseManager::AirMouseManager() :
     movement_active(true),
     mode(AirMouseMode::POINTER),
     sensitivity(AirMouseSensitivity::SENS_MED),
-    sensitivity_scale(1.3f),
+    sensitivity_scale(1.0f),
     dead_zone(1.8f),
     anti_dead_zone(0.6f),
     combined_yaw_roll(true),
+    precision_mode(false),
+    is_stationary(false),
+    prev_ax(0.0f),
+    prev_ay(0.0f),
+    prev_az(1.0f),
+    stationary_samples(0),
     swap_xy(false),
     inv_x(false),
     inv_y(false),
@@ -106,10 +112,11 @@ void AirMouseManager::loadPreferences() {
     inv_y = p.getBool("inv_y", false);
     int sens = p.getInt("sens", (int)AirMouseSensitivity::SENS_MED);
     sensitivity = (AirMouseSensitivity)sens;
-    sensitivity_scale = p.getFloat("sens_scl", 1.3f);
+    sensitivity_scale = p.getFloat("sens_scl", 1.0f);
     dead_zone = p.getFloat("dead_zone", 1.8f);
     anti_dead_zone = p.getFloat("anti_dz", 0.6f);
     combined_yaw_roll = p.getBool("comb_yr", true);
+    precision_mode = p.getBool("prec_mode", false);
     p.end();
 }
 
@@ -124,6 +131,7 @@ void AirMouseManager::savePreferences() {
     p.putFloat("dead_zone", dead_zone);
     p.putFloat("anti_dz", anti_dead_zone);
     p.putBool("comb_yr", combined_yaw_roll);
+    p.putBool("prec_mode", precision_mode);
     p.end();
 }
 
@@ -136,6 +144,9 @@ void AirMouseManager::toggleInvY() { inv_y = !inv_y; savePreferences(); }
 
 void AirMouseManager::setCombinedYawRoll(bool enable) { combined_yaw_roll = enable; savePreferences(); }
 void AirMouseManager::toggleCombinedYawRoll() { combined_yaw_roll = !combined_yaw_roll; savePreferences(); }
+
+void AirMouseManager::setPrecisionMode(bool enable) { precision_mode = enable; savePreferences(); }
+void AirMouseManager::togglePrecisionMode() { precision_mode = !precision_mode; savePreferences(); }
 
 void AirMouseManager::start() {
     if (enabled) return;
@@ -178,14 +189,20 @@ void AirMouseManager::start() {
     is_connected = false;
     was_connected = false;
     movement_active = true;
-    offset_gx = 0.0f;
-    offset_gy = 0.0f;
-    offset_gz = 0.0f;
+    CalibratedSensorData cal = sensors.getCalData();
+    offset_gx = cal.gx;
+    offset_gy = cal.gy;
+    offset_gz = cal.gz;
     smooth_dx = 0.0f;
     smooth_dy = 0.0f;
     accum_x = 0.0f;
     accum_y = 0.0f;
     buttons_state = 0;
+    is_stationary = false;
+    stationary_samples = 0;
+    prev_ax = cal.ax;
+    prev_ay = cal.ay;
+    prev_az = cal.az;
     last_update_ms = millis();
 }
 
@@ -233,10 +250,10 @@ void AirMouseManager::toggleMode() {
     }
 }
 
-static const float kSensLevels[] = {0.5f, 0.8f, 1.0f, 1.3f, 1.6f, 2.0f, 2.5f, 3.2f};
-static const int kNumSensLevels = 8;
+static const float kSensLevels[] = {0.15f, 0.3f, 0.5f, 0.8f, 1.0f, 1.3f, 1.8f, 2.4f, 3.2f, 4.2f};
+static const int kNumSensLevels = 10;
 
-static const float kDeadZoneLevels[] = {0.5f, 0.9f, 1.4f, 1.8f, 2.2f, 2.6f, 3.2f, 4.0f};
+static const float kDeadZoneLevels[] = {0.5f, 1.0f, 1.8f, 2.5f, 3.5f, 5.0f, 7.0f, 10.0f};
 static const int kNumDeadZoneLevels = 8;
 
 static const float kAntiDeadLevels[] = {0.0f, 0.3f, 0.6f, 1.0f, 1.5f, 2.0f, 2.6f, 3.4f};
@@ -463,14 +480,21 @@ void AirMouseManager::loop() {
     float raw_gx = combined_yaw_roll ? (roll + yaw) : roll;
     float raw_gy = pitch;
 
-    // Accelerometer Stability & Tremor Fusion:
-    // When the watch is resting or user is aiming at a small target, ||accel|| is steady 1.0g
+    // 6-DOF Accelerometer & Gyroscope Fusion:
+    // 1) Accelerometer magnitude & resting deviation:
     float ax = cal.ax, ay = cal.ay, az = cal.az;
     float accel_norm = sqrtf(ax * ax + ay * ay + az * az);
     float accel_jitter = fabsf(accel_norm - resting_accel_norm);
     resting_accel_norm = resting_accel_norm * 0.95f + accel_norm * 0.05f;
 
-    // Angular velocity magnitude (deg/s)
+    // 2) 3-Axis Accelerometer delta (translational motion / vibration):
+    float d_ax = ax - prev_ax;
+    float d_ay = ay - prev_ay;
+    float d_az = az - prev_az;
+    float accel_delta = sqrtf(d_ax * d_ax + d_ay * d_ay + d_az * d_az);
+    prev_ax = ax; prev_ay = ay; prev_az = az;
+
+    // 3) Angular velocity magnitude (deg/s)
     float omega = sqrtf(raw_gx * raw_gx + raw_gy * raw_gy);
 
     // Adaptive deadband with user dead zone and anti dead zone:
@@ -482,34 +506,78 @@ void AirMouseManager::loop() {
         dynamic_deadband = active_dead_zone + 0.3f; // Extra steady deadband during resting hand
     }
 
+    // 6-DOF True Stationary Check:
+    // If accel is steady 1.0g with minimal translational jerk and angular rate is low:
+    bool current_still = (accel_jitter < 0.03f && accel_delta < 0.04f && omega < (dynamic_deadband * 1.6f));
+    if (current_still) {
+        stationary_samples++;
+    } else {
+        stationary_samples = 0;
+    }
+    is_stationary = (stationary_samples >= 3);
+
+    if (is_stationary) {
+        // Continuous Zero-Drift Tracking:
+        // Automatically adapt gyro bias offsets while watch is stationary!
+        offset_gx += 0.03f * (cal.gx - offset_gx);
+        offset_gy += 0.03f * (cal.gy - offset_gy);
+        offset_gz += 0.03f * (cal.gz - offset_gz);
+
+        // Immediate hard clamp to zero: ABSOLUTELY ZERO DRIFT!
+        smooth_dx = 0.0f;
+        smooth_dy = 0.0f;
+        accum_x = 0.0f;
+        accum_y = 0.0f;
+        return;
+    }
+
     float gx = 0.0f;
     float gy = 0.0f;
     if (omega > dynamic_deadband) {
-        float effective_omega = (omega - dynamic_deadband) + anti_dead_zone;
+        float excess = omega - dynamic_deadband;
+        float ramp = (excess < 1.0f) ? (excess / 1.0f) : 1.0f;
+        float effective_omega = excess + anti_dead_zone * ramp;
         float scale = effective_omega / omega;
         gx = raw_gx * scale;
         gy = raw_gy * scale;
+    } else {
+        accum_x *= 0.5f;
+        accum_y *= 0.5f;
+        if (fabsf(accum_x) < 0.05f) accum_x = 0.0f;
+        if (fabsf(accum_y) < 0.05f) accum_y = 0.0f;
     }
 
     // 1-Euro / Dynamic Velocity Filter:
-    // Low velocity (omega < 6 deg/s): heavy smoothing (alpha = 0.12) to eradicate physiological hand tremor
-    // High velocity (omega > 25 deg/s): scales up to alpha = 0.65 for instant flick responsiveness
     float alpha = 0.12f;
-    if (omega > 4.0f) {
-        float factor = (omega - 4.0f) / 28.0f;
-        if (factor > 1.0f) factor = 1.0f;
-        alpha = 0.12f + 0.53f * factor;
+    if (precision_mode) {
+        alpha = 0.07f;
+        if (omega > 5.0f) {
+            float factor = (omega - 5.0f) / 18.0f;
+            if (factor > 1.0f) factor = 1.0f;
+            alpha = 0.07f + 0.35f * factor;
+        }
+    } else {
+        if (omega > 4.0f) {
+            float factor = (omega - 4.0f) / 28.0f;
+            if (factor > 1.0f) factor = 1.0f;
+            alpha = 0.12f + 0.53f * factor;
+        }
     }
 
     smooth_dx = smooth_dx + alpha * (gx - smooth_dx);
     smooth_dy = smooth_dy + alpha * (gy - smooth_dy);
 
     // Non-linear power-law acceleration curve:
-    // Fine movements give 1-2 pixel accuracy; swift flicks traverse desktop monitors effortlessly
     float speed = sqrtf(smooth_dx * smooth_dx + smooth_dy * smooth_dy);
-    float accel_mult = 1.0f + 0.06f * powf(speed, 0.45f);
+    float accel_mult = 1.0f;
+    if (!precision_mode) {
+        accel_mult = 1.0f + 0.06f * powf(speed, 0.45f);
+    }
 
     float mult = getSensitivityMultiplier();
+    if (precision_mode) {
+        mult *= 0.35f; // Precision Mode micro-speed scaling
+    }
     float delta_x = smooth_dx * mult * accel_mult * dt * 28.0f;
     float delta_y = smooth_dy * mult * accel_mult * dt * 28.0f;
 

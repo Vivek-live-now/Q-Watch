@@ -95,6 +95,14 @@ public:
     void setCombinedYawRoll(bool enable);
     void toggleCombinedYawRoll();
 
+    // Precision Mode (Micro-speed 1:1 linear tracking with 6-DOF tremor suppression)
+    bool getPrecisionMode() const { return precision_mode; }
+    void setPrecisionMode(bool enable);
+    void togglePrecisionMode();
+
+    // 6-DOF Stabilization State
+    bool isStationary() const { return is_stationary; }
+
     // Axis swapping & inversion
     bool getSwapXY() const { return swap_xy; }
     bool getInvX() const { return inv_x; }
@@ -129,6 +137,14 @@ private:
     float dead_zone;
     float anti_dead_zone;
     bool combined_yaw_roll;
+    bool precision_mode;
+    bool is_stationary;
+
+    // 6-DOF Tremor & Stability History
+    float prev_ax;
+    float prev_ay;
+    float prev_az;
+    uint32_t stationary_samples;
 
     // Axis Mapping
     bool swap_xy;

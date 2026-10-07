@@ -1417,13 +1417,17 @@ void DisplayManager::drawAppAirMouse() {
     }
 
     String mode_str = "MODE: ";
-    mode_str += (airMouse.getMode() == AirMouseMode::POINTER) ? "POINTER" : "SCROLL";
+    if (airMouse.getMode() == AirMouseMode::POINTER) {
+        mode_str += airMouse.getPrecisionMode() ? "POINTER [P]" : "POINTER";
+    } else {
+        mode_str += airMouse.getPrecisionMode() ? "SCROLL [P]" : "SCROLL";
+    }
 
     char sens_str[32];
-    snprintf(sens_str, sizeof(sens_str), "SENS: %.1fx", airMouse.getSensitivityScale());
+    snprintf(sens_str, sizeof(sens_str), "SENS: %.2fx", airMouse.getSensitivityScale());
 
     String move_str = "MOVE: ";
-    move_str += airMouse.isMovementActive() ? "ACTIVE" : "PAUSED";
+    move_str += airMouse.isMovementActive() ? (airMouse.isStationary() ? "STILL" : "ACTIVE") : "PAUSED";
 
     oled.drawStr(4, 21, ble_str.c_str());
     oled.drawStr(4, 32, mode_str.c_str());
@@ -1450,16 +1454,19 @@ void DisplayManager::drawAppMouseSettings() {
     oled.drawLine(0, 9, 128, 9);
 
     int sel = ui.getMouseSettingsSelection();
-    int total_items = in_air_mouse ? 8 : 9;
+    int total_items = in_air_mouse ? 9 : 10;
 
     char sens_buf[32];
-    snprintf(sens_buf, sizeof(sens_buf), "Sens: %.1fx", airMouse.getSensitivityScale());
+    snprintf(sens_buf, sizeof(sens_buf), "Sens: %.2fx", airMouse.getSensitivityScale());
 
     char dead_buf[32];
     snprintf(dead_buf, sizeof(dead_buf), "Dead: %.1f\xb0", airMouse.getDeadZone());
 
     char anti_buf[32];
     snprintf(anti_buf, sizeof(anti_buf), "Anti: %.1f\xb0", airMouse.getAntiDeadZone());
+
+    char prec_buf[32];
+    snprintf(prec_buf, sizeof(prec_buf), "Precision: %s", airMouse.getPrecisionMode() ? "ON" : "OFF");
 
     char yr_buf[32];
     snprintf(yr_buf, sizeof(yr_buf), "Yaw+Roll: %s", airMouse.getCombinedYawRoll() ? "ON" : "OFF");
@@ -1473,10 +1480,11 @@ void DisplayManager::drawAppMouseSettings() {
     char invy_buf[32];
     snprintf(invy_buf, sizeof(invy_buf), "Invert Y: %s", airMouse.getInvY() ? "ON" : "OFF");
 
-    const char* items[9] = {
+    const char* items[10] = {
         sens_buf,
         dead_buf,
         anti_buf,
+        prec_buf,
         yr_buf,
         swap_buf,
         invx_buf,

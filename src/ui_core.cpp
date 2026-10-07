@@ -3395,7 +3395,7 @@ void UICore::handleAirMouseInput() {
             needs_redraw = true;
         } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
             mouse_settings_selection++;
-            if (mouse_settings_selection > 7) mouse_settings_selection = 7;
+            if (mouse_settings_selection > 8) mouse_settings_selection = 8;
             soundManager.playNavMove();
             needs_redraw = true;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
@@ -3407,18 +3407,21 @@ void UICore::handleAirMouseInput() {
             } else if (mouse_settings_selection == 2) {
                 airMouse.cycleAntiDeadZone(true);
             } else if (mouse_settings_selection == 3) {
+                airMouse.togglePrecisionMode();
+                showToast(airMouse.getPrecisionMode() ? "[PRECISION ON]" : "[PRECISION OFF]", 1000);
+            } else if (mouse_settings_selection == 4) {
                 airMouse.toggleCombinedYawRoll();
                 showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
-            } else if (mouse_settings_selection == 4) {
+            } else if (mouse_settings_selection == 5) {
                 airMouse.toggleSwapXY();
                 showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
-            } else if (mouse_settings_selection == 5) {
+            } else if (mouse_settings_selection == 6) {
                 airMouse.toggleInvX();
                 showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
-            } else if (mouse_settings_selection == 6) {
+            } else if (mouse_settings_selection == 7) {
                 airMouse.toggleInvY();
                 showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
-            } else if (mouse_settings_selection == 7) {
+            } else if (mouse_settings_selection == 8) {
                 airMouse.recenter();
                 showToast("[GYRO RECENTERED]", 1000);
             }
@@ -3432,18 +3435,21 @@ void UICore::handleAirMouseInput() {
             } else if (mouse_settings_selection == 2) {
                 airMouse.cycleAntiDeadZone(false);
             } else if (mouse_settings_selection == 3) {
+                airMouse.togglePrecisionMode();
+                showToast(airMouse.getPrecisionMode() ? "[PRECISION ON]" : "[PRECISION OFF]", 1000);
+            } else if (mouse_settings_selection == 4) {
                 airMouse.toggleCombinedYawRoll();
                 showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
-            } else if (mouse_settings_selection == 4) {
+            } else if (mouse_settings_selection == 5) {
                 airMouse.toggleSwapXY();
                 showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
-            } else if (mouse_settings_selection == 5) {
+            } else if (mouse_settings_selection == 6) {
                 airMouse.toggleInvX();
                 showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
-            } else if (mouse_settings_selection == 6) {
+            } else if (mouse_settings_selection == 7) {
                 airMouse.toggleInvY();
                 showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
-            } else if (mouse_settings_selection == 7) {
+            } else if (mouse_settings_selection == 8) {
                 airMouse.recenter();
                 showToast("[GYRO RECENTERED]", 1000);
             }
@@ -3522,7 +3528,7 @@ void UICore::handleMouseSettingsInput() {
         needs_redraw = true;
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         mouse_settings_selection++;
-        if (mouse_settings_selection > 8) mouse_settings_selection = 8;
+        if (mouse_settings_selection > 9) mouse_settings_selection = 9;
         soundManager.playNavMove();
         needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
@@ -3534,21 +3540,24 @@ void UICore::handleMouseSettingsInput() {
         } else if (mouse_settings_selection == 2) {
             airMouse.cycleAntiDeadZone(true);
         } else if (mouse_settings_selection == 3) {
+            airMouse.togglePrecisionMode();
+            showToast(airMouse.getPrecisionMode() ? "[PRECISION ON]" : "[PRECISION OFF]", 1000);
+        } else if (mouse_settings_selection == 4) {
             airMouse.toggleCombinedYawRoll();
             showToast(airMouse.getCombinedYawRoll() ? "[YAW+ROLL ON]" : "[YAW+ROLL OFF]", 1000);
-        } else if (mouse_settings_selection == 4) {
+        } else if (mouse_settings_selection == 5) {
             airMouse.toggleSwapXY();
             showToast(airMouse.getSwapXY() ? "[SWAP X/Y ON]" : "[SWAP X/Y OFF]", 1000);
-        } else if (mouse_settings_selection == 5) {
+        } else if (mouse_settings_selection == 6) {
             airMouse.toggleInvX();
             showToast(airMouse.getInvX() ? "[INVERT X ON]" : "[INVERT X OFF]", 1000);
-        } else if (mouse_settings_selection == 6) {
+        } else if (mouse_settings_selection == 7) {
             airMouse.toggleInvY();
             showToast(airMouse.getInvY() ? "[INVERT Y ON]" : "[INVERT Y OFF]", 1000);
-        } else if (mouse_settings_selection == 7) {
+        } else if (mouse_settings_selection == 8) {
             airMouse.recenter();
             showToast("[GYRO RECENTERED]", 1000);
-        } else if (mouse_settings_selection == 8) {
+        } else if (mouse_settings_selection == 9) {
             imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
             if (!airMouse.isEnabled()) airMouse.start();
         }
