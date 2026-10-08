@@ -46,7 +46,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -798,15 +798,70 @@ void SensorManager::updateMadgwick(float dt) {
 }
 
 void SensorManager::computeEulerAngles() {
-    // Performance Optimization: Use single-precision atan2f/asinf for direct hardware FPU execution
-    float raw_roll  = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2) * 57.29578f;
-    float sinp = -2.0f * (q1*q3 - q0*q2);
-    if (sinp > 1.0f) sinp = 1.0f;
-    else if (sinp < -1.0f) sinp = -1.0f;
-    float raw_pitch = asinf(sinp) * 57.29578f;
+    // 1. High-precision Microsecond Delta-T Calculation
+    uint64_t now_us = micros();
+    float dt = 0.01f;
+    if (last_fusion_micros > 0 && now_us > last_fusion_micros) {
+        dt = (float)(now_us - last_fusion_micros) / 1000000.0f;
+        if (dt <= 0.0001f || dt > 0.1f) dt = 0.01f; // Sanity check
+    }
+    last_fusion_micros = now_us;
 
-    orientation.roll = raw_roll - offsets.roll_offset;
-    orientation.pitch = raw_pitch - offsets.pitch_offset;
+    // 2. Continuous Stationary Gyro Zero-Drift Auto-Zeroing
+    float gx = cal_data.gx; // in deg/s
+    float gy = cal_data.gy;
+    float gz = cal_data.gz;
+    float gyro_mag = sqrtf(gx * gx + gy * gy + gz * gz);
+
+    float ax = cal_data.ax; // in g
+    float ay = cal_data.ay;
+    float az = cal_data.az;
+    float accel_norm = sqrtf(ax * ax + ay * ay + az * az);
+
+    if (gyro_mag < 1.0f && fabsf(accel_norm - 1.0f) < 0.08f) {
+        stat_gyro_sum_x += (float)raw_data.gx;
+        stat_gyro_sum_y += (float)raw_data.gy;
+        stat_gyro_sum_z += (float)raw_data.gz;
+        stat_sample_count++;
+        if (stat_sample_count >= 50) { // ~500ms resting still
+            offsets.gyro_bias_x = (int16_t)(stat_gyro_sum_x / 50.0f);
+            offsets.gyro_bias_y = (int16_t)(stat_gyro_sum_y / 50.0f);
+            offsets.gyro_bias_z = (int16_t)(stat_gyro_sum_z / 50.0f);
+            stat_sample_count = 0;
+            stat_gyro_sum_x = stat_gyro_sum_y = stat_gyro_sum_z = 0.0f;
+        }
+    } else {
+        stat_sample_count = 0;
+        stat_gyro_sum_x = stat_gyro_sum_y = stat_gyro_sum_z = 0.0f;
+    }
+
+    // 3. Accelerometer Tilt Angle Calculation
+    float accel_pitch = atan2f(ax, sqrtf(ay * ay + az * az)) * 57.29578f;
+    float accel_roll  = atan2f(ay, az) * 57.29578f;
+
+    // Initialize filtered state on first frame
+    static bool filt_init = false;
+    if (!filt_init) {
+        filt_pitch = accel_pitch;
+        filt_roll = accel_roll;
+        filt_init = true;
+    }
+
+    // Gyro rate integration (Body angular rates mapped to Pitch & Roll rates)
+    filt_pitch += gy * dt;
+    filt_roll  += gx * dt;
+
+    // 4. Adaptive Complementary Filter with Acceleration Sanity Masking
+    // Mask out accel gravity corrections during rapid wrist flicks or linear shock forces (|norm - 1.0g| > 0.15g)
+    float accel_dev = fabsf(accel_norm - 1.0f);
+    if (accel_dev < 0.15f) {
+        float alpha = 0.96f; // Standard weight: 96% gyro integration, 4% accel gravity vector
+        filt_pitch = alpha * filt_pitch + (1.0f - alpha) * accel_pitch;
+        filt_roll  = alpha * filt_roll  + (1.0f - alpha) * accel_roll;
+    }
+
+    orientation.roll = filt_roll - offsets.roll_offset;
+    orientation.pitch = filt_pitch - offsets.pitch_offset;
 
     // Hysteresis: Dynamic reference axis switch between Y-axis (Flat/Normal) and Z-axis (Tilted Upright)
     // Steep threshold (>65 deg) avoids false triggerings during normal wrist glancing (30-50 deg)
