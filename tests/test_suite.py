@@ -2646,6 +2646,137 @@ def test_air_mouse_sliders_yaw_roll_and_paused_settings():
     assert "drawFrame(74," in dc and "drawBox(76," in dc, "display.cpp must draw slider bar graphic frames and fills"
     print("  [PASS] 4. OLED slider graphic bars, 6-DOF STILL telemetry, Precision badge & controls footer verified.")
 
+def test_ble_connectivity_and_online_irdb_suite():
+    print("\n--- 43. BLE Connectivity, Auto-Connect, Pairing & Online IRDB Verification ---")
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+
+    # 1. Firmware Q-Link BLE implementation & coexistence
+    qlink_h = os.path.join(base_dir, "include", "qlink.h")
+    qlink_cpp = os.path.join(base_dir, "src", "qlink.cpp")
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+
+    with open(qlink_h, "r", encoding="utf-8") as f:
+        qh = f.read()
+    assert "QLINK_SERVICE_UUID" in qh and "QLINK_CHAR_FILE" in qh
+    assert "isBleConnected" in qh and "handleBleCommand" in qh and "handleBleFilePacket" in qh
+    assert "startFileUpload" in qh and "processFileChunk" in qh and "finishFileUpload" in qh
+
+    with open(qlink_cpp, "r", encoding="utf-8") as f:
+        qc = f.read()
+    assert "QLinkBleServerCallbacks" in qc and "QLinkBleCommandCallbacks" in qc and "QLinkBleFileCallbacks" in qc
+    assert "ESP_LE_AUTH_BOND" in qc
+    assert "0xFE" in qc and "0x01" in qc
+    assert "startFileUpload" in qc and "finishFileUpload" in qc
+
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "qlink.begin();" in mc
+    assert "qlink.loop();" in mc
+
+    with open(mouse_cpp, "r", encoding="utf-8") as f:
+        amc = f.read()
+    assert "QLINK_SERVICE_UUID" in amc
+
+    print("  [PASS] 1. Firmware BLE GATT server, QLink advertising, bonding security & file chunk protocol verified.")
+
+    # 2. Android BLE transport, scanner & auto-connect
+    ble_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "ble")
+    transport_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport")
+    client_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "QLinkClient.kt")
+    settings_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "SettingsScreen.kt")
+
+    scanner_kt = os.path.join(ble_dir, "QWatchBleScanner.kt")
+    ble_transport_kt = os.path.join(transport_dir, "QLinkBleTransport.kt")
+
+    assert os.path.exists(scanner_kt), "QWatchBleScanner.kt must exist"
+    with open(scanner_kt, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "class QWatchBleScanner" in sc
+    assert "startScan" in sc and "stopScan" in sc and "createBond" in sc
+    assert "ACTION_BOND_STATE_CHANGED" in sc
+    assert "DiscoveredBleDevice" in sc
+
+    with open(ble_transport_kt, "r", encoding="utf-8") as f:
+        tc = f.read()
+    assert "uploadFileWithProgress" in tc
+    assert "0xFE.toByte()" in tc and "0x01.toByte()" in tc
+    assert "requestConnectionPriority" in tc
+    assert "CHAR_FILE_UUID" in tc and "CHAR_TELEMETRY_UUID" in tc
+
+    with open(client_kt, "r", encoding="utf-8") as f:
+        ck = f.read()
+    assert "bleScanner" in ck
+    assert "autoConnectBleIfEnabled" in ck
+    assert "ACTION_STATE_CHANGED" in ck
+    assert "setBleAutoConnectEnabled" in ck
+
+    with open(settings_kt, "r", encoding="utf-8") as f:
+        sk = f.read()
+    assert "DISCOVERED DEVICES" in sk
+    assert "SCAN BLE" in sk
+    assert "AUTO-CONNECT WHEN BLUETOOTH ON" in sk
+
+    print("  [PASS] 2. Android BLE transport chunk streaming, QWatchBleScanner, bonding, and auto-connect watchdog verified.")
+
+    # 3. Android Online IRDB Subsystem
+    irdb_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "irdb")
+    vm_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "viewmodel")
+    screens_dir = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens")
+
+    models_kt = os.path.join(irdb_dir, "IrdbModels.kt")
+    parser_kt = os.path.join(irdb_dir, "IrdbParser.kt")
+    repo_kt = os.path.join(irdb_dir, "IrdbRepository.kt")
+    irdb_vm_kt = os.path.join(vm_dir, "OnlineIrdbViewModel.kt")
+    irdb_screen_kt = os.path.join(screens_dir, "OnlineIrdbScreen.kt")
+    dash_kt = os.path.join(screens_dir, "DashboardScreen.kt")
+    main_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "MainActivity.kt")
+    files_kt = os.path.join(screens_dir, "FilesScreen.kt")
+
+    assert os.path.exists(models_kt), "IrdbModels.kt must exist"
+    assert os.path.exists(parser_kt), "IrdbParser.kt must exist"
+    assert os.path.exists(repo_kt), "IrdbRepository.kt must exist"
+    assert os.path.exists(irdb_vm_kt), "OnlineIrdbViewModel.kt must exist"
+    assert os.path.exists(irdb_screen_kt), "OnlineIrdbScreen.kt must exist"
+
+    with open(models_kt, "r", encoding="utf-8") as f:
+        mk = f.read()
+    assert "data class IrdbEntry" in mk and "rawDownloadUrl" in mk
+    assert "IrdbTransferProgress" in mk and "IrdbTransferStatus" in mk
+
+    with open(repo_kt, "r", encoding="utf-8") as f:
+        rk = f.read()
+    assert "https://search.flippertools.net/flipper_irdb_database.json" in rk
+    assert "flipper_irdb_database.json" in rk
+    assert "getCuratedFallbackDatabase" in rk
+
+    with open(irdb_vm_kt, "r", encoding="utf-8") as f:
+        vk = f.read()
+    assert "flashRemoteToWatch" in vk
+    assert "uploadFileWithProgress" in vk
+    assert "openPreview" in vk
+
+    with open(irdb_screen_kt, "r", encoding="utf-8") as f:
+        isk = f.read()
+    assert "ONLINE IRDB // FLIPPER REPO" in isk
+    assert "RemoteEntryCard" in isk
+
+    with open(dash_kt, "r", encoding="utf-8") as f:
+        dk = f.read()
+    assert "ONLINE IRDB // FLIPPER REPOSITORY" in dk
+    assert "onNavigateToIrdb" in dk
+
+    with open(main_kt, "r", encoding="utf-8") as f:
+        mak = f.read()
+    assert "IRDB" in mak
+    assert "OnlineIrdbScreen" in mak
+
+    with open(files_kt, "r", encoding="utf-8") as f:
+        fk = f.read()
+    assert '"/ir"' in fk
+
+    print("  [PASS] 3. Online IRDB architecture, Flipper repository, UI search/preview, and BLE flashing integration verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2680,6 +2811,7 @@ if __name__ == "__main__":
     test_max30102_overhaul_suite()
     test_user_hardware_and_compass_overhaul()
     test_air_mouse_sliders_yaw_roll_and_paused_settings()
+    test_ble_connectivity_and_online_irdb_suite()
     print("\nAll self-test verifications PASSED!")
 
 

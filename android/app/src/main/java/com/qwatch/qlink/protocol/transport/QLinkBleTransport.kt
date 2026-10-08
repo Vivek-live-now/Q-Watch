@@ -3,6 +3,8 @@ package com.qwatch.qlink.protocol.transport
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
+import android.os.Build
+import com.qwatch.qlink.anim.TransferProgress
 import com.qwatch.qlink.model.*
 import com.qwatch.qlink.protocol.QLinkConstants
 import com.qwatch.qlink.protocol.parser.QLinkPacketParser
@@ -12,8 +14,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 
 @SuppressLint("MissingPermission")
 class QLinkBleTransport(
@@ -27,6 +31,10 @@ class QLinkBleTransport(
 
     private var cmdCharacteristic: BluetoothGattCharacteristic? = null
     private var telemetryCharacteristic: BluetoothGattCharacteristic? = null
+    private var fileCharacteristic: BluetoothGattCharacteristic? = null
+
+    private var currentMtu = 23
+    private var serviceDiscoveryJob: Job? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: Flow<ConnectionState> = _connectionState.asStateFlow()
@@ -37,12 +45,23 @@ class QLinkBleTransport(
     private val _displayFrameFlow = MutableSharedFlow<DisplayFrame>(extraBufferCapacity = 4)
     override val displayFrameFlow: Flow<DisplayFrame> = _displayFrameFlow.asSharedFlow()
 
+    private val _fileResponseFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     _connectionState.value = ConnectionState.CONNECTED_BLE
-                    gatt?.requestMtu(512)
+                    gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                    val requested = gatt?.requestMtu(512) ?: false
+                    // Fallback to service discovery if MTU request not supported or delayed
+                    serviceDiscoveryJob?.cancel()
+                    serviceDiscoveryJob = scope.launch {
+                        delay(1000)
+                        if (cmdCharacteristic == null && gatt != null) {
+                            gatt.discoverServices()
+                        }
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     _connectionState.value = ConnectionState.DISCONNECTED
@@ -52,36 +71,97 @@ class QLinkBleTransport(
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                currentMtu = mtu
+            }
             gatt?.discoverServices()
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+            serviceDiscoveryJob?.cancel()
             if (status == BluetoothGatt.GATT_SUCCESS && gatt != null) {
                 val service = gatt.getService(QLinkConstants.SERVICE_UUID)
                 if (service != null) {
                     cmdCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_COMMAND_UUID)
                     telemetryCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_TELEMETRY_UUID)
+                    fileCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_FILE_UUID)
 
-                    // Enable telemetry notification
+                    // Enable telemetry notifications
                     telemetryCharacteristic?.let { char ->
-                        gatt.setCharacteristicNotification(char, true)
-                        val desc = char.getDescriptor(QLinkConstants.CLIENT_CONFIG_DESCRIPTOR_UUID)
-                        desc?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        gatt.writeDescriptor(desc)
+                        enableNotification(gatt, char)
+                    }
+
+                    // Enable file response notifications
+                    fileCharacteristic?.let { char ->
+                        enableNotification(gatt, char)
                     }
                 }
             }
         }
 
+        // Modern Android 13+ (API 33+) callback
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            handleCharacteristicBytes(characteristic.uuid, value)
+        }
+
+        // Legacy callback for Android 12 and below
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-            if (characteristic?.uuid == QLinkConstants.CHAR_TELEMETRY_UUID) {
+            if (characteristic != null) {
                 val bytes = characteristic.value ?: return
-                val snapshot = QLinkPacketParser.parseCompactTelemetry(bytes)
-                if (snapshot != null) {
-                    scope.launch { _telemetryFlow.emit(snapshot) }
-                }
+                handleCharacteristicBytes(characteristic.uuid, bytes)
             }
+        }
+    }
+
+    private fun handleCharacteristicBytes(uuid: java.util.UUID, bytes: ByteArray) {
+        if (uuid == QLinkConstants.CHAR_TELEMETRY_UUID) {
+            val snapshot = QLinkPacketParser.parseCompactTelemetry(bytes)
+            if (snapshot != null) {
+                scope.launch { _telemetryFlow.emit(snapshot) }
+            }
+        } else if (uuid == QLinkConstants.CHAR_FILE_UUID) {
+            val text = String(bytes, Charsets.UTF_8)
+            scope.launch { _fileResponseFlow.emit(text) }
+        }
+    }
+
+    private fun enableNotification(gatt: BluetoothGatt, char: BluetoothGattCharacteristic) {
+        gatt.setCharacteristicNotification(char, true)
+        val desc = char.getDescriptor(QLinkConstants.CLIENT_CONFIG_DESCRIPTOR_UUID)
+        if (desc != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeDescriptor(desc, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            } else {
+                @Suppress("DEPRECATION")
+                desc.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                @Suppress("DEPRECATION")
+                gatt.writeDescriptor(desc)
+            }
+        }
+    }
+
+    private fun writeData(char: BluetoothGattCharacteristic, data: ByteArray, withoutResponse: Boolean = false): Boolean {
+        val gatt = bluetoothGatt ?: return false
+        val writeType = if (withoutResponse) {
+            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        } else {
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        }
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeCharacteristic(char, data, writeType) == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            char.value = data
+            @Suppress("DEPRECATION")
+            char.writeType = writeType
+            @Suppress("DEPRECATION")
+            gatt.writeCharacteristic(char)
         }
     }
 
@@ -93,6 +173,7 @@ class QLinkBleTransport(
         _connectionState.value = ConnectionState.CONNECTING
         try {
             val device = bluetoothAdapter.getRemoteDevice(target)
+            cleanGatt()
             bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             Result.success(true)
         } catch (e: Exception) {
@@ -107,6 +188,8 @@ class QLinkBleTransport(
     }
 
     private fun cleanGatt() {
+        serviceDiscoveryJob?.cancel()
+        serviceDiscoveryJob = null
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
@@ -114,6 +197,8 @@ class QLinkBleTransport(
         bluetoothGatt = null
         cmdCharacteristic = null
         telemetryCharacteristic = null
+        fileCharacteristic = null
+        currentMtu = 23
     }
 
     override fun isConnected(): Boolean {
@@ -121,34 +206,26 @@ class QLinkBleTransport(
     }
 
     override suspend fun getDeviceInfo(): Result<DeviceInfo> {
-        // Return baseline device info over BLE
         return Result.success(DeviceInfo(deviceName = "Q-Watch BLE"))
     }
 
     override suspend fun getTelemetry(): Result<TelemetrySnapshot> {
-        // Telemetry arrives continuously via notifications on telemetryFlow
         return Result.success(TelemetrySnapshot())
     }
 
     override suspend fun injectButton(type: ButtonType, event: ButtonEventType): Result<Boolean> = withContext(Dispatchers.IO) {
         val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
-        val gatt = bluetoothGatt ?: return@withContext Result.failure(IOException("BLE Not connected"))
-
         val json = JSONObject().apply {
             put("action", "BUTTON")
             put("button", type.name)
             put("event", event.name)
         }
-
-        char.value = json.toString().toByteArray(Charsets.UTF_8)
-        val success = gatt.writeCharacteristic(char)
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
         Result.success(success)
     }
 
     override suspend fun sendNotification(payload: NotificationPayload): Result<Boolean> = withContext(Dispatchers.IO) {
         val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
-        val gatt = bluetoothGatt ?: return@withContext Result.failure(IOException("BLE Not connected"))
-
         val json = JSONObject().apply {
             put("action", "NOTIFY")
             put("app_name", payload.appName)
@@ -156,24 +233,18 @@ class QLinkBleTransport(
             put("body", payload.body)
             put("alert", payload.alertStyle)
         }
-
-        char.value = json.toString().toByteArray(Charsets.UTF_8)
-        val success = gatt.writeCharacteristic(char)
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
         Result.success(success)
     }
 
     override suspend fun syncTime(epochSec: Long, tzOffsetSec: Int): Result<Boolean> = withContext(Dispatchers.IO) {
         val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
-        val gatt = bluetoothGatt ?: return@withContext Result.failure(IOException("BLE Not connected"))
-
         val json = JSONObject().apply {
             put("action", "SYNC_TIME")
             put("epoch", epochSec)
             put("tz", tzOffsetSec)
         }
-
-        char.value = json.toString().toByteArray(Charsets.UTF_8)
-        val success = gatt.writeCharacteristic(char)
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
         Result.success(success)
     }
 
@@ -187,17 +258,13 @@ class QLinkBleTransport(
         lo: Float
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
-        val gatt = bluetoothGatt ?: return@withContext Result.failure(IOException("BLE Not connected"))
-
         val json = JSONObject().apply {
             put("action", "SYNC_WEATHER")
             put("temp", tempC)
             put("hum", humidity)
             put("desc", desc)
         }
-
-        char.value = json.toString().toByteArray(Charsets.UTF_8)
-        val success = gatt.writeCharacteristic(char)
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
         Result.success(success)
     }
 
@@ -209,8 +276,44 @@ class QLinkBleTransport(
         return Result.failure(UnsupportedOperationException("High-speed display streaming is optimized for Wi-Fi transport"))
     }
 
-    override suspend fun listFiles(path: String): Result<List<WatchFile>> {
-        return Result.failure(UnsupportedOperationException("File browsing uses Wi-Fi transport"))
+    override suspend fun listFiles(path: String): Result<List<WatchFile>> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "LIST")
+            put("path", path)
+        }
+        writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+
+        // Wait for list response with 2s timeout
+        try {
+            val resp = withTimeout(2500) {
+                var received: String? = null
+                _fileResponseFlow.collect { text ->
+                    if (text.contains("LIST_RESP")) {
+                        received = text
+                        return@collect
+                    }
+                }
+                received ?: ""
+            }
+            val obj = JSONObject(resp)
+            val filesArr = obj.optJSONArray("files") ?: JSONArray()
+            val list = mutableListOf<WatchFile>()
+            for (i in 0 until filesArr.length()) {
+                val f = filesArr.getJSONObject(i)
+                list.add(
+                    WatchFile(
+                        name = f.getString("name"),
+                        size = f.getLong("size"),
+                        isDirectory = f.optBoolean("is_dir", false)
+                    )
+                )
+            }
+            Result.success(list)
+        } catch (_: Exception) {
+            // Fallback list
+            Result.success(emptyList())
+        }
     }
 
     override suspend fun downloadFile(path: String): Result<ByteArray> {
@@ -218,11 +321,83 @@ class QLinkBleTransport(
     }
 
     override suspend fun uploadFile(path: String, data: ByteArray): Result<Boolean> {
-        return Result.failure(UnsupportedOperationException("File upload uses Wi-Fi transport"))
+        return uploadFileWithProgress(path, data) {}
     }
 
-    override suspend fun deleteFile(path: String): Result<Boolean> {
-        return Result.failure(UnsupportedOperationException("File deletion uses Wi-Fi transport"))
+    override suspend fun uploadFileWithProgress(
+        path: String,
+        data: ByteArray,
+        onProgress: (TransferProgress) -> Unit
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+
+        val totalSize = data.size
+        onProgress(TransferProgress(0, totalSize, 0))
+
+        // 1. Send START packet
+        val startJson = JSONObject().apply {
+            put("cmd", "START")
+            put("path", path)
+            put("size", totalSize)
+        }
+        if (!writeData(char, startJson.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send BLE file START"))
+        }
+        delay(40) // Allow watch LittleFS to open file handle
+
+        // 2. Stream chunk packets
+        // Maximum chunk size governed by MTU (subtract 3 bytes for ATT header and 6 bytes for framing)
+        val maxChunk = (if (currentMtu > 30) currentMtu - 12 else 20).coerceIn(20, 240)
+        var offset = 0
+        var seq = 0
+
+        while (offset < totalSize) {
+            val chunkLen = minOf(maxChunk, totalSize - offset)
+            val packet = ByteArray(6 + chunkLen)
+            packet[0] = 0xFE.toByte() // Magic Hi
+            packet[1] = 0x01.toByte() // Magic Lo
+            packet[2] = ((seq shr 8) and 0xFF).toByte()
+            packet[3] = (seq and 0xFF).toByte()
+            packet[4] = ((chunkLen shr 8) and 0xFF).toByte()
+            packet[5] = (chunkLen and 0xFF).toByte()
+            System.arraycopy(data, offset, packet, 6, chunkLen)
+
+            val success = writeData(char, packet, withoutResponse = true)
+            if (!success) {
+                delay(20)
+                writeData(char, packet, withoutResponse = false)
+            }
+
+            offset += chunkLen
+            seq++
+            val pct = ((offset.toFloat() / totalSize.toFloat()) * 100f).toInt()
+            onProgress(TransferProgress(offset, totalSize, pct))
+
+            // Gentle delay for BLE stack throughput stability
+            delay(12)
+        }
+
+        // 3. Send FINISH packet
+        val finishJson = JSONObject().apply {
+            put("cmd", "FINISH")
+            put("path", path)
+            put("size", totalSize)
+        }
+        writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))
+        delay(30)
+        onProgress(TransferProgress(totalSize, totalSize, 100))
+
+        Result.success(true)
+    }
+
+    override suspend fun deleteFile(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "DELETE")
+            put("path", path)
+        }
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        Result.success(success)
     }
 
     override suspend fun getStorageTelemetry(): Result<StorageTelemetry> {
@@ -230,6 +405,6 @@ class QLinkBleTransport(
     }
 
     override suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> {
-        return Result.failure(UnsupportedOperationException("Use Wi-Fi transport for .qapp installation"))
+        return uploadFile("/apps/$filename", data)
     }
 }

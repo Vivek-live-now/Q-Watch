@@ -18,6 +18,7 @@
 #include "anim_engine.h"
 #include "vibration_manager.h"
 #include "air_mouse.h"
+#include "qlink.h"
 
 int last_drawn_sec = -1;
 uint32_t last_portal_draw = 0;
@@ -50,6 +51,7 @@ void setup() {
   timekeeping.begin();
   animEngine.begin();
   airMouse.begin();
+  qlink.begin();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
   } else {
@@ -63,6 +65,7 @@ void setup() {
 
 void loop() {
   wifiPortal.loop();
+  qlink.loop();
   qclock.loop();
   weather.loop();
 

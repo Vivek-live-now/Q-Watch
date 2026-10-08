@@ -1,14 +1,23 @@
 package com.qwatch.qlink.protocol
 
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import com.qwatch.qlink.model.*
+import com.qwatch.qlink.protocol.ble.QWatchBleScanner
 import com.qwatch.qlink.protocol.transport.QLinkBleTransport
 import com.qwatch.qlink.protocol.transport.QLinkTransport
 import com.qwatch.qlink.protocol.transport.QLinkWifiTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.util.TimeZone
 
 class QLinkClient private constructor() {
@@ -19,6 +28,12 @@ class QLinkClient private constructor() {
     private var bleTransport: QLinkBleTransport? = null
     private var currentTransport: QLinkTransport? = null
 
+    var bleScanner: QWatchBleScanner? = null
+        private set
+
+    private var appContext: Context? = null
+    private var autoReconnectJob: Job? = null
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -28,9 +43,40 @@ class QLinkClient private constructor() {
     private val _displayFrame = MutableStateFlow(DisplayFrame())
     val displayFrame: StateFlow<DisplayFrame> = _displayFrame.asStateFlow()
 
+    private val _autoConnectBleFlow = MutableStateFlow(true)
+    val autoConnectBleFlow: StateFlow<Boolean> = _autoConnectBleFlow.asStateFlow()
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                if (state == BluetoothAdapter.STATE_ON) {
+                    // Bluetooth was just turned on! Auto-connect if enabled
+                    scope.launch {
+                        delay(500)
+                        autoConnectBleIfEnabled()
+                    }
+                }
+            }
+        }
+    }
+
     fun init(context: Context) {
+        val app = context.applicationContext
+        appContext = app
+
+        val prefs = app.getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+        _autoConnectBleFlow.value = prefs.getBoolean("auto_connect_ble", true)
+
         wifiTransport = QLinkWifiTransport(scope)
-        bleTransport = QLinkBleTransport(context.applicationContext, scope)
+        bleTransport = QLinkBleTransport(app, scope)
+        bleScanner = QWatchBleScanner(app, scope)
+
+        // Register bluetooth state listener for auto-connect
+        try {
+            val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+            app.registerReceiver(bluetoothStateReceiver, filter)
+        } catch (_: Exception) {}
 
         // Observe Wi-Fi transport flows
         wifiTransport?.let { wt ->
@@ -50,7 +96,14 @@ class QLinkClient private constructor() {
         // Observe BLE transport flows
         bleTransport?.let { bt ->
             bt.connectionState.onEach { state ->
-                if (currentTransport === bt) _connectionState.value = state
+                if (currentTransport === bt) {
+                    _connectionState.value = state
+                    if (state == ConnectionState.DISCONNECTED) {
+                        scheduleBleAutoReconnect()
+                    } else if (state == ConnectionState.CONNECTED_BLE) {
+                        autoReconnectJob?.cancel()
+                    }
+                }
             }.launchIn(scope)
 
             bt.telemetryFlow.onEach { snapshot ->
@@ -61,6 +114,7 @@ class QLinkClient private constructor() {
 
     suspend fun connectWifi(host: String = QLinkConstants.DEFAULT_HOTSPOT_IP): Result<Boolean> {
         val wt = wifiTransport ?: return Result.failure(IllegalStateException("QLinkClient not initialized"))
+        autoReconnectJob?.cancel()
         currentTransport?.disconnect()
         currentTransport = wt
         return wt.connect(host)
@@ -68,12 +122,21 @@ class QLinkClient private constructor() {
 
     suspend fun connectBle(macAddress: String): Result<Boolean> {
         val bt = bleTransport ?: return Result.failure(IllegalStateException("QLinkClient not initialized"))
+        autoReconnectJob?.cancel()
         currentTransport?.disconnect()
         currentTransport = bt
+
+        // Save last connected MAC
+        appContext?.let { ctx ->
+            ctx.getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+                .edit().putString("ble_mac", macAddress).apply()
+        }
+
         return bt.connect(macAddress)
     }
 
     suspend fun disconnect() {
+        autoReconnectJob?.cancel()
         currentTransport?.disconnect()
         currentTransport = null
         _connectionState.value = ConnectionState.DISCONNECTED
@@ -81,6 +144,63 @@ class QLinkClient private constructor() {
 
     fun isConnected(): Boolean {
         return currentTransport?.isConnected() == true
+    }
+
+    fun isBleConnected(): Boolean {
+        return currentTransport === bleTransport && bleTransport?.isConnected() == true
+    }
+
+    fun isBluetoothOn(): Boolean {
+        val bm = appContext?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        return bm?.adapter?.isEnabled == true
+    }
+
+    fun isBleAutoConnectEnabled(): Boolean {
+        return _autoConnectBleFlow.value
+    }
+
+    fun setBleAutoConnectEnabled(enabled: Boolean) {
+        _autoConnectBleFlow.value = enabled
+        appContext?.let { ctx ->
+            ctx.getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean("auto_connect_ble", enabled).apply()
+        }
+        if (enabled && !isConnected() && isBluetoothOn()) {
+            scope.launch { autoConnectBleIfEnabled() }
+        }
+    }
+
+    fun getSavedBleMac(): String {
+        val prefs = appContext?.getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+        return prefs?.getString("ble_mac", "CC:7B:5C:80:12:34") ?: "CC:7B:5C:80:12:34"
+    }
+
+    fun setSavedBleMac(mac: String) {
+        appContext?.let { ctx ->
+            ctx.getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
+                .edit().putString("ble_mac", mac).apply()
+        }
+    }
+
+    suspend fun autoConnectBleIfEnabled(): Boolean {
+        if (!_autoConnectBleFlow.value || !isBluetoothOn() || isConnected()) return false
+        val targetMac = getSavedBleMac()
+        if (targetMac.isNotBlank()) {
+            val res = connectBle(targetMac)
+            return res.isSuccess
+        }
+        return false
+    }
+
+    private fun scheduleBleAutoReconnect() {
+        if (!_autoConnectBleFlow.value || !isBluetoothOn()) return
+        autoReconnectJob?.cancel()
+        autoReconnectJob = scope.launch {
+            delay(3000)
+            if (!isConnected() && isBluetoothOn() && _autoConnectBleFlow.value) {
+                autoConnectBleIfEnabled()
+            }
+        }
     }
 
     fun getTargetHost(): String {

@@ -85,7 +85,7 @@ fun FilesScreen() {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("/", "/apps", "/sounds", "/anim", "/boot", "/config").forEach { dir ->
+                listOf("/", "/ir", "/apps", "/sounds", "/anim", "/boot", "/config").forEach { dir ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))

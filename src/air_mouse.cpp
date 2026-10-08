@@ -1,6 +1,7 @@
 #include "air_mouse.h"
 #include "sensors.h"
 #include "HIDTypes.h"
+#include "qlink.h"
 #include <Preferences.h>
 
 AirMouseManager airMouse;
@@ -240,7 +241,16 @@ void AirMouseManager::stop() {
         }
     }
 
-    BLEDevice::deinit(false);
+    if (!qlink.isBleConnected()) {
+        BLEDevice::deinit(false);
+    } else {
+        BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+        if (pAdv) {
+            pAdv->stop();
+            pAdv->addServiceUUID(QLINK_SERVICE_UUID);
+            pAdv->start();
+        }
+    }
 
     if (pCallbacks) {
         delete pCallbacks;

@@ -140,11 +140,36 @@ public:
     void registerHttpRoutes(WebServer& server);
 #endif
 
+    // BLE Subsystem Controls & Status
+    bool isBleConnected() const { return ble_connected; }
+    void setBleConnected(bool connected) { ble_connected = connected; }
+    void handleBleCommand(const uint8_t* data, size_t len);
+    void handleBleFilePacket(const uint8_t* data, size_t len);
+    bool startFileUpload(const String& path, size_t total_size);
+    bool processFileChunk(const uint8_t* chunk, size_t chunk_len);
+    bool finishFileUpload(size_t expected_size);
+    void cancelFileUpload();
+    bool isUploadInProgress() const { return upload_in_progress; }
+    size_t getUploadReceivedBytes() const { return upload_received_size; }
+    const String& getUploadPath() const { return upload_file_path; }
+
 private:
     uint8_t packet_seq;
     bool display_streaming;
     uint8_t target_stream_fps;
     uint32_t last_stream_frame_time;
+
+    // BLE Subsystem state
+    bool ble_connected;
+    uint32_t last_telemetry_tx;
+    bool upload_in_progress;
+    String upload_file_path;
+    size_t upload_expected_size;
+    size_t upload_received_size;
+    uint32_t upload_last_chunk_time;
+#ifdef ARDUINO
+    File upload_file;
+#endif
 };
 
 extern QLinkEngine qlink;

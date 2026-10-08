@@ -37,6 +37,7 @@ enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boo
     MOCHI("MOCHI", Icons.Default.Face, true),
     SIGINT("SIGINT", Icons.Default.Radar, true),
     POWER("POWER", Icons.Default.BatteryChargingFull, true),
+    IRDB("IRDB", Icons.Default.Sensors, false),
     SENSORS("SENSORS", Icons.Default.Speed, false),
     APPS("APPS", Icons.Default.Apps, false),
     ANIM_MARKET("MARKET", Icons.Default.Storefront, false),
@@ -58,9 +59,17 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("qlink_prefs", Context.MODE_PRIVATE)
         val savedHost = prefs.getString("wifi_host", QLinkConstants.DEFAULT_HOTSPOT_IP) ?: QLinkConstants.DEFAULT_HOTSPOT_IP
 
-        // Auto-connect to saved Q-Watch target in background
+        // Auto-connect to saved Q-Watch target (BLE priority if Bluetooth is on, Wi-Fi fallback)
         lifecycleScope.launch {
-            QLinkClient.instance.connectWifi(savedHost)
+            val client = QLinkClient.instance
+            if (client.isBluetoothOn() && client.isBleAutoConnectEnabled()) {
+                val ok = client.autoConnectBleIfEnabled()
+                if (!ok) {
+                    client.connectWifi(savedHost)
+                }
+            } else {
+                client.connectWifi(savedHost)
+            }
         }
 
         setContent {
@@ -218,6 +227,7 @@ fun MainAppScaffold() {
                     onNavigateToSigint = { currentScreen = Screen.SIGINT },
                     onNavigateToApps = { currentScreen = Screen.APPS },
                     onNavigateToAnimMarket = { currentScreen = Screen.ANIM_MARKET },
+                    onNavigateToIrdb = { currentScreen = Screen.IRDB },
                     onNavigateToFiles = { currentScreen = Screen.FILES },
                     onNavigateToNotifications = { currentScreen = Screen.NOTIFICATIONS },
                     onNavigateToSettings = { currentScreen = Screen.SETTINGS }
@@ -228,6 +238,7 @@ fun MainAppScaffold() {
                     onNavigateToMarket = { currentScreen = Screen.ANIM_MARKET }
                 )
                 Screen.ANIM_MARKET -> AnimMarketScreen(onBack = { currentScreen = Screen.DASHBOARD })
+                Screen.IRDB -> OnlineIrdbScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SIGINT -> SigintReconScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.POWER -> PowerGovernorScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SENSORS -> SensorsScreen()

@@ -219,6 +219,45 @@ void test_safe_delete_and_storage() {
     printf("  [PASS] generateStorageJson contains total, used, free, and slot metrics.\n");
 }
 
+void test_ble_file_upload_protocol() {
+    printf("\n--- Test: Q-Link BLE File Upload Protocol ---\n");
+    // 1. Path safety and initialization
+    assert(qlink.startFileUpload("../evil.ir", 500) == false);
+    assert(qlink.startFileUpload("", 500) == false);
+    assert(qlink.startFileUpload("/ir/Samsung_BN59.ir", 1000) == true);
+    assert(qlink.isUploadInProgress() == true);
+    assert(qlink.getUploadPath() == "/ir/Samsung_BN59.ir");
+    assert(qlink.getUploadReceivedBytes() == 0);
+
+    // 2. Direct chunk processing
+    uint8_t sample_chunk[100];
+    memset(sample_chunk, 0x55, sizeof(sample_chunk));
+    assert(qlink.processFileChunk(sample_chunk, sizeof(sample_chunk)) == true);
+    assert(qlink.getUploadReceivedBytes() == 100);
+
+    // 3. Binary framed packet [0xFE, 0x01, seq(2B), len(2B), data...]
+    uint8_t framed_packet[106];
+    framed_packet[0] = 0xFE;
+    framed_packet[1] = 0x01;
+    framed_packet[2] = 0x00; // seq hi
+    framed_packet[3] = 0x01; // seq lo
+    framed_packet[4] = 0x00; // len hi
+    framed_packet[5] = 100;  // len lo
+    memset(framed_packet + 6, 0xAA, 100);
+    qlink.handleBleFilePacket(framed_packet, sizeof(framed_packet));
+    assert(qlink.getUploadReceivedBytes() == 200);
+
+    // 4. Finish upload
+    assert(qlink.finishFileUpload(200) == true);
+    assert(qlink.isUploadInProgress() == false);
+
+    // 5. Cancel upload
+    assert(qlink.startFileUpload("/ir/temp.ir", 50) == true);
+    qlink.cancelFileUpload();
+    assert(qlink.isUploadInProgress() == false);
+    printf("  [PASS] BLE chunked file transfer START, framed packets, received size, and FINISH verified.\n");
+}
+
 int main() {
     printf("==========================================\n");
     printf(" RUNNING Q-LINK PROTOCOL VERIFICATION\n");
@@ -231,6 +270,7 @@ int main() {
     test_companion_subsystem_endpoints();
     test_mochi_anim_validation();
     test_safe_delete_and_storage();
+    test_ble_file_upload_protocol();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");
     return 0;
 }

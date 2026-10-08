@@ -43,6 +43,7 @@ fun DashboardScreen(
     onNavigateToSigint: () -> Unit = {},
     onNavigateToApps: () -> Unit = {},
     onNavigateToAnimMarket: () -> Unit = {},
+    onNavigateToIrdb: () -> Unit = {},
     onNavigateToFiles: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {}
@@ -615,6 +616,24 @@ fun DashboardScreen(
                         Text("38 Offline Animations, Live Canvas, 1-Tap Deploy & Delete", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                     }
                     Text("MARKET >", color = TacticalAmber, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // Online IRDB Flipper Repository
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToIrdb)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("ONLINE IRDB // FLIPPER REPOSITORY", color = TacticalCyan, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("2,700+ Remotes (TV, AC, Audio) • BLE Fast Flashing", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("OPEN >", color = TacticalCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
 
                 // Power Governor & ULP Sentinel

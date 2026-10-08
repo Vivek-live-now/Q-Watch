@@ -27,22 +27,336 @@
 #include <string.h>
 #endif
 
+#ifdef ARDUINO
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+static BLEServer* s_ble_server = nullptr;
+static BLECharacteristic* s_char_command = nullptr;
+static BLECharacteristic* s_char_telemetry = nullptr;
+static BLECharacteristic* s_char_file = nullptr;
+
+class QLinkBleServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) override {
+        qlink.setBleConnected(true);
+    }
+    void onDisconnect(BLEServer* pServer) override {
+        qlink.setBleConnected(false);
+        qlink.cancelFileUpload();
+        BLEAdvertising* pAdv = pServer->getAdvertising();
+        if (pAdv) {
+            pAdv->start();
+        }
+    }
+};
+
+class QLinkBleCommandCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string val = pChar->getValue();
+        if (!val.empty()) {
+            qlink.handleBleCommand((const uint8_t*)val.data(), val.size());
+        }
+    }
+};
+
+class QLinkBleFileCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string val = pChar->getValue();
+        if (!val.empty()) {
+            qlink.handleBleFilePacket((const uint8_t*)val.data(), val.size());
+        }
+    }
+};
+#endif
+
 QLinkEngine qlink;
 
 QLinkEngine::QLinkEngine() :
     packet_seq(0),
     display_streaming(false),
     target_stream_fps(20),
-    last_stream_frame_time(0)
+    last_stream_frame_time(0),
+    ble_connected(false),
+    last_telemetry_tx(0),
+    upload_in_progress(false),
+    upload_file_path(""),
+    upload_expected_size(0),
+    upload_received_size(0),
+    upload_last_chunk_time(0)
 {}
 
 void QLinkEngine::begin() {
     packet_seq = 0;
     display_streaming = false;
+    ble_connected = false;
+    upload_in_progress = false;
+    upload_file_path = "";
+    upload_expected_size = 0;
+    upload_received_size = 0;
+
+#ifdef ARDUINO
+    if (!BLEDevice::getInitialized()) {
+        BLEDevice::init("Q-Watch");
+    }
+
+    if (!s_ble_server) {
+        s_ble_server = BLEDevice::createServer();
+        s_ble_server->setCallbacks(new QLinkBleServerCallbacks());
+
+        BLEService* pService = s_ble_server->createService(QLINK_SERVICE_UUID);
+
+        s_char_command = pService->createCharacteristic(
+            QLINK_CHAR_COMMAND,
+            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+        );
+        s_char_command->setCallbacks(new QLinkBleCommandCallbacks());
+
+        s_char_telemetry = pService->createCharacteristic(
+            QLINK_CHAR_TELEMETRY,
+            BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+        );
+        s_char_telemetry->addDescriptor(new BLE2902());
+
+        s_char_file = pService->createCharacteristic(
+            QLINK_CHAR_FILE,
+            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR |
+            BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+        );
+        s_char_file->addDescriptor(new BLE2902());
+        s_char_file->setCallbacks(new QLinkBleFileCallbacks());
+
+        // Setup security & bonding
+        BLESecurity* pSecurity = new BLESecurity();
+        pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+        pSecurity->setCapability(ESP_IO_CAP_NONE);
+        pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+
+        pService->start();
+
+        BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+        pAdvertising->addServiceUUID(QLINK_SERVICE_UUID);
+        pAdvertising->setScanResponse(true);
+        pAdvertising->setMinPreferred(0x06); // 7.5ms
+        pAdvertising->setMaxPreferred(0x12); // 22.5ms
+        BLEDevice::startAdvertising();
+    }
+#endif
 }
 
 void QLinkEngine::loop() {
-    // Background streaming cadence & telemetry heartbeat
+#ifdef ARDUINO
+    uint32_t now = millis();
+    // 1. Emit compact telemetry at 1 Hz when connected over BLE
+    if (ble_connected && s_char_telemetry) {
+        if (now - last_telemetry_tx >= 1000) {
+            last_telemetry_tx = now;
+            QLinkCompactTelemetry tel;
+            fillCompactTelemetry(tel);
+            s_char_telemetry->setValue((uint8_t*)&tel, sizeof(tel));
+            s_char_telemetry->notify();
+        }
+    }
+
+    // 2. Upload chunk timeout guard (15s inactivity)
+    if (upload_in_progress && (now - upload_last_chunk_time > 15000)) {
+        cancelFileUpload();
+    }
+#endif
+}
+
+void QLinkEngine::handleBleCommand(const uint8_t* data, size_t len) {
+    if (!data || len == 0) return;
+#ifdef ARDUINO
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, data, len);
+    if (err == DeserializationError::Ok) {
+        const char* action = doc["action"] | "";
+        if (strcmp(action, "BUTTON") == 0) {
+            String btn = doc["button"] | "";
+            String evt = doc["event"] | "SHORT_PRESS";
+            injectButton(btn, evt);
+        } else if (strcmp(action, "NOTIFY") == 0) {
+            String app = doc["app_name"] | "Phone";
+            String title = doc["title"] | "";
+            String body = doc["body"] | "";
+            String alert = doc["alert"] | doc["alert_style"] | "CHIME";
+            String led = doc["led_color"] | "#00E5FF";
+            handleNotification(app, title, body, alert, led);
+        } else if (strcmp(action, "SYNC_TIME") == 0) {
+            uint32_t epoch = doc["epoch"] | 0;
+            int32_t tz = doc["tz"] | 0;
+            if (epoch > 0) syncTime(epoch, tz);
+        } else if (strcmp(action, "SYNC_WEATHER") == 0) {
+            String city = doc["city"] | "";
+            float temp = doc["temp"] | 25.0f;
+            int hum = doc["hum"] | 50;
+            int code = doc["code"] | 800;
+            String desc = doc["desc"] | "Clear";
+            float hi = doc["hi"] | temp;
+            float lo = doc["lo"] | temp;
+            syncWeather(city, temp, hum, code, desc, hi, lo);
+        }
+    }
+#endif
+}
+
+void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
+    if (!data || len == 0) return;
+
+    // Binary chunk packet: magic 0xFE, 0x01
+    if (len >= 6 && data[0] == 0xFE && data[1] == 0x01) {
+        size_t chunk_len = ((size_t)data[4] << 8) | data[5];
+        if (chunk_len <= len - 6) {
+            processFileChunk(data + 6, chunk_len);
+            if (upload_expected_size > 0 && upload_received_size >= upload_expected_size) {
+                finishFileUpload(upload_expected_size);
+#ifdef ARDUINO
+                if (s_char_file) {
+                    String resp = "{\"status\":\"OK\",\"code\":200,\"message\":\"Complete\",\"size\":" + String((unsigned long)upload_received_size) + "}";
+                    s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                    s_char_file->notify();
+                }
+#endif
+            }
+            return;
+        }
+    }
+
+    // Raw chunk when upload is active and payload not starting with JSON '{'
+    if (upload_in_progress && data[0] != '{') {
+        processFileChunk(data, len);
+        if (upload_expected_size > 0 && upload_received_size >= upload_expected_size) {
+            finishFileUpload(upload_expected_size);
+#ifdef ARDUINO
+            if (s_char_file) {
+                String resp = "{\"status\":\"OK\",\"code\":200,\"message\":\"Complete\",\"size\":" + String((unsigned long)upload_received_size) + "}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+#endif
+        }
+        return;
+    }
+
+    // JSON file command
+#ifdef ARDUINO
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, data, len);
+    if (err == DeserializationError::Ok) {
+        const char* cmd = doc["cmd"] | "";
+        if (strcmp(cmd, "START") == 0) {
+            String path = doc["path"] | "";
+            size_t size = doc["size"] | 0;
+            bool ok = startFileUpload(path, size);
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"path\":\"" + path + "\"}")
+                                 : "{\"status\":\"ERROR\",\"code\":400}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "FINISH") == 0) {
+            size_t size = doc["size"] | upload_received_size;
+            bool ok = finishFileUpload(size);
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"size\":" + String((unsigned long)size) + "}")
+                                 : "{\"status\":\"ERROR\",\"code\":500}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "LIST") == 0) {
+            String path = doc["path"] | "/";
+            FileInfo files[32];
+            size_t count = fileManager.listDir(path, files, 32);
+            String json = "{\"cmd\":\"LIST_RESP\",\"path\":\"" + path + "\",\"files\":[";
+            for (size_t i = 0; i < count; i++) {
+                if (i > 0) json += ",";
+                json += "{\"name\":\"" + files[i].name + "\",\"size\":" + String((unsigned long)files[i].size) + ",\"is_dir\":" + (files[i].isDir ? "true" : "false") + "}";
+            }
+            json += "]}";
+            if (s_char_file) {
+                s_char_file->setValue((uint8_t*)json.c_str(), json.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "DELETE") == 0) {
+            String path = doc["path"] | "";
+            bool ok = safeDeleteAnim(path);
+            if (!ok && FileManager::isPathSafe(path)) {
+                ok = fileManager.remove(path);
+            }
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"deleted\":\"" + path + "\"}")
+                                 : "{\"status\":\"ERROR\",\"code\":404}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        }
+    }
+#endif
+}
+
+bool QLinkEngine::startFileUpload(const String& path, size_t total_size) {
+    if (path.length() == 0 || path.indexOf("..") != -1) return false;
+    cancelFileUpload();
+#ifdef ARDUINO
+    if (!FileManager::isPathSafe(path)) return false;
+    FileManager::ensureParentDir(path);
+    upload_file = LittleFS.open(path, FILE_WRITE);
+    if (!upload_file) return false;
+    upload_last_chunk_time = millis();
+#else
+    upload_last_chunk_time = 0;
+#endif
+    upload_in_progress = true;
+    upload_file_path = path;
+    upload_expected_size = total_size;
+    upload_received_size = 0;
+    return true;
+}
+
+bool QLinkEngine::processFileChunk(const uint8_t* chunk, size_t chunk_len) {
+    if (!upload_in_progress || !chunk || chunk_len == 0) return false;
+#ifdef ARDUINO
+    if (!upload_file) return false;
+    size_t written = upload_file.write(chunk, chunk_len);
+    if (written != chunk_len) return false;
+    upload_last_chunk_time = millis();
+#endif
+    upload_received_size += chunk_len;
+    return true;
+}
+
+bool QLinkEngine::finishFileUpload(size_t expected_size) {
+    if (!upload_in_progress) return false;
+#ifdef ARDUINO
+    if (upload_file) {
+        upload_file.flush();
+        upload_file.close();
+    }
+    if (upload_file_path.endsWith(".ir")) {
+        ui.showToast("IR Remote Loaded!", 2000);
+        soundManager.playBeep(2000, 100);
+    }
+#endif
+    upload_in_progress = false;
+    return true;
+}
+
+void QLinkEngine::cancelFileUpload() {
+    if (!upload_in_progress) return;
+#ifdef ARDUINO
+    if (upload_file) {
+        upload_file.close();
+        if (upload_file_path.length() > 0) {
+            LittleFS.remove(upload_file_path);
+        }
+    }
+#endif
+    upload_in_progress = false;
+    upload_file_path = "";
+    upload_expected_size = 0;
+    upload_received_size = 0;
 }
 
 void QLinkEngine::setStreamingDisplay(bool enable, uint8_t target_fps) {
