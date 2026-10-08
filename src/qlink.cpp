@@ -124,6 +124,10 @@ void QLinkEngine::startBle() {
 
     if (!BLEDevice::getInitialized()) {
         BLEDevice::init("Q-Watch");
+        s_ble_server = nullptr;
+        s_char_command = nullptr;
+        s_char_telemetry = nullptr;
+        s_char_file = nullptr;
     }
 
     if (!s_ble_server) {
@@ -241,6 +245,7 @@ void QLinkEngine::resumeBleAdvertising() {
 
 void QLinkEngine::clearBondedDevices() {
 #ifdef ARDUINO
+    if (!BLEDevice::getInitialized()) return;
     int dev_num = esp_ble_get_bond_device_num();
     if (dev_num > 0) {
         esp_ble_bond_dev_t* dev_list = (esp_ble_bond_dev_t*)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);

@@ -35,6 +35,7 @@ class QLinkBleTransport(
 
     private var currentMtu = 23
     private var serviceDiscoveryJob: Job? = null
+    private var notificationSetupJob: Job? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: Flow<ConnectionState> = _connectionState.asStateFlow()
@@ -86,12 +87,24 @@ class QLinkBleTransport(
                     telemetryCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_TELEMETRY_UUID)
                     fileCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_FILE_UUID)
 
-                    // Enable telemetry and file response notifications sequentially
-                    scope.launch {
+                    // Strictly serialize descriptor writes via onDescriptorWrite
+                    notificationSetupJob?.cancel()
+                    notificationSetupJob = scope.launch {
+                        if (!isActive || bluetoothGatt == null) return@launch
                         telemetryCharacteristic?.let { char ->
                             enableNotification(gatt, char)
                         }
-                        delay(150)
+                    }
+                }
+            }
+        }
+
+        override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && descriptor != null && gatt != null) {
+                if (descriptor.characteristic?.uuid == QLinkConstants.CHAR_TELEMETRY_UUID) {
+                    notificationSetupJob?.cancel()
+                    notificationSetupJob = scope.launch {
+                        if (!isActive || bluetoothGatt == null) return@launch
                         fileCharacteristic?.let { char ->
                             enableNotification(gatt, char)
                         }
@@ -191,6 +204,8 @@ class QLinkBleTransport(
     private fun cleanGatt() {
         serviceDiscoveryJob?.cancel()
         serviceDiscoveryJob = null
+        notificationSetupJob?.cancel()
+        notificationSetupJob = null
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()

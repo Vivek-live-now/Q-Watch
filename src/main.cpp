@@ -19,11 +19,9 @@
 #include "vibration_manager.h"
 #include "air_mouse.h"
 #include "qlink.h"
-#ifdef ARDUINO
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 
 // Hardware RTC memory boot loop detector & recovery guard
+#ifdef ARDUINO
 RTC_DATA_ATTR static uint32_t s_rapid_boot_count = 0;
 RTC_DATA_ATTR static bool s_safe_mode_active = false;
 #endif
@@ -35,9 +33,6 @@ static uint32_t s_boot_healthy_time = 0;
 
 void setup() {
 #ifdef ARDUINO
-  // Transient brownout guard for ESP32-S3 SuperMini board startup
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
-
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) {
     s_rapid_boot_count++;
@@ -59,10 +54,7 @@ void setup() {
 
 #ifdef ARDUINO
   if (s_safe_mode_active) {
-    Serial.println("[CRITICAL] BOOT LOOP DETECTED! Booting into SAFE MODE (radios bypassed)...");
-    settingsManager.get().wifi_enabled = false;
-    settingsManager.get().ble_enabled = false;
-    qlink.clearBondedDevices();
+    Serial.println("[SAFE BOOT] Repeated quick resets detected; bypassing radio startup for this session.");
   }
 #endif
 
@@ -85,7 +77,13 @@ void setup() {
   timekeeping.begin();
   animEngine.begin();
   airMouse.begin();
+#ifdef ARDUINO
+  if (!s_safe_mode_active) {
+    qlink.begin();
+  }
+#else
   qlink.begin();
+#endif
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     soundManager.playWake();
   } else {
@@ -93,12 +91,15 @@ void setup() {
     animEngine.playBootAnimation();
   }
 
+#ifdef ARDUINO
+  if (!s_safe_mode_active) {
+    wifiPortal.begin();
+  }
+#else
   wifiPortal.begin();
+#endif
   qclock.begin(configManager.get().timezone);
 
-#ifdef ARDUINO
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
-#endif
   s_boot_healthy_time = millis();
 }
 
