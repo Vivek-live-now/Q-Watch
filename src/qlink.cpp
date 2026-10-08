@@ -19,6 +19,7 @@
 #include "wireless_recon.h"
 #include "ir_engine.h"
 #include "settings_data.h"
+#include "air_mouse.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
@@ -174,16 +175,24 @@ void QLinkEngine::startBle() {
         pService->start();
     }
 
+    // Set BLE RF TX power level to -3 dBm to eliminate excessive heating on ESP32-S3 SuperMini
+    // Official ESP32-S3 datasheet: default TX (+9dBm) draws 204mA, +20dBm draws 340mA peak.
+    // -3dBm cuts peak TX current while retaining strong 5m line-of-sight range.
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_N3);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_N3);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_N3);
+
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     if (pAdvertising) {
         pAdvertising->stop();
         pAdvertising->addServiceUUID(QLINK_SERVICE_UUID);
         pAdvertising->setScanResponse(true);
-        // Standard balanced interval (160ms - 320ms) prevents continuous TX and eliminates overheating
-        pAdvertising->setMinInterval(0x100); // 160ms
-        pAdvertising->setMaxInterval(0x200); // 320ms
-        pAdvertising->setMinPreferred(0x06); // 7.5ms
-        pAdvertising->setMaxPreferred(0x12); // 22.5ms
+        // Balanced advertising interval (320ms - 640ms) reduces RF duty cycle while remaining responsive
+        pAdvertising->setMinInterval(0x200); // 320ms
+        pAdvertising->setMaxInterval(0x400); // 640ms
+        // Preferred connection interval (40ms - 80ms) reduces active connection events from 133/sec to 12-25/sec
+        pAdvertising->setMinPreferred(0x20); // 40ms
+        pAdvertising->setMaxPreferred(0x40); // 80ms
         pAdvertising->start();
     }
 
@@ -208,6 +217,16 @@ void QLinkEngine::stopBle() {
 
     ble_active = false;
     ble_advertising_paused = false;
+
+    // Fully deinitialize BLE controller if Air Mouse is not using it,
+    // stopping radio PHY and background tasks to return chip to cool idle state
+    if (!airMouse.isEnabled()) {
+        BLEDevice::deinit(false);
+        s_ble_server = nullptr;
+        s_char_command = nullptr;
+        s_char_telemetry = nullptr;
+        s_char_file = nullptr;
+    }
 #endif
 }
 

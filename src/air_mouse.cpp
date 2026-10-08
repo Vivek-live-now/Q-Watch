@@ -4,6 +4,9 @@
 #include "qlink.h"
 #include "settings_data.h"
 #include <Preferences.h>
+#ifdef ARDUINO
+#include <esp_gap_ble_api.h>
+#endif
 
 AirMouseManager airMouse;
 
@@ -167,6 +170,12 @@ void AirMouseManager::start() {
         BLEDevice::init("Q-Watch Air Mouse");
     }
 
+#ifdef ARDUINO
+    // Set BLE RF TX power level to -3 dBm to eliminate excessive heating on ESP32-S3 SuperMini
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_N3);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_N3);
+#endif
+
     if (!pServer) {
         pServer = BLEDevice::createServer();
         hid = new BLEHIDDevice(pServer);
@@ -190,6 +199,8 @@ void AirMouseManager::start() {
         BLEAdvertising* pAdvertising = pServer->getAdvertising();
         pAdvertising->setAppearance(HID_MOUSE);
         pAdvertising->addServiceUUID(hid->hidService()->getUUID());
+        pAdvertising->setMinInterval(0x100); // 160ms
+        pAdvertising->setMaxInterval(0x200); // 320ms
         hid->setBatteryLevel(100);
     }
 
