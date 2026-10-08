@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -34,11 +35,12 @@ import kotlinx.coroutines.launch
 enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boolean = true) {
     DASHBOARD("HOME", Icons.Default.Dashboard, true),
     MIRROR("MIRROR", Icons.Default.Tv, true),
-    MOCHI("MOCHI", Icons.Default.Face, true),
-    SIGINT("SIGINT", Icons.Default.Radar, true),
+    SENSORS("SENSORS", Icons.Default.Speed, true),
     POWER("POWER", Icons.Default.BatteryChargingFull, true),
+    MORE("MORE", Icons.Default.MoreHoriz, true),
+    MOCHI("MOCHI", Icons.Default.Face, false),
+    SIGINT("SIGINT", Icons.Default.Radar, false),
     IRDB("IRDB", Icons.Default.Sensors, false),
-    SENSORS("SENSORS", Icons.Default.Speed, false),
     APPS("APPS", Icons.Default.Apps, false),
     ANIM_MARKET("MARKET", Icons.Default.Storefront, false),
     FILES("FILES", Icons.Default.Folder, false),
@@ -104,9 +106,36 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppScaffold() {
-    var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
+    val backStack = remember { mutableStateListOf(Screen.DASHBOARD) }
+    val currentScreen = backStack.lastOrNull() ?: Screen.DASHBOARD
     val client = QLinkClient.instance
     val connectionState by client.connectionState.collectAsState()
+
+    fun navigateTo(screen: Screen) {
+        if (screen == Screen.DASHBOARD) {
+            backStack.clear()
+            backStack.add(Screen.DASHBOARD)
+        } else if (screen.inBottomBar) {
+            backStack.clear()
+            backStack.add(Screen.DASHBOARD)
+            backStack.add(screen)
+        } else {
+            if (backStack.lastOrNull() != screen) {
+                backStack.add(screen)
+            }
+        }
+    }
+
+    fun navigateBack() {
+        if (backStack.size > 1) {
+            backStack.removeAt(backStack.size - 1)
+        }
+    }
+
+    // Intercept back button only when not on DASHBOARD
+    BackHandler(enabled = backStack.size > 1 && currentScreen != Screen.DASHBOARD) {
+        navigateBack()
+    }
 
     Scaffold(
         topBar = {
@@ -183,7 +212,7 @@ fun MainAppScaffold() {
                     val isSelected = currentScreen == screen
                     NavigationBarItem(
                         selected = isSelected,
-                        onClick = { currentScreen = screen },
+                        onClick = { navigateTo(screen) },
                         icon = {
                             Icon(
                                 imageVector = screen.icon,
@@ -220,28 +249,40 @@ fun MainAppScaffold() {
         ) {
             when (currentScreen) {
                 Screen.DASHBOARD -> DashboardScreen(
-                    onNavigateToMirror = { currentScreen = Screen.MIRROR },
-                    onNavigateToSensors = { currentScreen = Screen.SENSORS },
-                    onNavigateToMochi = { currentScreen = Screen.MOCHI },
-                    onNavigateToPower = { currentScreen = Screen.POWER },
-                    onNavigateToSigint = { currentScreen = Screen.SIGINT },
-                    onNavigateToApps = { currentScreen = Screen.APPS },
-                    onNavigateToAnimMarket = { currentScreen = Screen.ANIM_MARKET },
-                    onNavigateToIrdb = { currentScreen = Screen.IRDB },
-                    onNavigateToFiles = { currentScreen = Screen.FILES },
-                    onNavigateToNotifications = { currentScreen = Screen.NOTIFICATIONS },
-                    onNavigateToSettings = { currentScreen = Screen.SETTINGS }
+                    onNavigateToMirror = { navigateTo(Screen.MIRROR) },
+                    onNavigateToSensors = { navigateTo(Screen.SENSORS) },
+                    onNavigateToMochi = { navigateTo(Screen.MOCHI) },
+                    onNavigateToPower = { navigateTo(Screen.POWER) },
+                    onNavigateToSigint = { navigateTo(Screen.SIGINT) },
+                    onNavigateToApps = { navigateTo(Screen.APPS) },
+                    onNavigateToAnimMarket = { navigateTo(Screen.ANIM_MARKET) },
+                    onNavigateToIrdb = { navigateTo(Screen.IRDB) },
+                    onNavigateToFiles = { navigateTo(Screen.FILES) },
+                    onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
+                    onNavigateToSettings = { navigateTo(Screen.SETTINGS) },
+                    onNavigateToMore = { navigateTo(Screen.MORE) }
                 )
                 Screen.MIRROR -> LiveMirrorScreen()
-                Screen.MOCHI -> MochiPetScreen(
-                    onBack = { currentScreen = Screen.DASHBOARD },
-                    onNavigateToMarket = { currentScreen = Screen.ANIM_MARKET }
-                )
-                Screen.ANIM_MARKET -> AnimMarketScreen(onBack = { currentScreen = Screen.DASHBOARD })
-                Screen.IRDB -> OnlineIrdbScreen(onBack = { currentScreen = Screen.DASHBOARD })
-                Screen.SIGINT -> SigintReconScreen(onBack = { currentScreen = Screen.DASHBOARD })
-                Screen.POWER -> PowerGovernorScreen(onBack = { currentScreen = Screen.DASHBOARD })
                 Screen.SENSORS -> SensorsScreen()
+                Screen.POWER -> PowerGovernorScreen(onBack = { navigateBack() })
+                Screen.MORE -> MoreHubScreen(
+                    onNavigateToSigint = { navigateTo(Screen.SIGINT) },
+                    onNavigateToIrdb = { navigateTo(Screen.IRDB) },
+                    onNavigateToMochi = { navigateTo(Screen.MOCHI) },
+                    onNavigateToAnimMarket = { navigateTo(Screen.ANIM_MARKET) },
+                    onNavigateToApps = { navigateTo(Screen.APPS) },
+                    onNavigateToFiles = { navigateTo(Screen.FILES) },
+                    onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
+                    onNavigateToSettings = { navigateTo(Screen.SETTINGS) },
+                    onBack = { navigateBack() }
+                )
+                Screen.MOCHI -> MochiPetScreen(
+                    onBack = { navigateBack() },
+                    onNavigateToMarket = { navigateTo(Screen.ANIM_MARKET) }
+                )
+                Screen.ANIM_MARKET -> AnimMarketScreen(onBack = { navigateBack() })
+                Screen.IRDB -> OnlineIrdbScreen(onBack = { navigateBack() })
+                Screen.SIGINT -> SigintReconScreen(onBack = { navigateBack() })
                 Screen.FILES -> FilesScreen()
                 Screen.APPS -> AppStoreScreen()
                 Screen.NOTIFICATIONS -> NotificationsScreen()

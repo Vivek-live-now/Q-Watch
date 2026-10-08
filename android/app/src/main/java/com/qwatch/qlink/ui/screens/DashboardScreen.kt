@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
@@ -46,7 +47,8 @@ fun DashboardScreen(
     onNavigateToIrdb: () -> Unit = {},
     onNavigateToFiles: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToMore: () -> Unit = {}
 ) {
     val client = QLinkClient.instance
     val connectionState by client.connectionState.collectAsState()
@@ -582,6 +584,33 @@ fun DashboardScreen(
         // 6. Advanced Tactical Subsystems & Operations Cockpit
         TacticalCard(title = "ADVANCED TACTICAL MODULES", accentColor = TacticalCyan) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Central MORE Hub Quick Launch
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalCyanDim)
+                        .border(1.dp, TacticalCyan, RoundedCornerShape(6.dp))
+                        .clickable(onClick = onNavigateToMore)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "More",
+                            tint = TacticalCyan,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column {
+                            Text("OPERATIONAL HUB // MORE", color = TacticalCyan, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            Text("All Modules Cleanly Organized (SIGINT, IRDB, Apps...)", color = TextPrimary, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                    Text("MORE >", color = TacticalCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
                 // Mochi Companion
                 Row(
                     modifier = Modifier

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
@@ -41,60 +42,77 @@ fun TacticalDPad(
         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
     }
 
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Row 1: UP
+        // Left Column: BACK / CANCEL
         DPadButton(
-            label = "UP",
-            icon = Icons.Default.KeyboardArrowUp,
-            modifier = Modifier.width(130.dp).height(50.dp),
+            label = "BACK",
+            icon = Icons.Default.ArrowBack,
+            accentColor = TacticalRed,
+            modifier = Modifier
+                .weight(1f)
+                .height(64.dp),
             onClick = {
                 performHaptic()
-                onButtonAction(ButtonType.UP, ButtonEventType.SHORT_PRESS)
+                onButtonAction(ButtonType.CANCEL, ButtonEventType.SHORT_PRESS)
             }
         )
 
-        // Row 2: CANCEL | OK | DOWN
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Center Column: UP directly above DOWN
+        Column(
+            modifier = Modifier.weight(1.3f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             DPadButton(
-                label = "BACK",
-                icon = Icons.Default.ArrowBack,
-                accentColor = TacticalRed,
-                modifier = Modifier.width(96.dp).height(50.dp),
+                label = "UP",
+                icon = Icons.Default.KeyboardArrowUp,
+                accentColor = TacticalCyan,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 onClick = {
                     performHaptic()
-                    onButtonAction(ButtonType.CANCEL, ButtonEventType.SHORT_PRESS)
-                }
-            )
-
-            DPadButton(
-                label = "OK / SEL",
-                accentColor = TacticalAmber,
-                modifier = Modifier.width(110.dp).height(50.dp),
-                onClick = {
-                    performHaptic()
-                    onButtonAction(ButtonType.OK, ButtonEventType.SHORT_PRESS)
+                    onButtonAction(ButtonType.UP, ButtonEventType.SHORT_PRESS)
                 }
             )
 
             DPadButton(
                 label = "DOWN",
                 icon = Icons.Default.KeyboardArrowDown,
-                modifier = Modifier.width(96.dp).height(50.dp),
+                accentColor = TacticalCyan,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 onClick = {
                     performHaptic()
                     onButtonAction(ButtonType.DOWN, ButtonEventType.SHORT_PRESS)
                 }
             )
         }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Right Column: OK / SEL
+        DPadButton(
+            label = "OK / SEL",
+            icon = Icons.Default.Check,
+            accentColor = TacticalAmber,
+            modifier = Modifier
+                .weight(1f)
+                .height(64.dp),
+            onClick = {
+                performHaptic()
+                onButtonAction(ButtonType.OK, ButtonEventType.SHORT_PRESS)
+            }
+        )
     }
 }
 
