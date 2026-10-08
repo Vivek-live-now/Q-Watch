@@ -2,6 +2,7 @@
 #include "sensors.h"
 #include "HIDTypes.h"
 #include "qlink.h"
+#include "settings_data.h"
 #include <Preferences.h>
 
 AirMouseManager airMouse;
@@ -241,7 +242,7 @@ void AirMouseManager::stop() {
         }
     }
 
-    if (!qlink.isBleConnected()) {
+    if (!settingsManager.get().ble_enabled && !qlink.isBleConnected()) {
         BLEDevice::deinit(false);
     } else {
         BLEAdvertising* pAdv = BLEDevice::getAdvertising();

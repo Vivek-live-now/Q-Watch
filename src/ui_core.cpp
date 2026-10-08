@@ -20,6 +20,7 @@
 #include "power_manager.h"
 #include "battery.h"
 #include "vibration_manager.h"
+#include "qlink.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -294,6 +295,9 @@ void UICore::loop() {
         if (display_off || current_state == UIState::SLEEPING) {
             display_off = false;
             displayManager.setPowerSave(false);
+            if (settingsManager.get().ble_enabled) {
+                qlink.resumeBleAdvertising();
+            }
             if (current_state == UIState::SLEEPING) {
                 current_state = UIState::APP_HOME;
             }
@@ -314,6 +318,9 @@ void UICore::loop() {
             display_off = true;
             displayManager.setPowerSave(true);
             display_off_time = millis();
+            if (s.eco_radio_cut) {
+                qlink.pauseBleAdvertising();
+            }
         }
     }
 
@@ -324,6 +331,9 @@ void UICore::loop() {
             if (o.pitch >= 15.0f && o.pitch <= 65.0f && fabsf(o.roll) <= 35.0f) {
                 display_off = false;
                 displayManager.setPowerSave(false);
+                if (s.ble_enabled) {
+                    qlink.resumeBleAdvertising();
+                }
                 if (current_state == UIState::SLEEPING) {
                     current_state = UIState::APP_HOME;
                 }
@@ -367,6 +377,13 @@ void UICore::loop() {
             displayManager.setPowerSave(display_off);
             if (display_off) {
                 display_off_time = millis();
+                if (s.eco_radio_cut) {
+                    qlink.pauseBleAdvertising();
+                }
+            } else {
+                if (s.ble_enabled) {
+                    qlink.resumeBleAdvertising();
+                }
             }
             needs_redraw = true;
             return;
@@ -1724,6 +1741,7 @@ void UICore::handleConnectivityInput() {
             SettingsData& s = settingsManager.get();
             s.ble_enabled = !s.ble_enabled;
             settingsManager.save();
+            qlink.setBleEnabled(s.ble_enabled);
             showToast(s.ble_enabled ? "[BLE: ON]" : "[BLE: OFF]", 1500);
         } else if (settings_selection == 4) {
             settings_submenu = SettingsSubmenu::FILE_SERVER_DETAILS;
@@ -2842,6 +2860,9 @@ void UICore::enterDeepSleep() {
     delay(50);
 
     SettingsData& sleep_s = settingsManager.get();
+    if (sleep_s.eco_radio_cut) {
+        qlink.pauseBleAdvertising();
+    }
 
     rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
     rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
@@ -2897,6 +2918,9 @@ void UICore::enterDeepSleep() {
 
     display_off = false;
     displayManager.setPowerSave(false);
+    if (sleep_s.ble_enabled) {
+        qlink.resumeBleAdvertising();
+    }
     current_state = (prev_state != UIState::SLEEPING) ? prev_state : UIState::APP_HOME;
     last_activity_time = millis();
     display_off_time = 0;

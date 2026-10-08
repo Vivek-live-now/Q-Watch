@@ -145,6 +145,13 @@ public:
     // BLE Subsystem Controls & Status
     bool isBleConnected() const { return ble_connected; }
     void setBleConnected(bool connected) { ble_connected = connected; }
+    bool isBleEnabled() const { return ble_active; }
+    void setBleEnabled(bool enabled);
+    void startBle();
+    void stopBle();
+    void pauseBleAdvertising();
+    void resumeBleAdvertising();
+    void clearBondedDevices();
     void handleBleCommand(const uint8_t* data, size_t len);
     void handleBleFilePacket(const uint8_t* data, size_t len);
     bool startFileUpload(const String& path, size_t total_size);
@@ -162,7 +169,9 @@ private:
     uint32_t last_stream_frame_time;
 
     // BLE Subsystem state
+    bool ble_active;
     bool ble_connected;
+    bool ble_advertising_paused;
     uint32_t last_telemetry_tx;
     bool upload_in_progress;
     String upload_file_path;

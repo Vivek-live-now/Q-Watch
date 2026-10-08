@@ -18,9 +18,11 @@
 #include "power_manager.h"
 #include "wireless_recon.h"
 #include "ir_engine.h"
+#include "settings_data.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
+#include <esp_gap_ble_api.h>
 #include <ArduinoJson.h>
 #else
 #include <stdio.h>
@@ -46,9 +48,11 @@ class QLinkBleServerCallbacks : public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) override {
         qlink.setBleConnected(false);
         qlink.cancelFileUpload();
-        BLEAdvertising* pAdv = pServer->getAdvertising();
-        if (pAdv) {
-            pAdv->start();
+        if (qlink.isBleEnabled()) {
+            BLEAdvertising* pAdv = pServer->getAdvertising();
+            if (pAdv) {
+                pAdv->start();
+            }
         }
     }
 };
@@ -79,7 +83,9 @@ QLinkEngine::QLinkEngine() :
     display_streaming(false),
     target_stream_fps(20),
     last_stream_frame_time(0),
+    ble_active(false),
     ble_connected(false),
+    ble_advertising_paused(false),
     last_telemetry_tx(0),
     upload_in_progress(false),
     upload_file_path(""),
@@ -92,12 +98,30 @@ void QLinkEngine::begin() {
     packet_seq = 0;
     display_streaming = false;
     ble_connected = false;
+    ble_active = false;
+    ble_advertising_paused = false;
     upload_in_progress = false;
     upload_file_path = "";
     upload_expected_size = 0;
     upload_received_size = 0;
 
 #ifdef ARDUINO
+    // Only initialize and activate BLE if user has enabled it in settings
+    if (settingsManager.get().ble_enabled) {
+        startBle();
+    }
+#endif
+}
+
+void QLinkEngine::startBle() {
+#ifdef ARDUINO
+    if (ble_active && s_ble_server) {
+        if (ble_advertising_paused) {
+            resumeBleAdvertising();
+        }
+        return;
+    }
+
     if (!BLEDevice::getInitialized()) {
         BLEDevice::init("Q-Watch");
     }
@@ -128,20 +152,106 @@ void QLinkEngine::begin() {
         s_char_file->addDescriptor(new BLE2902());
         s_char_file->setCallbacks(new QLinkBleFileCallbacks());
 
-        // Setup security & bonding
+        // Setup security callbacks so pairing does not freeze, timeout or corrupt NVS
+        class QLinkSecurityCallbacks : public BLESecurityCallbacks {
+            uint32_t onPassKeyRequest() override { return 0; }
+            void onPassKeyNotify(uint32_t pass_key) override {}
+            bool onConfirmPIN(uint32_t pass_key) override { return true; }
+            bool onSecurityRequest() override { return true; }
+            void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override {}
+        };
+        BLEDevice::setSecurityCallbacks(new QLinkSecurityCallbacks());
+
         BLESecurity* pSecurity = new BLESecurity();
         pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
         pSecurity->setCapability(ESP_IO_CAP_NONE);
         pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
 
         pService->start();
+    }
 
-        BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+    BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+    if (pAdvertising) {
+        pAdvertising->stop();
         pAdvertising->addServiceUUID(QLINK_SERVICE_UUID);
         pAdvertising->setScanResponse(true);
+        // Standard balanced interval (160ms - 320ms) prevents continuous TX and eliminates overheating
+        pAdvertising->setMinInterval(0x100); // 160ms
+        pAdvertising->setMaxInterval(0x200); // 320ms
         pAdvertising->setMinPreferred(0x06); // 7.5ms
         pAdvertising->setMaxPreferred(0x12); // 22.5ms
-        BLEDevice::startAdvertising();
+        pAdvertising->start();
+    }
+
+    ble_active = true;
+    ble_advertising_paused = false;
+#endif
+}
+
+void QLinkEngine::stopBle() {
+#ifdef ARDUINO
+    if (!ble_active) return;
+
+    if (upload_in_progress) {
+        cancelFileUpload();
+    }
+    ble_connected = false;
+
+    BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+    if (pAdv) {
+        pAdv->stop();
+    }
+
+    ble_active = false;
+    ble_advertising_paused = false;
+#endif
+}
+
+void QLinkEngine::setBleEnabled(bool enabled) {
+    if (enabled) {
+        startBle();
+    } else {
+        stopBle();
+    }
+}
+
+void QLinkEngine::pauseBleAdvertising() {
+#ifdef ARDUINO
+    if (ble_active && !ble_connected && !ble_advertising_paused) {
+        BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+        if (pAdv) {
+            pAdv->stop();
+        }
+        ble_advertising_paused = true;
+    }
+#endif
+}
+
+void QLinkEngine::resumeBleAdvertising() {
+#ifdef ARDUINO
+    if (ble_active && !ble_connected && ble_advertising_paused) {
+        BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+        if (pAdv) {
+            pAdv->start();
+        }
+        ble_advertising_paused = false;
+    }
+#endif
+}
+
+void QLinkEngine::clearBondedDevices() {
+#ifdef ARDUINO
+    int dev_num = esp_ble_get_bond_device_num();
+    if (dev_num > 0) {
+        esp_ble_bond_dev_t* dev_list = (esp_ble_bond_dev_t*)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);
+        if (dev_list) {
+            if (esp_ble_get_bond_device_list(&dev_num, dev_list) == ESP_OK) {
+                for (int i = 0; i < dev_num; i++) {
+                    esp_ble_remove_bond_device(dev_list[i].bd_addr);
+                }
+            }
+            free(dev_list);
+        }
     }
 #endif
 }

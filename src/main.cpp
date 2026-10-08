@@ -19,19 +19,53 @@
 #include "vibration_manager.h"
 #include "air_mouse.h"
 #include "qlink.h"
+#ifdef ARDUINO
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+// Hardware RTC memory boot loop detector & recovery guard
+RTC_DATA_ATTR static uint32_t s_rapid_boot_count = 0;
+RTC_DATA_ATTR static bool s_safe_mode_active = false;
+#endif
 
 int last_drawn_sec = -1;
 uint32_t last_portal_draw = 0;
 uint32_t last_ui_draw = 0;
+static uint32_t s_boot_healthy_time = 0;
 
 void setup() {
+#ifdef ARDUINO
+  // Transient brownout guard for ESP32-S3 SuperMini board startup
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) {
+    s_rapid_boot_count++;
+    if (s_rapid_boot_count >= 3) {
+      s_safe_mode_active = true;
+    }
+  } else {
+    s_rapid_boot_count = 0;
+  }
+#else
+  esp_sleep_wakeup_cause_t wakeup_reason = (esp_sleep_wakeup_cause_t)0;
+#endif
+
   Serial.begin(115200);
   Serial.println("Booting Q-Watch...");
 
   fileManager.begin();
   settingsManager.begin();
 
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+#ifdef ARDUINO
+  if (s_safe_mode_active) {
+    Serial.println("[CRITICAL] BOOT LOOP DETECTED! Booting into SAFE MODE (radios bypassed)...");
+    settingsManager.get().wifi_enabled = false;
+    settingsManager.get().ble_enabled = false;
+    qlink.clearBondedDevices();
+  }
+#endif
+
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
     // Silent background data recording: OLED, audio & LEDs must NOT turn on!
     ui.performSilentDeepSleepWake();
@@ -61,9 +95,22 @@ void setup() {
 
   wifiPortal.begin();
   qclock.begin(configManager.get().timezone);
+
+#ifdef ARDUINO
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
+#endif
+  s_boot_healthy_time = millis();
 }
 
 void loop() {
+  if (s_boot_healthy_time > 0 && (millis() - s_boot_healthy_time >= 4000)) {
+#ifdef ARDUINO
+    s_rapid_boot_count = 0;
+    s_safe_mode_active = false;
+#endif
+    s_boot_healthy_time = 0;
+  }
+
   wifiPortal.loop();
   qlink.loop();
   qclock.loop();

@@ -86,14 +86,15 @@ class QLinkBleTransport(
                     telemetryCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_TELEMETRY_UUID)
                     fileCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_FILE_UUID)
 
-                    // Enable telemetry notifications
-                    telemetryCharacteristic?.let { char ->
-                        enableNotification(gatt, char)
-                    }
-
-                    // Enable file response notifications
-                    fileCharacteristic?.let { char ->
-                        enableNotification(gatt, char)
+                    // Enable telemetry and file response notifications sequentially
+                    scope.launch {
+                        telemetryCharacteristic?.let { char ->
+                            enableNotification(gatt, char)
+                        }
+                        delay(150)
+                        fileCharacteristic?.let { char ->
+                            enableNotification(gatt, char)
+                        }
                     }
                 }
             }
