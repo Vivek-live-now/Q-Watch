@@ -33,8 +33,8 @@ fun SettingsScreen() {
     val connectionState by client.connectionState.collectAsState()
     val autoConnectBle by client.autoConnectBleFlow.collectAsState()
     val scanner = client.bleScanner
-    val isScanning by (scanner?.isScanning ?: remember { mutableStateOf(false) }).collectAsState()
-    val scanResults by (scanner?.scanResults ?: remember { mutableStateOf(emptyList<DiscoveredBleDevice>()) }).collectAsState()
+    val isScanning by client.isScanningBle.collectAsState()
+    val scanResults by client.bleScanResults.collectAsState()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -198,7 +198,7 @@ fun SettingsScreen() {
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    scanResults.forEach { dev ->
+                    for (dev in scanResults) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

@@ -8,6 +8,8 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <WebServer.h>
+#include <FS.h>
+#include <LittleFS.h>
 #else
 #include <string>
 #include <algorithm>

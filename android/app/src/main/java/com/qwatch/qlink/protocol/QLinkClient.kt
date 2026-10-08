@@ -46,6 +46,15 @@ class QLinkClient private constructor() {
     private val _autoConnectBleFlow = MutableStateFlow(true)
     val autoConnectBleFlow: StateFlow<Boolean> = _autoConnectBleFlow.asStateFlow()
 
+    private val _idleScanState = MutableStateFlow(false)
+    private val _emptyScanResults = MutableStateFlow<List<com.qwatch.qlink.protocol.ble.DiscoveredBleDevice>>(emptyList())
+
+    val isScanningBle: StateFlow<Boolean>
+        get() = bleScanner?.isScanning ?: _idleScanState
+
+    val bleScanResults: StateFlow<List<com.qwatch.qlink.protocol.ble.DiscoveredBleDevice>>
+        get() = bleScanner?.scanResults ?: _emptyScanResults
+
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {

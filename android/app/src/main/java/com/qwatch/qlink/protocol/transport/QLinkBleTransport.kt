@@ -301,10 +301,12 @@ class QLinkBleTransport(
             val list = mutableListOf<WatchFile>()
             for (i in 0 until filesArr.length()) {
                 val f = filesArr.getJSONObject(i)
+                val fname = f.getString("name")
                 list.add(
                     WatchFile(
-                        name = f.getString("name"),
-                        size = f.getLong("size"),
+                        name = fname,
+                        path = f.optString("path", if (fname.startsWith("/")) fname else "/$fname"),
+                        sizeBytes = f.optLong("size", 0L),
                         isDirectory = f.optBoolean("is_dir", false)
                     )
                 )
@@ -331,14 +333,21 @@ class QLinkBleTransport(
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
 
-        val totalSize = data.size
-        onProgress(TransferProgress(0, totalSize, 0))
+        val totalSize = data.size.toLong()
+        onProgress(
+            TransferProgress(
+                progress = 0f,
+                percent = 0,
+                bytesTransferred = 0L,
+                totalBytes = totalSize
+            )
+        )
 
         // 1. Send START packet
         val startJson = JSONObject().apply {
             put("cmd", "START")
             put("path", path)
-            put("size", totalSize)
+            put("size", data.size)
         }
         if (!writeData(char, startJson.toString().toByteArray(Charsets.UTF_8))) {
             return@withContext Result.failure(IOException("Failed to send BLE file START"))
@@ -351,8 +360,8 @@ class QLinkBleTransport(
         var offset = 0
         var seq = 0
 
-        while (offset < totalSize) {
-            val chunkLen = minOf(maxChunk, totalSize - offset)
+        while (offset < data.size) {
+            val chunkLen = minOf(maxChunk, data.size - offset)
             val packet = ByteArray(6 + chunkLen)
             packet[0] = 0xFE.toByte() // Magic Hi
             packet[1] = 0x01.toByte() // Magic Lo
@@ -370,8 +379,16 @@ class QLinkBleTransport(
 
             offset += chunkLen
             seq++
-            val pct = ((offset.toFloat() / totalSize.toFloat()) * 100f).toInt()
-            onProgress(TransferProgress(offset, totalSize, pct))
+            val progressFrac = if (totalSize > 0L) (offset.toFloat() / totalSize.toFloat()) else 1f
+            val pct = (progressFrac * 100f).toInt().coerceIn(0, 100)
+            onProgress(
+                TransferProgress(
+                    progress = progressFrac,
+                    percent = pct,
+                    bytesTransferred = offset.toLong(),
+                    totalBytes = totalSize
+                )
+            )
 
             // Gentle delay for BLE stack throughput stability
             delay(12)
@@ -381,11 +398,18 @@ class QLinkBleTransport(
         val finishJson = JSONObject().apply {
             put("cmd", "FINISH")
             put("path", path)
-            put("size", totalSize)
+            put("size", data.size)
         }
         writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))
         delay(30)
-        onProgress(TransferProgress(totalSize, totalSize, 100))
+        onProgress(
+            TransferProgress(
+                progress = 1f,
+                percent = 100,
+                bytesTransferred = totalSize,
+                totalBytes = totalSize
+            )
+        )
 
         Result.success(true)
     }

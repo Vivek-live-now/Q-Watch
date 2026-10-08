@@ -52,7 +52,7 @@ data class IrdbTransferProgress(
     val status: IrdbTransferStatus = IrdbTransferStatus.IDLE,
     val message: String = "",
     val percent: Int = 0,
-    val bytesTransferred: Int = 0,
-    val totalBytes: Int = 0,
+    val bytesTransferred: Long = 0L,
+    val totalBytes: Long = 0L,
     val error: String? = null
 )

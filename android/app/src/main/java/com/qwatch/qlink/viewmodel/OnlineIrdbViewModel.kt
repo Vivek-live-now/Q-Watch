@@ -289,8 +289,8 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
                 status = IrdbTransferStatus.UPLOADING,
                 message = "Streaming ${entry.filename} to Q-Watch (/ir/)...",
                 percent = 30,
-                bytesTransferred = 0,
-                totalBytes = bytes.size
+                bytesTransferred = 0L,
+                totalBytes = bytes.size.toLong()
             )
 
             val destPath = "/ir/" + entry.filename
@@ -310,13 +310,14 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
                     status = IrdbTransferStatus.SUCCESS,
                     message = "Loaded to Q-Watch!",
                     percent = 100,
-                    bytesTransferred = bytes.size,
-                    totalBytes = bytes.size
+                    bytesTransferred = bytes.size.toLong(),
+                    totalBytes = bytes.size.toLong()
                 )
                 // Trigger toast on watch
                 client.sendNotification(
                     NotificationPayload(
                         appName = "IR Remote",
+                        packageName = "com.qwatch.irdb",
                         title = "Remote Loaded",
                         body = entry.cleanDisplayName,
                         alertStyle = "CHIME"
