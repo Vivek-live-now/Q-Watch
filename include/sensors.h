@@ -194,6 +194,11 @@ private:
     void readBme();
 
 
+    uint64_t last_fusion_micros;
+    float filt_pitch;
+    float filt_roll;
+    uint32_t stat_sample_count;
+    float stat_gyro_sum_x, stat_gyro_sum_y, stat_gyro_sum_z;
     uint32_t last_fusion_update;
     uint32_t last_mag_update;
 

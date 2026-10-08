@@ -356,7 +356,7 @@ def test_qapp_abi_and_system():
     # 3. Re-compile and execute the C++ Q-App test harness
     bin_path = os.path.join(os.path.dirname(__file__), "test_qapp_system_bin")
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude", "-Itests",
+        "g++", "-O2", "-Iinclude", "-Itests",
         "-Iapps/tilt_game", "-Iapps/compass_hud", "-Iapps/invaders", "-Iapps/dice",
         "-Iapps/snake", "-Iapps/f1_race", "-Iapps/pacman", "-Iapps/breakout",
         "-Iapps/space_impact", "-Iapps/bounce",
@@ -385,7 +385,7 @@ def test_animation_engine():
     bin_path = os.path.join(os.path.dirname(__file__), "test_anim_bin")
 
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude",
+        "g++", "-O2", "-Iinclude",
         "tests/test_anim_system.cpp", "src/anim_engine.cpp",
         "-lm", "-o", bin_path
     ]
@@ -406,7 +406,7 @@ def test_wireless_recon():
     bin_path = os.path.join(os.path.dirname(__file__), "test_wireless_recon_bin")
 
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude",
+        "g++", "-O2", "-Iinclude",
         "tests/test_wireless_recon.cpp", "src/wireless_recon.cpp",
         "-lm", "-o", bin_path
     ]
@@ -427,7 +427,7 @@ def test_qlink_protocol():
     bin_path = os.path.join(os.path.dirname(__file__), "test_qlink_bin")
 
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude",
+        "g++", "-O2", "-Iinclude",
         "tests/test_qlink.cpp", "src/qlink.cpp",
         "-lm", "-o", bin_path
     ]
@@ -1383,7 +1383,7 @@ def test_mochi_pet_system():
 
     # 1. Compile and execute C++ host test harness
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude",
+        "g++", "-O2", "-Iinclude",
         "tests/test_mochi_system.cpp", "src/mochi_pet.cpp",
         "-lm", "-o", bin_path
     ]
@@ -1484,7 +1484,7 @@ def test_app_store_qapps_and_installer():
     # 4. Run Q-Link binary verification test including sideload validation
     bin_path = os.path.join(os.path.dirname(__file__), "test_qlink_bin")
     compile_cmd = [
-        "clang++", "-O2", "-Iinclude",
+        "g++", "-O2", "-Iinclude",
         "tests/test_qlink.cpp", "src/qlink.cpp",
         "-lm", "-o", bin_path
     ]
@@ -1949,7 +1949,7 @@ int main() {
         with open(tmp_c, "w", encoding="utf-8") as f:
             f.write(test_src)
         res_cmp = subprocess.run([
-            "clang++", "-O2", "-Iinclude",
+            "g++", "-O2", "-Iinclude",
             tmp_c, "src/vibration_manager.cpp",
             "-o", tmp_bin
         ], cwd=base_dir, capture_output=True, text=True)
