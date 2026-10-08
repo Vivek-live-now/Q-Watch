@@ -426,4 +426,24 @@ class QLinkWifiTransport(
         // Upload to /apps/<filename>
         uploadFile("/apps/$filename", data)
     }
+
+    override suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val json = JSONObject().apply {
+                put("protocol", protocol)
+                put("address", address.removePrefix("0x").toLongOrNull(16) ?: 0L)
+                put("command", command.removePrefix("0x").toLongOrNull(16) ?: 0L)
+                put("nbits", nbits)
+            }
+            val req = Request.Builder()
+                .url("${baseUrl()}/api/v1/ir/transmit")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+            client.newCall(req).execute().use { res ->
+                Result.success(res.isSuccessful)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

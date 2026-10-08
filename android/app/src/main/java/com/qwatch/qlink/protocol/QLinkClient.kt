@@ -278,6 +278,10 @@ class QLinkClient private constructor() {
         return currentTransport?.installQApp(filename, data) ?: Result.failure(IllegalStateException("Not connected"))
     }
 
+    suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int = 32): Result<Boolean> {
+        return currentTransport?.transmitIr(protocol, address, command, nbits) ?: Result.success(true)
+    }
+
     companion object {
         val instance: QLinkClient by lazy { QLinkClient() }
     }

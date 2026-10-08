@@ -1,12 +1,15 @@
 package com.qwatch.qlink.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,6 +27,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qwatch.qlink.irdb.*
 import com.qwatch.qlink.protocol.QLinkClient
+import com.qwatch.qlink.ui.components.AdaptiveVirtualRemote
 import com.qwatch.qlink.ui.components.TacticalCard
 import com.qwatch.qlink.ui.theme.*
 import com.qwatch.qlink.viewmodel.OnlineIrdbViewModel
@@ -43,7 +48,7 @@ fun OnlineIrdbScreen(
     val isPreviewLoading by viewModel.isPreviewLoading.collectAsState()
     val transferProgress by viewModel.transferProgress.collectAsState()
 
-    val categories = listOf("ALL", "TVs", "ACs", "Monitors", "SoundBars", "Fans", "Projectors", "FAVORITES")
+    val categories = listOf("ALL", "TVs", "ACs", "LED/RGB", "Monitors", "SoundBars", "Fans", "Projectors", "FAVORITES")
     val brands = listOf("ALL", "Samsung", "LG", "Sony", "Apple", "Panasonic", "Philips", "Daikin", "Gree", "Dyson", "TCL", "Toshiba", "Dell")
 
     Column(
@@ -82,8 +87,22 @@ fun OnlineIrdbScreen(
                 }
             }
 
-            IconButton(onClick = { viewModel.loadDatabase(forceRefresh = true) }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TacticalCyan)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(
+                    onClick = { viewModel.openSampleRemote("TV") },
+                    colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
+                    shape = RoundedCornerShape(4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp).border(1.dp, TacticalCyan, RoundedCornerShape(4.dp))
+                ) {
+                    Icon(Icons.Default.Tv, contentDescription = null, tint = TacticalCyan, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("REMOTE", color = TacticalCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(onClick = { viewModel.loadDatabase(forceRefresh = true) }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TacticalCyan)
+                }
             }
         }
 
@@ -228,100 +247,141 @@ fun OnlineIrdbScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 540.dp),
-                shape = RoundedCornerShape(8.dp),
+                    .heightIn(max = 680.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = TacticalSurface,
                 border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan)
             ) {
+                var previewTab by remember { mutableStateOf("REMOTE") } // "REMOTE" or "CODES"
+                val scrollState = rememberScrollState()
+
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .padding(14.dp)
+                        .verticalScroll(scrollState),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (isPreviewLoading) {
-                        Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = TacticalCyan)
                         }
                     } else if (previewRemote != null) {
                         val remote = previewRemote!!
+
+                        // Top bar inside Dialog with Tab Switcher & Close
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = remote.entry.cleanDisplayName,
-                                    color = TacticalCyan,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "${remote.buttons.size} BUTTONS • ${remote.filetype}",
-                                    color = TacticalAmber,
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(TacticalSurfaceLow)
+                                    .border(1.dp, TacticalBorder, RoundedCornerShape(6.dp))
+                                    .padding(2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (previewTab == "REMOTE") TacticalCyan.copy(alpha = 0.25f) else Color.Transparent)
+                                        .clickable { previewTab = "REMOTE" }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "VIRTUAL REMOTE",
+                                        color = if (previewTab == "REMOTE") TacticalCyan else TextMuted,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (previewTab == "CODES") TacticalAmber.copy(alpha = 0.25f) else Color.Transparent)
+                                        .clickable { previewTab = "CODES" }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "SIGNAL CODES",
+                                        color = if (previewTab == "CODES") TacticalAmber else TextMuted,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
+
                             IconButton(onClick = { viewModel.closePreview() }) {
                                 Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
                             }
                         }
 
-                        Divider(color = TacticalBorder)
+                        if (previewTab == "REMOTE") {
+                            // Adaptive Virtual Remote (TV, AC, or RGB LED)
+                            AdaptiveVirtualRemote(
+                                remoteFile = remote,
+                                onTransmit = { btn -> viewModel.transmitButton(btn) },
+                                onFlashToWatch = {
+                                    viewModel.closePreview()
+                                    viewModel.flashRemoteToWatch(remote.entry)
+                                }
+                            )
+                        } else {
+                            // Raw Parsed Signal Codes
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "PARSED SIGNALS (${remote.buttons.size}):",
+                                    color = TextMuted,
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
 
-                        // Button Grid / List
-                        Text(
-                            text = "PARSED SIGNALS:",
-                            color = TextMuted,
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                                remote.buttons.forEach { btn ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(TacticalSurfaceVariant)
+                                            .clickable { viewModel.transmitButton(btn) }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = btn.name,
+                                            color = TextPrimary,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (btn.protocol.isNotEmpty()) "${btn.protocol} [${btn.command}]" else "RAW (${btn.rawTimingsCount}t)",
+                                            color = TacticalAmber,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
 
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(remote.buttons) { btn ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(TacticalSurfaceVariant)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Button(
+                                    onClick = {
+                                        viewModel.closePreview()
+                                        viewModel.flashRemoteToWatch(remote.entry)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TacticalCyan),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        text = btn.name,
-                                        color = TextPrimary,
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = if (btn.protocol.isNotEmpty()) "${btn.protocol} [${btn.command}]" else "RAW (${btn.rawTimingsCount}t)",
-                                        color = TacticalAmber,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = OledBlack, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("FLASH TO Q-WATCH VIA BLE", color = OledBlack, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                                 }
                             }
-                        }
-
-                        // Big Flash button
-                        Button(
-                            onClick = {
-                                viewModel.closePreview()
-                                viewModel.flashRemoteToWatch(remote.entry)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TacticalCyan),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Bluetooth, contentDescription = null, tint = OledBlack, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("FLASH TO Q-WATCH VIA BLE", color = OledBlack, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

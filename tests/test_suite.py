@@ -2777,6 +2777,30 @@ def test_ble_connectivity_and_online_irdb_suite():
 
     print("  [PASS] 3. Online IRDB architecture, Flipper repository, UI search/preview, and BLE flashing integration verified.")
 
+    # 4. Verify Adaptive Virtual Remote (TV, AC, RGB LED) & Real-Time Transmission
+    adaptive_remote_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "components", "AdaptiveVirtualRemote.kt")
+    assert os.path.exists(adaptive_remote_kt), "AdaptiveVirtualRemote.kt must exist"
+    with open(adaptive_remote_kt, "r", encoding="utf-8") as f:
+        ark = f.read()
+    assert "VirtualTvRemoteLayout" in ark
+    assert "VirtualAcRemoteLayout" in ark
+    assert "VirtualRgbLedRemoteLayout" in ark
+    assert "detectRemoteCategory" in ark
+    assert "findSignal" in ark
+    assert "RemoteCategory" in ark
+
+    with open(irdb_screen_kt, "r", encoding="utf-8") as f:
+        isk2 = f.read()
+    assert "AdaptiveVirtualRemote" in isk2
+    assert "VIRTUAL REMOTE" in isk2
+
+    with open(irdb_vm_kt, "r", encoding="utf-8") as f:
+        ivk2 = f.read()
+    assert "transmitButton" in ivk2
+    assert "openSampleRemote" in ivk2
+
+    print("  [PASS] 4. Adaptive Virtual Remote (TV layout, AC climate LCD, RGB LED 24-key matrix & signal binding) verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()

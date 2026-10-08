@@ -407,4 +407,17 @@ class QLinkBleTransport(
     override suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> {
         return uploadFile("/apps/$filename", data)
     }
+
+    override suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
+        val json = JSONObject().apply {
+            put("action", "IR_TRANSMIT")
+            put("protocol", protocol)
+            put("address", address.removePrefix("0x").toLongOrNull(16) ?: 0L)
+            put("command", command.removePrefix("0x").toLongOrNull(16) ?: 0L)
+            put("nbits", nbits)
+        }
+        val ok = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        Result.success(ok)
+    }
 }

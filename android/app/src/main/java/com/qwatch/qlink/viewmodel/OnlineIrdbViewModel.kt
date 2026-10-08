@@ -101,6 +101,7 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
                 it.deviceType.contains(cat, ignoreCase = true) ||
                         (cat == "TVs" && it.path.contains("TV", ignoreCase = true)) ||
                         (cat == "ACs" && (it.path.contains("AC", ignoreCase = true) || it.path.contains("Air", ignoreCase = true))) ||
+                        (cat == "LED/RGB" && (it.path.contains("LED", ignoreCase = true) || it.path.contains("Light", ignoreCase = true) || it.path.contains("RGB", ignoreCase = true))) ||
                         (cat == "Monitors" && it.path.contains("Monitor", ignoreCase = true))
             }
         }
@@ -135,6 +136,112 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
 
     fun closePreview() {
         _previewRemote.value = null
+    }
+
+    fun transmitButton(btn: IrParsedButton) {
+        viewModelScope.launch {
+            if (client.isConnected()) {
+                client.transmitIr(btn.protocol, btn.address, btn.command, 32)
+            }
+        }
+    }
+
+    fun openSampleRemote(category: String) {
+        val entry = when (category.uppercase()) {
+            "AC" -> IrdbEntry(
+                filename = "Daikin_Inverter.ir",
+                deviceType = "Air_Conditioners",
+                brand = "Daikin",
+                model = "ARC433A",
+                path = "Air_Conditioners/Daikin/ARC433A.ir"
+            )
+            "RGB", "LED" -> IrdbEntry(
+                filename = "Magic_Home_RGB.ir",
+                deviceType = "LED_Lighting",
+                brand = "MagicHome",
+                model = "24K_RGB_Strip",
+                path = "LED_Lighting/MagicHome/24K.ir"
+            )
+            else -> IrdbEntry(
+                filename = "Samsung_Smart_TV.ir",
+                deviceType = "TVs",
+                brand = "Samsung",
+                model = "BN59-01259D",
+                path = "TVs/Samsung/BN59-01259D.ir"
+            )
+        }
+        val sampleButtons = when (category.uppercase()) {
+            "AC" -> listOf(
+                IrParsedButton("Power", "parsed", "Daikin", "0x11", "0x01"),
+                IrParsedButton("Temp_up", "parsed", "Daikin", "0x11", "0x0A"),
+                IrParsedButton("Temp_down", "parsed", "Daikin", "0x11", "0x0B"),
+                IrParsedButton("Mode", "parsed", "Daikin", "0x11", "0x02"),
+                IrParsedButton("Fan", "parsed", "Daikin", "0x11", "0x03"),
+                IrParsedButton("Swing", "parsed", "Daikin", "0x11", "0x04"),
+                IrParsedButton("Turbo", "parsed", "Daikin", "0x11", "0x05"),
+                IrParsedButton("Sleep", "parsed", "Daikin", "0x11", "0x06"),
+                IrParsedButton("Eco", "parsed", "Daikin", "0x11", "0x07"),
+                IrParsedButton("Timer", "parsed", "Daikin", "0x11", "0x08"),
+                IrParsedButton("Clean", "parsed", "Daikin", "0x11", "0x09")
+            )
+            "RGB", "LED" -> listOf(
+                IrParsedButton("Bright_up", "parsed", "NEC", "0x00", "0x05"),
+                IrParsedButton("Bright_down", "parsed", "NEC", "0x00", "0x06"),
+                IrParsedButton("Off", "parsed", "NEC", "0x00", "0x02"),
+                IrParsedButton("On", "parsed", "NEC", "0x00", "0x03"),
+                IrParsedButton("Red", "parsed", "NEC", "0x00", "0x08"),
+                IrParsedButton("Green", "parsed", "NEC", "0x00", "0x09"),
+                IrParsedButton("Blue", "parsed", "NEC", "0x00", "0x0A"),
+                IrParsedButton("White", "parsed", "NEC", "0x00", "0x0B"),
+                IrParsedButton("R1", "parsed", "NEC", "0x00", "0x0C"),
+                IrParsedButton("G1", "parsed", "NEC", "0x00", "0x0D"),
+                IrParsedButton("B1", "parsed", "NEC", "0x00", "0x0E"),
+                IrParsedButton("Flash", "parsed", "NEC", "0x00", "0x0F"),
+                IrParsedButton("R2", "parsed", "NEC", "0x00", "0x10"),
+                IrParsedButton("G2", "parsed", "NEC", "0x00", "0x11"),
+                IrParsedButton("B2", "parsed", "NEC", "0x00", "0x12"),
+                IrParsedButton("Strobe", "parsed", "NEC", "0x00", "0x13"),
+                IrParsedButton("R3", "parsed", "NEC", "0x00", "0x14"),
+                IrParsedButton("G3", "parsed", "NEC", "0x00", "0x15"),
+                IrParsedButton("B3", "parsed", "NEC", "0x00", "0x16"),
+                IrParsedButton("Fade", "parsed", "NEC", "0x00", "0x17"),
+                IrParsedButton("R4", "parsed", "NEC", "0x00", "0x18"),
+                IrParsedButton("G4", "parsed", "NEC", "0x00", "0x19"),
+                IrParsedButton("B4", "parsed", "NEC", "0x00", "0x1A"),
+                IrParsedButton("Smooth", "parsed", "NEC", "0x00", "0x1B")
+            )
+            else -> listOf(
+                IrParsedButton("Power", "parsed", "NEC", "0x04", "0x08"),
+                IrParsedButton("Mute", "parsed", "NEC", "0x04", "0x09"),
+                IrParsedButton("Input", "parsed", "NEC", "0x04", "0x01"),
+                IrParsedButton("Vol_up", "parsed", "NEC", "0x04", "0x02"),
+                IrParsedButton("Vol_down", "parsed", "NEC", "0x04", "0x03"),
+                IrParsedButton("Ch_up", "parsed", "NEC", "0x04", "0x12"),
+                IrParsedButton("Ch_down", "parsed", "NEC", "0x04", "0x13"),
+                IrParsedButton("Up", "parsed", "NEC", "0x04", "0x60"),
+                IrParsedButton("Down", "parsed", "NEC", "0x04", "0x61"),
+                IrParsedButton("Left", "parsed", "NEC", "0x04", "0x62"),
+                IrParsedButton("Right", "parsed", "NEC", "0x04", "0x65"),
+                IrParsedButton("Ok", "parsed", "NEC", "0x04", "0x68"),
+                IrParsedButton("Home", "parsed", "NEC", "0x04", "0x79"),
+                IrParsedButton("Back", "parsed", "NEC", "0x04", "0x58"),
+                IrParsedButton("Exit", "parsed", "NEC", "0x04", "0x59"),
+                IrParsedButton("0", "parsed", "NEC", "0x04", "0x11"),
+                IrParsedButton("1", "parsed", "NEC", "0x04", "0x04"),
+                IrParsedButton("2", "parsed", "NEC", "0x04", "0x05"),
+                IrParsedButton("3", "parsed", "NEC", "0x04", "0x06"),
+                IrParsedButton("Red", "parsed", "NEC", "0x04", "0x6C"),
+                IrParsedButton("Green", "parsed", "NEC", "0x04", "0x6D"),
+                IrParsedButton("Yellow", "parsed", "NEC", "0x04", "0x6E"),
+                IrParsedButton("Blue", "parsed", "NEC", "0x04", "0x6F")
+            )
+        }
+        _previewRemote.value = IrRemoteFile(
+            entry = entry,
+            filetype = "IR signals file",
+            rawText = "",
+            buttons = sampleButtons
+        )
     }
 
     fun flashRemoteToWatch(entry: IrdbEntry) {

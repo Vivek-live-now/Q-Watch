@@ -17,6 +17,7 @@
 #include "mochi_pet.h"
 #include "power_manager.h"
 #include "wireless_recon.h"
+#include "ir_engine.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
@@ -197,6 +198,14 @@ void QLinkEngine::handleBleCommand(const uint8_t* data, size_t len) {
             float hi = doc["hi"] | temp;
             float lo = doc["lo"] | temp;
             syncWeather(city, temp, hum, code, desc, hi, lo);
+        } else if (strcmp(action, "IR_TRANSMIT") == 0) {
+            String proto = doc["protocol"] | "";
+            uint32_t addr = doc["address"] | 0;
+            uint32_t cmd = doc["command"] | 0;
+            uint16_t nbits = doc["nbits"] | 32;
+            if (proto.length() > 0) {
+                irEngine.sendParsed(proto, addr, cmd, nbits);
+            }
         }
     }
 #endif
@@ -731,6 +740,25 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
         }
         server.send(400, "application/json", "{\"error\":\"invalid_button\"}");
+    });
+
+    // 5b. Live IR Signal Blasting
+    server.on("/api/v1/ir/transmit", HTTP_POST, [&server, this]() {
+        if (server.hasArg("plain")) {
+            JsonDocument doc;
+            if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+                String proto = doc["protocol"] | "";
+                uint32_t addr = doc["address"] | 0;
+                uint32_t cmd = doc["command"] | 0;
+                uint16_t nbits = doc["nbits"] | 32;
+                if (proto.length() > 0) {
+                    irEngine.sendParsed(proto, addr, cmd, nbits);
+                    server.send(200, "application/json", "{\"status\":\"transmitted\"}");
+                    return;
+                }
+            }
+        }
+        server.send(400, "application/json", "{\"error\":\"invalid_ir_packet\"}");
     });
 
     // 6. Notification Ingestion
