@@ -2909,9 +2909,11 @@ void DisplayManager::drawFileServerDetailsScreen() {
     oled.setFont(u8g2_font_6x10_tr);
 
     SettingsData& s = settingsManager.get();
+    bool running = s.fileserver_enabled && (wifiPortal.getState() == WifiState::CONNECTED || wifiPortal.getState() == WifiState::PORTAL);
     String pwrStr = "Power : " + String(s.fileserver_enabled ? "ON" : "OFF");
-    String stStr  = "Status: " + String(s.fileserver_enabled ? "RUNNING" : "OFF");
-    String urlStr = "URL   : q-watch.local/fm";
+    String stStr  = "Status: " + String(running ? "RUNNING" : (s.fileserver_enabled ? "WAITING WIFI" : "OFF"));
+    String ip = wifiPortal.getIP();
+    String urlStr = "URL   : " + (ip.length() > 0 ? (ip + "/fm") : "q-watch.local/fm");
     String filesStr= "Files : " + String(wifiPortal.getTotalFileCount());
 
     oled.drawStr(2, 22, pwrStr.c_str());

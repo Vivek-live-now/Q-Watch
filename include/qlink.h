@@ -146,6 +146,7 @@ public:
     bool isBleConnected() const { return ble_connected; }
     void setBleConnected(bool connected) { ble_connected = connected; }
     bool isBleEnabled() const { return ble_active; }
+    bool isBleActive() const { return ble_active; }
     void setBleEnabled(bool enabled);
     void startBle();
     void stopBle();

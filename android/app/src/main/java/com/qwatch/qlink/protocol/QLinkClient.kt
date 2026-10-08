@@ -283,6 +283,18 @@ class QLinkClient private constructor() {
         return currentTransport?.deleteFile(path) ?: Result.failure(IllegalStateException("Not connected"))
     }
 
+    suspend fun createDirectory(path: String): Result<Boolean> {
+        return currentTransport?.createDirectory(path) ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
+    suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> {
+        return currentTransport?.renameFile(oldPath, newPath) ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
+    suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> {
+        return currentTransport?.copyFile(sourcePath, destPath) ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
     suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> {
         return currentTransport?.installQApp(filename, data) ?: Result.failure(IllegalStateException("Not connected"))
     }

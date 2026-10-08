@@ -422,6 +422,48 @@ class QLinkWifiTransport(
         }
     }
 
+    override suspend fun createDirectory(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_MKDIR}?path=$path")
+                .post("".toRequestBody(null))
+                .build()
+            client.newCall(req).execute().use { res ->
+                Result.success(res.isSuccessful)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_RENAME}?from=$oldPath&to=$newPath")
+                .post("".toRequestBody(null))
+                .build()
+            client.newCall(req).execute().use { res ->
+                Result.success(res.isSuccessful)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_COPY}?src=$sourcePath&dst=$destPath")
+                .post("".toRequestBody(null))
+                .build()
+            client.newCall(req).execute().use { res ->
+                Result.success(res.isSuccessful)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> = withContext(Dispatchers.IO) {
         // Upload to /apps/<filename>
         uploadFile("/apps/$filename", data)

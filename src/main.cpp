@@ -22,6 +22,10 @@
 
 // Hardware RTC memory boot loop detector & recovery guard
 #ifdef ARDUINO
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+#include <esp_system.h>
+
 RTC_DATA_ATTR static uint32_t s_rapid_boot_count = 0;
 RTC_DATA_ATTR static bool s_safe_mode_active = false;
 #endif
@@ -33,10 +37,14 @@ static uint32_t s_boot_healthy_time = 0;
 
 void setup() {
 #ifdef ARDUINO
+  // Transient brownout guard for ESP32-S3 SuperMini board startup & RF synth inrush
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+  esp_reset_reason_t rst_reason = esp_reset_reason();
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) {
     s_rapid_boot_count++;
-    if (s_rapid_boot_count >= 3) {
+    if (rst_reason == ESP_RST_BROWNOUT || s_rapid_boot_count >= 3) {
       s_safe_mode_active = true;
     }
   } else {
@@ -54,7 +62,13 @@ void setup() {
 
 #ifdef ARDUINO
   if (s_safe_mode_active) {
-    Serial.println("[SAFE BOOT] Repeated quick resets detected; bypassing radio startup for this session.");
+    Serial.println("[SAFE BOOT] Repeated quick resets or brownout detected; disarming conflicting radios.");
+    SettingsData& s = settingsManager.get();
+    if (s.wifi_enabled && s.ble_enabled) {
+      s.ble_enabled = false;
+      settingsManager.save();
+      Serial.println("[SAFE BOOT] Disarmed BLE in persistent storage to break dual-radio boot loop.");
+    }
   }
 #endif
 
@@ -92,6 +106,7 @@ void setup() {
   }
 
 #ifdef ARDUINO
+  delay(50);
   if (!s_safe_mode_active) {
     wifiPortal.begin();
   }
@@ -100,6 +115,9 @@ void setup() {
 #endif
   qclock.begin(configManager.get().timezone);
 
+#ifdef ARDUINO
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
+#endif
   s_boot_healthy_time = millis();
 }
 

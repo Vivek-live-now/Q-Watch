@@ -20,6 +20,7 @@
 #include "ir_engine.h"
 #include "settings_data.h"
 #include "air_mouse.h"
+#include "wifi_portal.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
@@ -198,6 +199,12 @@ void QLinkEngine::startBle() {
 
     ble_active = true;
     ble_advertising_paused = false;
+
+    // Dynamically update Wi-Fi coexistence modem sleep and TX power
+    if (wifiPortal.getState() != WifiState::OFF) {
+        wifiPortal.configurePowerSave();
+        wifiPortal.applyTxPower();
+    }
 #endif
 }
 
@@ -226,6 +233,11 @@ void QLinkEngine::stopBle() {
         s_char_command = nullptr;
         s_char_telemetry = nullptr;
         s_char_file = nullptr;
+    }
+
+    if (wifiPortal.getState() != WifiState::OFF) {
+        wifiPortal.configurePowerSave();
+        wifiPortal.applyTxPower();
     }
 #endif
 }
@@ -432,6 +444,128 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
                 String resp = ok ? ("{\"status\":\"OK\",\"deleted\":\"" + path + "\"}")
                                  : "{\"status\":\"ERROR\",\"code\":404}";
                 s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "MKDIR") == 0) {
+            String path = doc["path"] | "";
+            bool ok = false;
+            if (FileManager::isPathSafe(path) && path.length() > 0) {
+                ok = LittleFS.mkdir(path);
+            }
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"created\":\"" + path + "\"}")
+                                 : "{\"status\":\"ERROR\",\"code\":500}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "RENAME") == 0) {
+            String from = doc["from"] | (doc["old"] | "");
+            String to = doc["to"] | (doc["new"] | "");
+            bool ok = false;
+            if (FileManager::isPathSafe(from) && FileManager::isPathSafe(to) && LittleFS.exists(from)) {
+                FileManager::ensureParentDir(to);
+                ok = LittleFS.rename(from, to);
+            }
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"from\":\"" + from + "\",\"to\":\"" + to + "\"}")
+                                 : "{\"status\":\"ERROR\",\"code\":500}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "COPY") == 0) {
+            String src = doc["src"] | (doc["from"] | "");
+            String dst = doc["dst"] | (doc["to"] | "");
+            bool ok = false;
+            if (FileManager::isPathSafe(src) && FileManager::isPathSafe(dst) && LittleFS.exists(src)) {
+                File s = LittleFS.open(src, FILE_READ);
+                if (s && !s.isDirectory()) {
+                    FileManager::ensureParentDir(dst);
+                    File d = LittleFS.open(dst, FILE_WRITE);
+                    if (d) {
+                        uint8_t buf[256];
+                        while (s.available()) {
+                            size_t n = s.read(buf, sizeof(buf));
+                            if (n > 0) d.write(buf, n);
+                        }
+                        d.close();
+                        ok = true;
+                    }
+                    s.close();
+                } else if (s) {
+                    s.close();
+                }
+            }
+            if (s_char_file) {
+                String resp = ok ? ("{\"status\":\"OK\",\"copied\":\"" + src + "\",\"to\":\"" + dst + "\"}")
+                                 : "{\"status\":\"ERROR\",\"code\":500}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "DOWNLOAD") == 0) {
+            String path = doc["path"] | "";
+            if (!FileManager::isPathSafe(path) || !LittleFS.exists(path)) {
+                if (s_char_file) {
+                    String resp = "{\"status\":\"ERROR\",\"code\":404,\"message\":\"File not found\"}";
+                    s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                    s_char_file->notify();
+                }
+            } else {
+                File f = LittleFS.open(path, FILE_READ);
+                if (!f || f.isDirectory()) {
+                    if (f) f.close();
+                    if (s_char_file) {
+                        String resp = "{\"status\":\"ERROR\",\"code\":400,\"message\":\"Cannot download directory\"}";
+                        s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                        s_char_file->notify();
+                    }
+                } else {
+                    size_t total_size = f.size();
+                    if (s_char_file) {
+                        String start_resp = "{\"cmd\":\"DOWNLOAD_START\",\"path\":\"" + path + "\",\"size\":" + String((unsigned long)total_size) + "}";
+                        s_char_file->setValue((uint8_t*)start_resp.c_str(), start_resp.length());
+                        s_char_file->notify();
+                    }
+                    delay(25);
+
+                    uint8_t chunk_buf[256];
+                    size_t max_payload = 180;
+                    uint16_t seq = 0;
+                    size_t sent = 0;
+
+                    while (f.available() > 0) {
+                        size_t to_read = f.available();
+                        if (to_read > max_payload) to_read = max_payload;
+                        chunk_buf[0] = 0xFE;
+                        chunk_buf[1] = 0x02;
+                        chunk_buf[2] = (uint8_t)((seq >> 8) & 0xFF);
+                        chunk_buf[3] = (uint8_t)(seq & 0xFF);
+                        chunk_buf[4] = (uint8_t)((to_read >> 8) & 0xFF);
+                        chunk_buf[5] = (uint8_t)(to_read & 0xFF);
+                        size_t read_bytes = f.read(chunk_buf + 6, to_read);
+                        if (read_bytes == 0) break;
+
+                        if (s_char_file) {
+                            s_char_file->setValue(chunk_buf, 6 + read_bytes);
+                            s_char_file->notify();
+                        }
+                        sent += read_bytes;
+                        seq++;
+                        delay(12);
+                    }
+                    f.close();
+
+                    delay(25);
+                    if (s_char_file) {
+                        String end_resp = "{\"cmd\":\"DOWNLOAD_END\",\"path\":\"" + path + "\",\"size\":" + String((unsigned long)sent) + "}";
+                        s_char_file->setValue((uint8_t*)end_resp.c_str(), end_resp.length());
+                        s_char_file->notify();
+                    }
+                }
+            }
+        } else if (strcmp(cmd, "STORAGE") == 0) {
+            String json = generateStorageJson();
+            if (s_char_file) {
+                s_char_file->setValue((uint8_t*)json.c_str(), json.length());
                 s_char_file->notify();
             }
         }
@@ -1095,6 +1229,71 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
     server.on("/api/v1/fs/storage", HTTP_GET, [&server, this]() {
         server.send(200, "application/json", generateStorageJson());
     });
+
+    // 11d. Filesystem Make Directory
+    auto handleFsMkdir = [&server]() {
+        String path = server.hasArg("path") ? server.arg("path") : "";
+        if (!FileManager::isPathSafe(path) || path.length() == 0) {
+            server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
+            return;
+        }
+        if (LittleFS.mkdir(path)) {
+            server.send(200, "application/json", "{\"status\":\"created\",\"path\":\"" + path + "\"}");
+        } else {
+            server.send(500, "application/json", "{\"error\":\"mkdir_failed\"}");
+        }
+    };
+    server.on("/api/v1/fs/mkdir", HTTP_POST, handleFsMkdir);
+    server.on("/api/v1/fs/mkdir", HTTP_GET, handleFsMkdir);
+
+    // 11e. Filesystem Rename
+    auto handleFsRename = [&server]() {
+        String from = server.hasArg("from") ? server.arg("from") : (server.hasArg("old") ? server.arg("old") : "");
+        String to = server.hasArg("to") ? server.arg("to") : (server.hasArg("new") ? server.arg("new") : "");
+        if (!FileManager::isPathSafe(from) || !FileManager::isPathSafe(to) || !LittleFS.exists(from)) {
+            server.send(400, "application/json", "{\"error\":\"invalid_path_or_source_missing\"}");
+            return;
+        }
+        FileManager::ensureParentDir(to);
+        if (LittleFS.rename(from, to)) {
+            server.send(200, "application/json", "{\"status\":\"renamed\",\"from\":\"" + from + "\",\"to\":\"" + to + "\"}");
+        } else {
+            server.send(500, "application/json", "{\"error\":\"rename_failed\"}");
+        }
+    };
+    server.on("/api/v1/fs/rename", HTTP_POST, handleFsRename);
+
+    // 11f. Filesystem Copy
+    auto handleFsCopy = [&server]() {
+        String src = server.hasArg("src") ? server.arg("src") : (server.hasArg("from") ? server.arg("from") : "");
+        String dst = server.hasArg("dst") ? server.arg("dst") : (server.hasArg("to") ? server.arg("to") : "");
+        if (!FileManager::isPathSafe(src) || !FileManager::isPathSafe(dst) || !LittleFS.exists(src)) {
+            server.send(400, "application/json", "{\"error\":\"invalid_path_or_source_missing\"}");
+            return;
+        }
+        File s = LittleFS.open(src, FILE_READ);
+        if (!s || s.isDirectory()) {
+            if (s) s.close();
+            server.send(400, "application/json", "{\"error\":\"source_is_directory_or_unreadable\"}");
+            return;
+        }
+        FileManager::ensureParentDir(dst);
+        File d = LittleFS.open(dst, FILE_WRITE);
+        if (!d) {
+            s.close();
+            server.send(500, "application/json", "{\"error\":\"destination_open_failed\"}");
+            return;
+        }
+        uint8_t buf[256];
+        while (s.available()) {
+            size_t n = s.read(buf, sizeof(buf));
+            if (n > 0) d.write(buf, n);
+        }
+        s.close();
+        d.close();
+        server.send(200, "application/json", "{\"status\":\"copied\",\"src\":\"" + src + "\",\"dst\":\"" + dst + "\"}");
+    };
+    server.on("/api/v1/fs/copy", HTTP_POST, handleFsCopy);
 
     // 12. Micro-ELF Q-App Sideload / Install
     server.on("/api/v1/app/install", HTTP_POST, [&server, this]() {

@@ -32,6 +32,7 @@ public:
     void enableWifi();
     void disableWifi();
     void applyTxPower();
+    void configurePowerSave();
     const char* getDetailedStatusStr();
     String getSSID();
     String getIP();
@@ -80,6 +81,7 @@ private:
     void handleFileDelete();
     void handleFileMkdir();
     void handleFileRename();
+    void handleFileCopy();
 
     String getHtml();
     String getFileManagerHtml();

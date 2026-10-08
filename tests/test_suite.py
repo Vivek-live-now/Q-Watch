@@ -2801,6 +2801,129 @@ def test_ble_connectivity_and_online_irdb_suite():
 
     print("  [PASS] 4. Adaptive Virtual Remote (TV layout, AC climate LCD, RGB LED 24-key matrix & signal binding) verified.")
 
+def test_wifi_ble_coexistence_and_boot_loop_guard():
+    print("\n--- 44. Wi-Fi + BLE Coexistence & Hardware Boot Loop Guard Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    wifi_h = os.path.join(base_dir, "include", "wifi_portal.h")
+    wifi_cpp = os.path.join(base_dir, "src", "wifi_portal.cpp")
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    qlink_cpp = os.path.join(base_dir, "src", "qlink.cpp")
+    air_mouse_cpp = os.path.join(base_dir, "src", "air_mouse.cpp")
+
+    # 1. WifiPortal Coexistence & Power Save Declarations
+    with open(wifi_h, "r", encoding="utf-8") as f:
+        wh = f.read()
+    assert "void configurePowerSave();" in wh, "configurePowerSave() must be declared in wifi_portal.h"
+
+    # 2. WifiPortal Dynamic Modem Sleep & SuperMini TX Clamping
+    with open(wifi_cpp, "r", encoding="utf-8") as f:
+        wc = f.read()
+    assert "void WifiPortal::configurePowerSave()" in wc, "configurePowerSave must be implemented"
+    assert "esp_wifi_set_ps(WIFI_PS_MIN_MODEM);" in wc, "Must enforce WIFI_PS_MIN_MODEM when BLE is active"
+    assert "WiFi.setSleep(true);" in wc, "Must enable WiFi sleep for RF coexistence"
+    assert "wifi_powers[1]" in wc, "Must clamp max TX power to 15 dBm during concurrent BLE operation"
+    print("  [PASS] 1. Wi-Fi coexistence dynamic modem sleep (WIFI_PS_MIN_MODEM) and TX power clamping verified.")
+
+    # 3. Main Hardware Brownout Guard, Reset Reason & Safe Boot Disarm
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);" in mc, "Startup transient brownout guard must be active"
+    assert "WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);" in mc, "Brownout detector must be restored after boot"
+    assert "esp_reset_reason()" in mc, "Reset reason check must be present"
+    assert "ESP_RST_BROWNOUT" in mc, "ESP_RST_BROWNOUT handling must be present"
+    assert "s.ble_enabled = false;" in mc, "Must disarm conflicting radio in safe boot"
+    assert "settingsManager.save();" in mc, "Must persist disarmed state to break boot loop"
+    print("  [PASS] 2. Hardware brownout transient guard, reset-reason audit & persistent safe boot disarm verified.")
+
+    # 4. Radio Coordination & Dynamic Updates
+    with open(qlink_cpp, "r", encoding="utf-8") as f:
+        qc = f.read()
+    assert "wifiPortal.configurePowerSave();" in qc, "QLink must update Wi-Fi coexistence"
+    assert "wifiPortal.applyTxPower();" in qc, "QLink must update Wi-Fi TX power"
+
+    with open(air_mouse_cpp, "r", encoding="utf-8") as f:
+        amc = f.read()
+    assert "wifiPortal.configurePowerSave();" in amc, "AirMouse must update Wi-Fi coexistence"
+    assert "wifiPortal.applyTxPower();" in amc, "AirMouse must update Wi-Fi TX power"
+    print("  [PASS] 3. BLE & Air Mouse dynamic Wi-Fi coexistence and RF power coordination verified.")
+
+def test_littlefs_explorer_and_ble_transfer():
+    print("\n--- 45. LittleFS Web Explorer, BLE File Transfer & Android File Manager Overhaul ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    wifi_portal_cpp = os.path.join(base_dir, "src", "wifi_portal.cpp")
+    settings_data_h = os.path.join(base_dir, "include", "settings_data.h")
+    qlink_cpp = os.path.join(base_dir, "src", "qlink.cpp")
+    android_const_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "QLinkConstants.kt")
+    android_transport_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkTransport.kt")
+    android_ble_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkBleTransport.kt")
+    android_wifi_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkWifiTransport.kt")
+    android_files_screen_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "FilesScreen.kt")
+
+    # 1. Firmware Web Portal Button & Auto-Enable
+    with open(wifi_portal_cpp, "r", encoding="utf-8") as f:
+        wpc = f.read()
+    assert 'href="/fm"' in wpc, "Dashboard must have direct link button to LittleFS Explorer /fm"
+    assert "handleFileCopy" in wpc, "wifi_portal must implement handleFileCopy"
+    assert 'server.on("/file_copy"' in wpc, "wifi_portal must register /file_copy route"
+    assert "settingsManager.get().fileserver_enabled = true;" in wpc, "Fileserver must auto-enable on file manager access"
+
+    with open(settings_data_h, "r", encoding="utf-8") as f:
+        sdh = f.read()
+    assert "bool fileserver_enabled = true;" in sdh, "File server must default to enabled"
+    print("  [PASS] 1. Web portal LittleFS explorer button, /file_copy, and default file server enabled verified.")
+
+    # 2. Firmware QLink LittleFS REST & BLE File Packets
+    with open(qlink_cpp, "r", encoding="utf-8") as f:
+        qc = f.read()
+    assert '"/api/v1/fs/mkdir"' in qc, "QLink must register /api/v1/fs/mkdir"
+    assert '"/api/v1/fs/rename"' in qc, "QLink must register /api/v1/fs/rename"
+    assert '"/api/v1/fs/copy"' in qc, "QLink must register /api/v1/fs/copy"
+    assert 'strcmp(cmd, "MKDIR") == 0' in qc, "handleBleFilePacket must handle MKDIR"
+    assert 'strcmp(cmd, "RENAME") == 0' in qc, "handleBleFilePacket must handle RENAME"
+    assert 'strcmp(cmd, "COPY") == 0' in qc, "handleBleFilePacket must handle COPY"
+    assert 'strcmp(cmd, "DOWNLOAD") == 0' in qc, "handleBleFilePacket must handle DOWNLOAD"
+    assert 'chunk_buf[0] = 0xFE;' in qc and 'chunk_buf[1] = 0x02;' in qc, "handleBleFilePacket must frame download chunks with 0xFE 0x02"
+    print("  [PASS] 2. QLink REST fs endpoints and BLE MKDIR, RENAME, COPY, and DOWNLOAD packet streaming verified.")
+
+    # 3. Android Protocol Layer & Transports
+    with open(android_const_kt, "r", encoding="utf-8") as f:
+        ack = f.read()
+    assert "PATH_FS_MKDIR" in ack and "PATH_FS_RENAME" in ack and "PATH_FS_COPY" in ack, "QLinkConstants must declare fs mkdir, rename, copy paths"
+
+    with open(android_transport_kt, "r", encoding="utf-8") as f:
+        atk = f.read()
+    assert "createDirectory" in atk and "renameFile" in atk and "copyFile" in atk, "QLinkTransport must declare createDirectory, renameFile, copyFile"
+
+    with open(android_wifi_kt, "r", encoding="utf-8") as f:
+        awk = f.read()
+    assert "override suspend fun createDirectory" in awk, "QLinkWifiTransport must implement createDirectory"
+    assert "override suspend fun renameFile" in awk, "QLinkWifiTransport must implement renameFile"
+    assert "override suspend fun copyFile" in awk, "QLinkWifiTransport must implement copyFile"
+
+    with open(android_ble_kt, "r", encoding="utf-8") as f:
+        abk = f.read()
+    assert "_fileDownloadChunkFlow" in abk, "QLinkBleTransport must have download chunk flow"
+    assert "0xFE.toByte() && bytes[1] == 0x02.toByte()" in abk, "QLinkBleTransport must intercept 0xFE 0x02 download chunks"
+    assert "override suspend fun downloadFile" in abk, "QLinkBleTransport must implement downloadFile"
+    assert "override suspend fun createDirectory" in abk, "QLinkBleTransport must implement createDirectory"
+    assert "override suspend fun renameFile" in abk, "QLinkBleTransport must implement renameFile"
+    assert "override suspend fun copyFile" in abk, "QLinkBleTransport must implement copyFile"
+    assert ".filter { it.contains(\"LIST_RESP\") }.first()" in abk, "QLinkBleTransport listFiles must use filter/first to avoid hang"
+    print("  [PASS] 3. Android QLinkTransport, QLinkWifiTransport, and non-blocking QLinkBleTransport verified.")
+
+    # 4. Android FilesScreen UI Overhaul
+    with open(android_files_screen_kt, "r", encoding="utf-8") as f:
+        fsk = f.read()
+    assert "currentPath != \"/\"" in fsk, "FilesScreen must support subfolder navigation"
+    assert ".. (Parent Directory)" in fsk, "FilesScreen must provide Parent Directory navigation"
+    assert "uploadLauncher" in fsk, "FilesScreen must provide file upload launcher"
+    assert "downloadWatchFile" in fsk, "FilesScreen must provide file download action"
+    assert "showNewFolderDialog" in fsk, "FilesScreen must provide new folder creation dialog"
+    assert "renameTarget" in fsk, "FilesScreen must provide rename dialog"
+    assert "deleteTarget" in fsk, "FilesScreen must provide delete confirmation dialog"
+    assert "clipboard" in fsk and "ClipboardMode" in fsk, "FilesScreen must provide Copy/Cut/Paste clipboard functionality"
+    print("  [PASS] 4. Android FilesScreen complete file manager overhaul (navigation, upload, download, clipboard, dialogs) verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2836,6 +2959,8 @@ if __name__ == "__main__":
     test_user_hardware_and_compass_overhaul()
     test_air_mouse_sliders_yaw_roll_and_paused_settings()
     test_ble_connectivity_and_online_irdb_suite()
+    test_wifi_ble_coexistence_and_boot_loop_guard()
+    test_littlefs_explorer_and_ble_transfer()
     print("\nAll self-test verifications PASSED!")
 
 

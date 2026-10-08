@@ -3,6 +3,7 @@
 #include "HIDTypes.h"
 #include "qlink.h"
 #include "settings_data.h"
+#include "wifi_portal.h"
 #include <Preferences.h>
 #ifdef ARDUINO
 #include <esp_gap_ble_api.h>
@@ -228,6 +229,13 @@ void AirMouseManager::start() {
     prev_ay = cal.ay;
     prev_az = cal.az;
     last_update_ms = millis();
+
+#ifdef ARDUINO
+    if (wifiPortal.getState() != WifiState::OFF) {
+        wifiPortal.configurePowerSave();
+        wifiPortal.applyTxPower();
+    }
+#endif
 }
 
 void AirMouseManager::restartAdvertising() {
@@ -280,6 +288,13 @@ void AirMouseManager::stop() {
     is_connected = false;
     was_connected = false;
     buttons_state = 0;
+
+#ifdef ARDUINO
+    if (wifiPortal.getState() != WifiState::OFF) {
+        wifiPortal.configurePowerSave();
+        wifiPortal.applyTxPower();
+    }
+#endif
 }
 
 AirMouseBleStatus AirMouseManager::getBleStatus() const {

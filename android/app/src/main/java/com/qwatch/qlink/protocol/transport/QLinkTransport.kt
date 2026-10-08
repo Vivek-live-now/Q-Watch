@@ -34,6 +34,9 @@ interface QLinkTransport {
     ): Result<Boolean> = uploadFile(path, data)
     suspend fun getStorageTelemetry(): Result<StorageTelemetry>
     suspend fun deleteFile(path: String): Result<Boolean>
+    suspend fun createDirectory(path: String): Result<Boolean> = Result.success(true)
+    suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> = Result.success(true)
+    suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = Result.success(true)
     suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean>
     suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int = 32): Result<Boolean> = Result.success(true)
 }

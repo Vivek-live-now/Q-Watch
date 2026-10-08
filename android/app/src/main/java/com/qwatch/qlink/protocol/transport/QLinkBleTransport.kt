@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -46,7 +48,8 @@ class QLinkBleTransport(
     private val _displayFrameFlow = MutableSharedFlow<DisplayFrame>(extraBufferCapacity = 4)
     override val displayFrameFlow: Flow<DisplayFrame> = _displayFrameFlow.asSharedFlow()
 
-    private val _fileResponseFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val _fileResponseFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    private val _fileDownloadChunkFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
@@ -139,8 +142,12 @@ class QLinkBleTransport(
                 scope.launch { _telemetryFlow.emit(snapshot) }
             }
         } else if (uuid == QLinkConstants.CHAR_FILE_UUID) {
-            val text = String(bytes, Charsets.UTF_8)
-            scope.launch { _fileResponseFlow.emit(text) }
+            if (bytes.size >= 6 && bytes[0] == 0xFE.toByte() && bytes[1] == 0x02.toByte()) {
+                scope.launch { _fileDownloadChunkFlow.emit(bytes) }
+            } else {
+                val text = String(bytes, Charsets.UTF_8)
+                scope.launch { _fileResponseFlow.emit(text) }
+            }
         }
     }
 
@@ -300,28 +307,22 @@ class QLinkBleTransport(
         }
         writeData(char, json.toString().toByteArray(Charsets.UTF_8))
 
-        // Wait for list response with 2s timeout
+        // Wait for list response with filter.first()
         try {
-            val resp = withTimeout(2500) {
-                var received: String? = null
-                _fileResponseFlow.collect { text ->
-                    if (text.contains("LIST_RESP")) {
-                        received = text
-                        return@collect
-                    }
-                }
-                received ?: ""
+            val resp = withTimeout(3500) {
+                _fileResponseFlow.filter { it.contains("LIST_RESP") }.first()
             }
             val obj = JSONObject(resp)
             val filesArr = obj.optJSONArray("files") ?: JSONArray()
             val list = mutableListOf<WatchFile>()
+            val normPath = if (path.endsWith("/")) path else "$path/"
             for (i in 0 until filesArr.length()) {
                 val f = filesArr.getJSONObject(i)
                 val fname = f.getString("name")
                 list.add(
                     WatchFile(
                         name = fname,
-                        path = f.optString("path", if (fname.startsWith("/")) fname else "/$fname"),
+                        path = f.optString("path", if (fname.startsWith("/")) fname else "${normPath.removeSuffix("/")}/$fname"),
                         sizeBytes = f.optLong("size", 0L),
                         isDirectory = f.optBoolean("is_dir", false)
                     )
@@ -334,8 +335,49 @@ class QLinkBleTransport(
         }
     }
 
-    override suspend fun downloadFile(path: String): Result<ByteArray> {
-        return Result.failure(UnsupportedOperationException("File download uses Wi-Fi transport"))
+    override suspend fun downloadFile(path: String): Result<ByteArray> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "DOWNLOAD")
+            put("path", path)
+        }
+        if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send BLE download request"))
+        }
+
+        try {
+            val startResp = withTimeout(4000) {
+                _fileResponseFlow.filter { it.contains("DOWNLOAD_START") || it.contains("\"code\":404") || it.contains("\"code\":400") }.first()
+            }
+            if (startResp.contains("\"code\":404") || startResp.contains("\"code\":400")) {
+                return@withContext Result.failure(IOException("Watch reported error downloading $path: $startResp"))
+            }
+
+            val startObj = JSONObject(startResp)
+            val totalSize = startObj.optLong("size", 0L)
+            if (totalSize == 0L) {
+                return@withContext Result.success(ByteArray(0))
+            }
+
+            val outputStream = java.io.ByteArrayOutputStream(totalSize.toInt().coerceAtLeast(1024))
+            withTimeout(30000) {
+                while (outputStream.size() < totalSize) {
+                    val chunk = withTimeout(4000) {
+                        _fileDownloadChunkFlow.first()
+                    }
+                    if (chunk.size >= 6) {
+                        val chunkLen = ((chunk[4].toInt() and 0xFF) shl 8) or (chunk[5].toInt() and 0xFF)
+                        val actualDataLen = minOf(chunkLen, chunk.size - 6)
+                        if (actualDataLen > 0) {
+                            outputStream.write(chunk, 6, actualDataLen)
+                        }
+                    }
+                }
+            }
+            Result.success(outputStream.toByteArray())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     override suspend fun uploadFile(path: String, data: ByteArray): Result<Boolean> {
@@ -440,8 +482,70 @@ class QLinkBleTransport(
         Result.success(success)
     }
 
-    override suspend fun getStorageTelemetry(): Result<StorageTelemetry> {
-        return Result.success(StorageTelemetry())
+    override suspend fun createDirectory(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "MKDIR")
+            put("path", path)
+        }
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        Result.success(success)
+    }
+
+    override suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "RENAME")
+            put("from", oldPath)
+            put("to", newPath)
+        }
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        Result.success(success)
+    }
+
+    override suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        val json = JSONObject().apply {
+            put("cmd", "COPY")
+            put("src", sourcePath)
+            put("dst", destPath)
+        }
+        val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        Result.success(success)
+    }
+
+    override suspend fun getStorageTelemetry(): Result<StorageTelemetry> = withContext(Dispatchers.IO) {
+        val char = fileCharacteristic ?: return@withContext Result.success(StorageTelemetry())
+        val json = JSONObject().apply {
+            put("cmd", "STORAGE")
+        }
+        if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.success(StorageTelemetry())
+        }
+        try {
+            val resp = withTimeout(2000) {
+                _fileResponseFlow.filter { it.contains("fs_total_bytes") }.first()
+            }
+            val obj = JSONObject(resp)
+            val total = obj.optLong("fs_total_bytes", 896L * 1024L)
+            val used = obj.optLong("fs_used_bytes", 0L)
+            val free = obj.optLong("fs_free_bytes", total - used)
+            val pct = obj.optDouble("free_pct", 100.0).toFloat()
+            val animCount = obj.optInt("anim_count", 0)
+            val freeSlots = obj.optInt("free_anim_slots", (free / (20 * 1024)).toInt())
+            Result.success(
+                StorageTelemetry(
+                    fsTotalBytes = total,
+                    fsUsedBytes = used,
+                    fsFreeBytes = free,
+                    freePct = pct,
+                    animCount = animCount,
+                    freeAnimSlots = freeSlots
+                )
+            )
+        } catch (_: Exception) {
+            Result.success(StorageTelemetry())
+        }
     }
 
     override suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean> {

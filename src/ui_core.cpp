@@ -3609,6 +3609,10 @@ void UICore::handleFileServerDetailsInput() {
         soundManager.playNavSelect();
         SettingsData& s = settingsManager.get();
         s.fileserver_enabled = !s.fileserver_enabled;
+        if (s.fileserver_enabled && !s.wifi_enabled) {
+            s.wifi_enabled = true;
+            wifiPortal.enableWifi();
+        }
         settingsManager.save();
         needs_redraw = true;
     }

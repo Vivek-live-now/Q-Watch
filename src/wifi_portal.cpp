@@ -5,6 +5,7 @@
 #include "clock.h"
 #include "settings_data.h"
 #include "qlink.h"
+#include "air_mouse.h"
 #include <ESPmDNS.h>
 #include <esp_wifi.h>
 
@@ -25,6 +26,21 @@ void WifiPortal::begin() {
     enableWifi();
 }
 
+void WifiPortal::configurePowerSave() {
+#ifdef ARDUINO
+    bool ble_in_use = (settingsManager.get().ble_enabled || qlink.isBleActive() || airMouse.isEnabled());
+    if (ble_in_use) {
+        // When BLE is active, ESP-IDF coexistence strictly requires Wi-Fi modem sleep.
+        // Calling esp_wifi_set_ps(WIFI_PS_NONE) causes coex aborts and massive peak current spikes!
+        WiFi.setSleep(true);
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    } else {
+        WiFi.setSleep(false);
+        esp_wifi_set_ps(WIFI_PS_NONE);
+    }
+#endif
+}
+
 void WifiPortal::applyTxPower() {
     int idx = settingsManager.get().wifi_tx_power_idx;
     static const int8_t esp_powers[] = {78, 60, 44, 28, 8};
@@ -37,8 +53,20 @@ void WifiPortal::applyTxPower() {
     };
     if (idx < 0 || idx >= 5) idx = 0;
 
+#ifdef ARDUINO
+    bool ble_in_use = (settingsManager.get().ble_enabled || qlink.isBleActive() || airMouse.isEnabled());
+    if (ble_in_use && idx == 0) {
+        // Clamp maximum Wi-Fi TX power from 19.5 dBm down to 15 dBm during concurrent BLE operation
+        // to prevent peak current draw from exceeding the SuperMini onboard LDO regulator
+        WiFi.setTxPower(wifi_powers[1]);
+        esp_wifi_set_max_tx_power(esp_powers[1]);
+    } else {
+        WiFi.setTxPower(wifi_powers[idx]);
+        esp_wifi_set_max_tx_power(esp_powers[idx]);
+    }
+#else
     WiFi.setTxPower(wifi_powers[idx]);
-    esp_wifi_set_max_tx_power(esp_powers[idx]);
+#endif
 }
 
 void WifiPortal::enableWifi() {
@@ -50,10 +78,9 @@ void WifiPortal::enableWifi() {
         Serial.println(cfg.wifi_ssid);
         WiFi.mode(WIFI_STA);
 
-        // Configure Wi-Fi TX power and disable modem sleep for ESP32-S3 SuperMini
-        WiFi.setSleep(false);
+        // Configure Wi-Fi TX power and modem sleep / coexistence for ESP32-S3 SuperMini
+        configurePowerSave();
         applyTxPower();
-        esp_wifi_set_ps(WIFI_PS_NONE);
         esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
 
         WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_password.c_str());
@@ -62,9 +89,8 @@ void WifiPortal::enableWifi() {
     } else {
         Serial.println("Wi-Fi enabled but no credentials found.");
         WiFi.mode(WIFI_STA);
-        WiFi.setSleep(false);
+        configurePowerSave();
         applyTxPower();
-        esp_wifi_set_ps(WIFI_PS_NONE);
         state = WifiState::NO_CREDS;
     }
 }
@@ -83,9 +109,8 @@ void WifiPortal::startScan() {
     }
 
     WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false);
+    configurePowerSave();
     applyTxPower();
-    esp_wifi_set_ps(WIFI_PS_NONE);
 
     WiFi.scanDelete();
     int res = WiFi.scanNetworks(true);
@@ -114,9 +139,8 @@ void WifiPortal::startPortal() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("Q-Watch-Setup");
 
-    WiFi.setSleep(false);
+    configurePowerSave();
     applyTxPower();
-    esp_wifi_set_ps(WIFI_PS_NONE);
 
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     setupRoutes();
@@ -146,6 +170,7 @@ void WifiPortal::setupRoutes() {
     server.on("/file_delete", HTTP_POST, std::bind(&WifiPortal::handleFileDelete, this));
     server.on("/file_mkdir", HTTP_POST, std::bind(&WifiPortal::handleFileMkdir, this));
     server.on("/file_rename", HTTP_POST, std::bind(&WifiPortal::handleFileRename, this));
+    server.on("/file_copy", HTTP_POST, std::bind(&WifiPortal::handleFileCopy, this));
     server.on("/file_upload", HTTP_POST, [this]() {
         server.send(200, "text/plain", "Upload Successful");
     }, std::bind(&WifiPortal::handleFileUpload, this));
@@ -154,8 +179,12 @@ void WifiPortal::setupRoutes() {
     qlink.registerHttpRoutes(server);
 
     server.onNotFound([this]() {
-        server.sendHeader("Location", "http://192.168.4.1/", true);
-        server.send(302, "text/plain", "");
+        if (state == WifiState::PORTAL) {
+            server.sendHeader("Location", "http://192.168.4.1/", true);
+            server.send(302, "text/plain", "");
+        } else {
+            server.send(404, "text/plain", "Not Found");
+        }
     });
 }
 
@@ -437,6 +466,13 @@ static const char DASHBOARD_HTML_TEMPLATE[] PROGMEM = R"rawliteral(<!DOCTYPE htm
         <h1>Q-Watch Dashboard</h1>
     </div>
     <div class="container">
+        <div class="card" style="border:1px solid #00bcd4; background:#16262e; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <h2 style="margin:0; border:none; padding:0; color:#00e5ff;">📁 LittleFS File Explorer</h2>
+                <div style="margin-top:4px; font-size:0.85em; color:#aaa;">Manage, download & upload files directly on the watch</div>
+            </div>
+            <a href="/fm" style="text-decoration:none;"><button type="button" style="width:auto; margin:0; padding:10px 18px; background:#00bcd4; font-size:0.95em; font-weight:bold;">Open Explorer</button></a>
+        </div>
         <div class="card">
             <h2>Device Status</h2>
             <div class="status-row"><span>Wi-Fi</span><span id="st_wifi">Loading...</span></div>
@@ -524,50 +560,82 @@ int WifiPortal::getTotalFileCount() {
 
 static const char FILE_MANAGER_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Q-Watch File Manager</title><style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#121212;color:#eee;margin:0;padding:20px;}
-.container{max-width:700px;margin:auto;background:#1e1e1e;padding:20px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}
-h1{color:#00bcd4;margin-top:0;border-bottom:1px solid #333;padding-bottom:10px;}
+.container{max-width:750px;margin:auto;background:#1e1e1e;padding:20px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}
+h1{color:#00bcd4;margin-top:0;border-bottom:1px solid #333;padding-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
 .row{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #2a2a2a;}
-button{background:#00bcd4;color:#fff;border:none;padding:8px 12px;border-radius:4px;cursor:pointer;margin-left:5px;}
-button.del{background:#f44336;} input[type=file]{color:#aaa;}
+.row:hover{background:#252525;}
+button{background:#00bcd4;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;margin-left:4px;font-size:0.9em;}
+button:hover{filter:brightness(1.15);}
+button.del{background:#f44336;}
+button.sec{background:#444;}
+button.ren{background:#ff9800;}
+button.cpy{background:#9c27b0;}
+input[type=file]{color:#aaa;}
+.actions{display:flex;gap:4px;align-items:center;}
 </style><script>
 let curPath='/';
 function loadFiles(path){curPath=path;fetch('/file_list?path='+encodeURIComponent(path)).then(r=>r.json()).then(data=>{
 let list=document.getElementById('list');list.innerHTML='';
 document.getElementById('path').innerText=data.path;
+if(path!=='/'){
+let up=path.substring(0,path.lastIndexOf('/'));if(!up)up='/';
+let upDiv=document.createElement('div');upDiv.className='row';
+upDiv.innerHTML="<span style='cursor:pointer;color:#00bcd4;' onclick=\"loadFiles('"+up+"')\">⬆ .. (Parent Directory)</span><span></span>";
+list.appendChild(upDiv);
+}
 data.entries.forEach(item=>{
 let d=document.createElement('div');d.className='row';
-let name=item.isDir?'📁 '+item.name+'/':'📄 '+item.name;
-let size=item.isDir?'':(item.size+' B');
-let btns=item.isDir?"<button onclick=\"loadFiles('"+(path=='/'?'':path)+"/"+item.name+"')\">Open</button>":"<button onclick=\"location.href='/file_download?path="+encodeURIComponent((path=='/'?'':path)+'/'+item.name)+"'\">Download</button>";
-btns+="<button class='del' onclick=\"delFile('"+(path=='/'?'':path)+"/"+item.name+"')\">Delete</button>";
-d.innerHTML="<span>"+name+"</span><span>"+size+" "+btns+"</span>";
+let fullPath=(path=='/'?'':path)+'/'+item.name;
+let name=item.isDir?"<span style='cursor:pointer;color:#ffb74d;font-weight:bold;' onclick=\"loadFiles('"+fullPath+"')\">📁 "+item.name+"/</span>":"<span>📄 "+item.name+"</span>";
+let size=item.isDir?'DIR':(item.size+' B');
+let btns="<div class='actions'>";
+if(item.isDir){
+btns+="<button onclick=\"loadFiles('"+fullPath+"')\">Open</button>";
+}else{
+btns+="<button onclick=\"location.href='/file_download?path="+encodeURIComponent(fullPath)+"'\">Download</button>";
+btns+="<button class='cpy' onclick=\"copyFile('"+fullPath+"')\">Copy</button>";
+}
+btns+="<button class='ren' onclick=\"renFile('"+fullPath+"')\">Rename</button>";
+btns+="<button class='del' onclick=\"delFile('"+fullPath+"')\">Delete</button></div>";
+d.innerHTML="<div>"+name+" <small style='color:#888;margin-left:8px;'>"+size+"</small></div>"+btns;
 list.appendChild(d);});
-});}
+if(data.entries.length===0&&path==='/'){list.innerHTML="<div style='padding:20px;text-align:center;color:#888;'>(Directory is empty)</div>";}
+}).catch(e=>{document.getElementById('list').innerHTML="<div style='color:#f44336;'>Error loading files</div>";});}
 function delFile(p){if(confirm('Delete '+p+'?')){fetch('/file_delete?path='+encodeURIComponent(p),{method:'POST'}).then(()=>loadFiles(curPath));}}
+function renFile(p){let n=prompt('Rename '+p+' to:',p);if(n&&n!==p){fetch('/file_rename?from='+encodeURIComponent(p)+'&to='+encodeURIComponent(n),{method:'POST'}).then(()=>loadFiles(curPath));}}
+function copyFile(p){let n=prompt('Copy '+p+' to:',p+'.copy');if(n&&n!==p){fetch('/file_copy?from='+encodeURIComponent(p)+'&to='+encodeURIComponent(n),{method:'POST'}).then(()=>loadFiles(curPath));}}
 function uploadFile(){let f=document.getElementById('f').files[0];if(!f)return;
 let formData=new FormData();formData.append('data',f,curPath=='/'?'/'+f.name:curPath+'/'+f.name);
-fetch('/file_upload',{method:'POST',body:formData}).then(()=>loadFiles(curPath));}
+fetch('/file_upload',{method:'POST',body:formData}).then(()=>{document.getElementById('f').value='';loadFiles(curPath);});}
 function mkDir(){let n=prompt('New Folder Name:');if(n){fetch('/file_mkdir?path='+encodeURIComponent((curPath=='/'?'':curPath)+'/'+n),{method:'POST'}).then(()=>loadFiles(curPath));}}
 window.onload=()=>loadFiles('/');
-</script></head><body><div class='container'><h1>Q-Watch File Manager</h1>
-<h3>Path: <span id='path'>/</span></h3>
-<div style='margin-bottom:15px;'><button onclick="loadFiles('/')">Root</button><button onclick="mkDir()">New Folder</button></div>
+</script></head><body><div class='container'>
+<h1><span>Q-Watch LittleFS Explorer</span><button class='sec' onclick="location.href='/'">Dashboard</button></h1>
+<h3>Path: <span id='path' style='color:#00bcd4;'>/</span></h3>
+<div style='margin-bottom:15px;display:flex;gap:8px;'>
+<button onclick="loadFiles('/')">Root /</button>
+<button onclick="mkDir()">+ New Folder</button>
+<button class='sec' onclick="loadFiles(curPath)">Refresh</button>
+</div>
 <div id='list'></div>
-<div style='margin-top:20px;border-top:1px solid #333;padding-top:15px;'><input type='file' id='f'><button onclick='uploadFile()'>Upload File</button></div>
+<div style='margin-top:20px;border-top:1px solid #333;padding-top:15px;'>
+<strong>Upload to Current Directory:</strong><br><br>
+<input type='file' id='f'><button onclick='uploadFile()'>Upload File</button>
+</div>
 </div></body></html>)rawliteral";
 
 void WifiPortal::handleFileManagerGui() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "text/plain", "File Server Disabled in Settings");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     server.send_P(200, "text/html", FILE_MANAGER_HTML);
 }
 
 void WifiPortal::handleFileList() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "application/json", "{\"error\":\"File Server Disabled\"}");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     String path = server.hasArg("path") ? server.arg("path") : "/";
     if (!FileManager::isPathSafe(path)) {
@@ -590,8 +658,8 @@ void WifiPortal::handleFileList() {
 
 void WifiPortal::handleFileDownload() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "text/plain", "File Server Disabled");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     if (!server.hasArg("path")) {
         server.send(400, "text/plain", "Missing Path");
@@ -614,8 +682,8 @@ void WifiPortal::handleFileDownload() {
 
 void WifiPortal::handleFileDelete() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "text/plain", "File Server Disabled");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     if (server.hasArg("path")) {
         String path = server.arg("path");
@@ -632,8 +700,8 @@ void WifiPortal::handleFileDelete() {
 
 void WifiPortal::handleFileMkdir() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "text/plain", "File Server Disabled");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     if (server.hasArg("path")) {
         String p = server.arg("path");
@@ -642,6 +710,7 @@ void WifiPortal::handleFileMkdir() {
             return;
         }
         if (!p.endsWith("/")) p += "/.keep";
+        FileManager::ensureParentDir(p);
         fileManager.create(p);
         server.send(200, "text/plain", "OK");
     } else {
@@ -651,8 +720,8 @@ void WifiPortal::handleFileMkdir() {
 
 void WifiPortal::handleFileRename() {
     if (!settingsManager.get().fileserver_enabled) {
-        server.send(403, "text/plain", "File Server Disabled");
-        return;
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
     }
     if (server.hasArg("from") && server.hasArg("to")) {
         String from = server.arg("from");
@@ -661,6 +730,7 @@ void WifiPortal::handleFileRename() {
             server.send(400, "text/plain", "Invalid / Unsafe Path");
             return;
         }
+        FileManager::ensureParentDir(to);
         if (fileManager.rename(from, to)) {
             server.send(200, "text/plain", "OK");
         } else {
@@ -671,10 +741,50 @@ void WifiPortal::handleFileRename() {
     }
 }
 
+void WifiPortal::handleFileCopy() {
+    if (!settingsManager.get().fileserver_enabled) {
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
+    }
+    if (server.hasArg("from") && server.hasArg("to")) {
+        String from = server.arg("from");
+        String to = server.arg("to");
+        if (!FileManager::isPathSafe(from) || !FileManager::isPathSafe(to) || !fileManager.exists(from)) {
+            server.send(400, "text/plain", "Invalid / Unsafe Path or Not Found");
+            return;
+        }
+        FileManager::ensureParentDir(to);
+        File fIn = LittleFS.open(fileManager.normalizePath(from), FILE_READ);
+        if (!fIn) {
+            server.send(500, "text/plain", "Failed to open source file");
+            return;
+        }
+        File fOut = LittleFS.open(fileManager.normalizePath(to), FILE_WRITE);
+        if (!fOut) {
+            fIn.close();
+            server.send(500, "text/plain", "Failed to create target file");
+            return;
+        }
+        uint8_t buf[256];
+        while (fIn.available()) {
+            size_t n = fIn.read(buf, sizeof(buf));
+            fOut.write(buf, n);
+        }
+        fIn.close();
+        fOut.close();
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing Params");
+    }
+}
+
 static File uploadFile;
 
 void WifiPortal::handleFileUpload() {
-    if (!settingsManager.get().fileserver_enabled) return;
+    if (!settingsManager.get().fileserver_enabled) {
+        settingsManager.get().fileserver_enabled = true;
+        settingsManager.save();
+    }
 
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
@@ -683,6 +793,7 @@ void WifiPortal::handleFileUpload() {
             return; // Reject unsafe upload filename
         }
         String p = fileManager.normalizePath(filename);
+        FileManager::ensureParentDir(p);
         uploadFile = LittleFS.open(p, FILE_WRITE);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (uploadFile) {

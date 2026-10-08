@@ -8,7 +8,7 @@ struct SettingsData {
     bool wifi_enabled = true;
     int wifi_tx_power_idx = 0; // 0: MAX 19.5dBm, 1: HIGH 15dBm, 2: MID 11dBm, 3: LOW 7dBm, 4: MIN 2dBm
     bool ble_enabled = false;
-    bool fileserver_enabled = false;
+    bool fileserver_enabled = true;
 
     // TIME
     bool auto_sync = true;
