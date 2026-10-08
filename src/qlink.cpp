@@ -345,7 +345,7 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
     }
     if (upload_file_path.endsWith(".ir")) {
         ui.showToast("IR Remote Loaded!", 2000);
-        soundManager.playBeep(2000, 100);
+        soundManager.playTone(2000, 100);
     }
 #endif
     upload_in_progress = false;
