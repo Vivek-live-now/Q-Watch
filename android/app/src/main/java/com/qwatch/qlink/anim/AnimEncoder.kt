@@ -148,9 +148,10 @@ object AnimEncoder {
                 }
             }
             DitherMode.BAYER -> {
+                val shift = (threshold - 128f) * (255f / 128f)
                 for (y in 0 until AnimParser.ANIM_HEIGHT) {
                     for (x in 0 until AnimParser.ANIM_WIDTH) {
-                        val bayerVal = (BAYER_4X4[y % 4][x % 4] + 0.5f) * (256f / 16f)
+                        val bayerVal = (BAYER_4X4[y % 4][x % 4] + 0.5f) * (256f / 16f) + shift
                         val isSet = gray[y][x] >= bayerVal
                         frame.setPixel(x, y, if (invert) !isSet else isSet)
                     }

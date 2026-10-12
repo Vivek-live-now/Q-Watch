@@ -433,9 +433,10 @@ def dither_to_xbm(rgb_grid, dither_method='atkinson', threshold=128, invert=Fals
                 out_bits[y][x] = 1 if gray[y][x] >= threshold else 0
 
     elif dither_method == 'bayer':
+        shift = (float(threshold) - 128.0) * (255.0 / 128.0)
         for y in range(h):
             for x in range(w):
-                matrix_val = (BAYER_4X4[y % 4][x % 4] + 0.5) * (256.0 / 16.0)
+                matrix_val = (BAYER_4X4[y % 4][x % 4] + 0.5) * (256.0 / 16.0) + shift
                 out_bits[y][x] = 1 if gray[y][x] >= matrix_val else 0
 
     elif dither_method == 'floyd':

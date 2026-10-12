@@ -2962,7 +2962,8 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert "fun decodeBmpToStudioFrame" in enc, "AnimEncoder must provide decodeBmpToStudioFrame"
     assert "fun isGif" in enc and "fun isBmp" in enc and "fun isAnim" in enc, "AnimEncoder must provide magic byte checkers"
     assert "adjustBrightnessContrast" in enc, "AnimEncoder must provide brightness and contrast adjustments"
-    print("  [PASS] 4. Android AnimEncoder 1-bit BMP encoder/decoder, magic-byte detection & LZW/Movie fallback verified.")
+    assert "val shift = (threshold - 128f) * (255f / 128f)" in enc, "AnimEncoder must adjust Bayer 4x4 threshold dynamically"
+    print("  [PASS] 4. Android AnimEncoder 1-bit BMP encoder/decoder, Bayer 4x4 threshold responsiveness & fallback verified.")
 
     # 5. AnimStudioScreen 128x64 authentic OLED canvas, shape tools suite, and GIF Import Studio
     studio_kt = os.path.join(android_screens, "AnimStudioScreen.kt")
@@ -3004,6 +3005,31 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert 'IMAGE_VIEWER("PHOTOS"' in main, "MainActivity must declare IMAGE_VIEWER screen"
     assert "ImageViewerScreen" in main, "MainActivity must route to ImageViewerScreen"
     print("  [PASS] 7. MainActivity and DashboardScreen IMAGE_VIEWER navigation wiring verified.")
+
+    # 8. anim_packer.py Bayer 4x4 threshold responsiveness verification
+    import sys
+    sys.path.insert(0, os.path.join(base_dir, "tools"))
+    from anim_packer import dither_to_xbm
+
+    test_grid = []
+    for y in range(64):
+        row = []
+        for x in range(128):
+            val = int((x / 128.0) * 255)
+            row.append((val, val, val))
+        test_grid.append(row)
+
+    th_counts = []
+    for th in [0, 64, 128, 192, 255]:
+        bits = dither_to_xbm(test_grid, dither_method='bayer', threshold=th)
+        white_count = sum(bin(b).count('1') for b in bits)
+        th_counts.append((th, white_count))
+
+    assert th_counts[0][1] == 128 * 64, f"Threshold 0 must produce 100% white pixels in Bayer 4x4, got {th_counts[0][1]}"
+    assert th_counts[-1][1] == 0, f"Threshold 255 must produce 100% black pixels in Bayer 4x4, got {th_counts[-1][1]}"
+    for i in range(len(th_counts) - 1):
+        assert th_counts[i][1] > th_counts[i+1][1], f"Bayer 4x4 white pixels must strictly decrease with threshold: {th_counts[i]} vs {th_counts[i+1]}"
+    print("  [PASS] 8. anim_packer.py Bayer 4x4 dynamic threshold response & full dynamic range verified.")
 
 if __name__ == "__main__":
     test_protocol_variants()
