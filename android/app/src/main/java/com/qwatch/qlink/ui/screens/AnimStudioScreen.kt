@@ -921,11 +921,11 @@ fun AnimStudioScreen(
                             deployProgress = 0.1f
 
                             scope.launch {
-                                val ok = client.uploadFileWithProgress(remotePath, binaryBytes) { prog ->
+                                val res = client.uploadFileWithProgress(remotePath, binaryBytes) { prog ->
                                     deployProgress = prog.progress
                                 }
                                 isDeploying = false
-                                statusMessage = if (ok) "Successfully deployed to $remotePath!" else "Failed to deploy to watch!"
+                                statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Successfully deployed to $remotePath!" else "Failed to deploy to watch!"
                             }
                         },
                         enabled = !isDeploying,
@@ -943,11 +943,11 @@ fun AnimStudioScreen(
                             isDeploying = true
                             deployProgress = 0.1f
                             scope.launch {
-                                val ok = client.uploadFileWithProgress("/boot/boot.anim", binaryBytes) { prog ->
+                                val res = client.uploadFileWithProgress("/boot/boot.anim", binaryBytes) { prog ->
                                     deployProgress = prog.progress
                                 }
                                 isDeploying = false
-                                statusMessage = if (ok) "Installed as /boot/boot.anim!" else "Boot deploy failed!"
+                                statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Installed as /boot/boot.anim!" else "Boot deploy failed!"
                             }
                         },
                         enabled = !isDeploying,

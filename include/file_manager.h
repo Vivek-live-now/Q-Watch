@@ -47,7 +47,7 @@ public:
     size_t fileSize(const String& path);
 
     // Path sanitization & normalization
-    String normalizePath(const String& path);
+    static String normalizePath(const String& path);
     static bool isPathSafe(const String& path);
     static void ensureParentDir(const String& path);
 };
