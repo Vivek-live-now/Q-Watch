@@ -1,5 +1,6 @@
 package com.qwatch.qlink.protocol.transport
 
+import com.qwatch.qlink.irdb.IrParsedButton
 import com.qwatch.qlink.model.*
 import com.qwatch.qlink.protocol.QLinkConstants
 import com.qwatch.qlink.protocol.parser.QLinkPacketParser
@@ -471,18 +472,60 @@ class QLinkWifiTransport(
 
     override suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            val addrVal = IrParsedButton.parseHexOrFlipperBytes(address)
+            val cmdVal = IrParsedButton.parseHexOrFlipperBytes(command)
+            val effectiveBits = if (nbits > 0) nbits else IrParsedButton.getDefaultBitsForProtocol(protocol)
+
             val json = JSONObject().apply {
                 put("protocol", protocol)
-                put("address", address.removePrefix("0x").toLongOrNull(16) ?: 0L)
-                put("command", command.removePrefix("0x").toLongOrNull(16) ?: 0L)
-                put("nbits", nbits)
+                put("address", addrVal)
+                put("command", cmdVal)
+                put("nbits", effectiveBits)
             }
             val req = Request.Builder()
                 .url("${baseUrl()}/api/v1/ir/transmit")
                 .post(json.toString().toRequestBody(jsonMediaType))
                 .build()
             client.newCall(req).execute().use { res ->
-                Result.success(res.isSuccessful)
+                if (res.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("HTTP error ${res.code}: ${res.body?.string()}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun transmitRawIr(timings: List<Int>, frequency: Int, dutyCycle: Float): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (timings.isEmpty()) {
+                return@withContext Result.failure(IllegalArgumentException("Raw timings sequence is empty"))
+            }
+            if (timings.size > 1024) {
+                return@withContext Result.failure(IllegalArgumentException("Raw timings count (${timings.size}) exceeds limit (1024)"))
+            }
+            if (timings.any { it <= 0 || it > 65535 }) {
+                return@withContext Result.failure(IllegalArgumentException("Raw timings contain invalid duration values"))
+            }
+            val json = JSONObject().apply {
+                put("frequency", if (frequency > 0) frequency else 38000)
+                put("duty_cycle", dutyCycle)
+                val arr = org.json.JSONArray()
+                timings.forEach { arr.put(it) }
+                put("timings", arr)
+            }
+            val req = Request.Builder()
+                .url("${baseUrl()}/api/v1/ir/raw_transmit")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+            client.newCall(req).execute().use { res ->
+                if (res.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("HTTP error ${res.code}: ${res.body?.string()}"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)

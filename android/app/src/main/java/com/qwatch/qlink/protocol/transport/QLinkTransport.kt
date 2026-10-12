@@ -39,4 +39,5 @@ interface QLinkTransport {
     suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = Result.success(true)
     suspend fun installQApp(filename: String, data: ByteArray): Result<Boolean>
     suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int = 32): Result<Boolean> = Result.success(true)
+    suspend fun transmitRawIr(timings: List<Int>, frequency: Int = 38000, dutyCycle: Float = 0.33f): Result<Boolean> = Result.failure(UnsupportedOperationException("Raw IR transmission not supported"))
 }

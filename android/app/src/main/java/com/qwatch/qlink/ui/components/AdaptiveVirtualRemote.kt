@@ -90,7 +90,9 @@ fun AdaptiveVirtualRemote(
     onTransmit: (IrParsedButton) -> Unit,
     onFlashToWatch: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    transmitFeedback: com.qwatch.qlink.irdb.IrTransmitFeedback? = null,
+    onSimulated: ((String) -> Unit)? = null
 ) {
     val view = LocalView.current
     val scope = rememberCoroutineScope()
@@ -117,17 +119,19 @@ fun AdaptiveVirtualRemote(
 
     fun triggerBlast(btn: IrParsedButton?, syntheticLabel: String) {
         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-        scope.launch {
-            isBlasting = true
-            if (btn != null) {
-                lastBlastedSignal = btn
-                blastFeedbackText = "TX: ${btn.name} [${if (btn.protocol.isNotEmpty()) "${btn.protocol} ${btn.command}" else "RAW"}]"
+        if (btn != null) {
+            lastBlastedSignal = btn
+            scope.launch {
+                isBlasting = true
+                blastFeedbackText = "TRANSMITTING: ${btn.name}..."
                 onTransmit(btn)
-            } else {
-                blastFeedbackText = "TX: $syntheticLabel (Simulated)"
+                delay(300)
+                isBlasting = false
             }
-            delay(250)
-            isBlasting = false
+        } else {
+            lastBlastedSignal = null
+            onSimulated?.invoke(syntheticLabel)
+            blastFeedbackText = "SIMULATED: No IR signal for $syntheticLabel in remote"
         }
     }
 
@@ -234,29 +238,69 @@ fun AdaptiveVirtualRemote(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val currentFeedback = transmitFeedback
+            val isSuccess = currentFeedback?.state == com.qwatch.qlink.irdb.IrTransmitState.SUCCESS
+            val isFailed = currentFeedback?.state == com.qwatch.qlink.irdb.IrTransmitState.FAILED
+            val isSimulated = currentFeedback?.state == com.qwatch.qlink.irdb.IrTransmitState.SIMULATED || blastFeedbackText?.startsWith("SIMULATED") == true
+            val isUnsupported = currentFeedback?.state == com.qwatch.qlink.irdb.IrTransmitState.UNSUPPORTED
+
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 // Glowing IR LED Diode
+                val diodeColor = when {
+                    isBlasting -> Color(0xFF00FFFF)
+                    isSuccess -> Color(0xFF00FF66)
+                    isFailed -> Color(0xFFFF0033)
+                    else -> Color(0xFF1E2638)
+                }
                 Box(
                     modifier = Modifier
                         .size(10.dp)
                         .clip(CircleShape)
-                        .background(if (isBlasting) Color(0xFF00FFFF) else Color(0xFF1E2638))
+                        .background(diodeColor)
                         .border(1.dp, if (isBlasting) Color.White else TacticalBorder, CircleShape)
                 )
                 Text(
-                    text = if (isBlasting) "BLASTING..." else "IR EMITTER READY",
-                    color = if (isBlasting) TacticalCyan else TextMuted,
+                    text = when {
+                        isBlasting -> "TRANSMITTING..."
+                        isSuccess -> "TRANSMITTED"
+                        isFailed -> "FAILED"
+                        isSimulated -> "SIMULATED"
+                        isUnsupported -> "UNSUPPORTED"
+                        else -> "IR EMITTER READY"
+                    },
+                    color = when {
+                        isBlasting -> TacticalCyan
+                        isSuccess -> TacticalGreen
+                        isFailed -> TacticalRed
+                        isSimulated || isUnsupported -> TacticalAmber
+                        else -> TextMuted
+                    },
                     fontSize = 8.5.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
                 )
             }
 
+            val displayText = when {
+                isBlasting -> blastFeedbackText ?: "TRANSMITTING..."
+                currentFeedback != null && currentFeedback.state != com.qwatch.qlink.irdb.IrTransmitState.IDLE -> currentFeedback.message
+                blastFeedbackText != null -> blastFeedbackText!!
+                else -> "TOUCH BUTTON TO BLAST"
+            }
+            val displayColor = when {
+                isBlasting -> TacticalCyan
+                isSuccess -> TacticalGreen
+                isFailed -> TacticalRed
+                isSimulated || isUnsupported -> TacticalAmber
+                else -> TextSecondary
+            }
+
             Text(
-                text = blastFeedbackText ?: "TOUCH BUTTON TO BLAST",
-                color = if (blastFeedbackText != null) TacticalAmber else TextSecondary,
+                text = displayText,
+                color = displayColor,
                 fontSize = 8.5.sp,
                 fontFamily = FontFamily.Monospace,
+                fontWeight = if (displayColor != TextSecondary) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

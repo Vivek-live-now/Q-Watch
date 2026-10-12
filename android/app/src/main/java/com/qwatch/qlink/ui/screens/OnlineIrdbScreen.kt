@@ -47,6 +47,7 @@ fun OnlineIrdbScreen(
     val previewRemote by viewModel.previewRemote.collectAsState()
     val isPreviewLoading by viewModel.isPreviewLoading.collectAsState()
     val transferProgress by viewModel.transferProgress.collectAsState()
+    val transmitFeedback by viewModel.transmitFeedback.collectAsState()
 
     val categories = listOf("ALL", "TVs", "ACs", "LED/RGB", "Monitors", "SoundBars", "Fans", "Projectors", "FAVORITES")
     val brands = listOf("ALL", "Samsung", "LG", "Sony", "Apple", "Panasonic", "Philips", "Daikin", "Gree", "Dyson", "TCL", "Toshiba", "Dell")
@@ -327,11 +328,43 @@ fun OnlineIrdbScreen(
                                 onFlashToWatch = {
                                     viewModel.closePreview()
                                     viewModel.flashRemoteToWatch(remote.entry)
-                                }
+                                },
+                                transmitFeedback = transmitFeedback,
+                                onSimulated = { label -> viewModel.transmitSimulated(label) }
                             )
                         } else {
                             // Raw Parsed Signal Codes
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (transmitFeedback.state != com.qwatch.qlink.irdb.IrTransmitState.IDLE) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                when (transmitFeedback.state) {
+                                                    com.qwatch.qlink.irdb.IrTransmitState.SUCCESS -> TacticalGreen.copy(alpha = 0.2f)
+                                                    com.qwatch.qlink.irdb.IrTransmitState.FAILED -> TacticalRed.copy(alpha = 0.2f)
+                                                    com.qwatch.qlink.irdb.IrTransmitState.TRANSMITTING -> TacticalCyan.copy(alpha = 0.2f)
+                                                    else -> TacticalAmber.copy(alpha = 0.2f)
+                                                }
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = transmitFeedback.message,
+                                            color = when (transmitFeedback.state) {
+                                                com.qwatch.qlink.irdb.IrTransmitState.SUCCESS -> TacticalGreen
+                                                com.qwatch.qlink.irdb.IrTransmitState.FAILED -> TacticalRed
+                                                com.qwatch.qlink.irdb.IrTransmitState.TRANSMITTING -> TacticalCyan
+                                                else -> TacticalAmber
+                                            },
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
                                 Text(
                                     text = "PARSED SIGNALS (${remote.buttons.size}):",
                                     color = TextMuted,

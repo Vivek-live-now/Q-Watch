@@ -258,6 +258,155 @@ void test_ble_file_upload_protocol() {
     printf("  [PASS] BLE chunked file transfer START, framed packets, received size, and FINISH verified.\n");
 }
 
+void test_ir_parsed_protocol_transmission() {
+    printf("\n--- Test: Q-Link IR Parsed Protocol Transmission & Validation ---\n");
+    // 1. Valid NEC 32-bit
+    assert(qlink.transmitParsedIr("NEC", 0x04, 0x08, 32) == true);
+    assert(qlink.last_tx_proto == "NEC");
+    assert(qlink.last_tx_addr == 0x04);
+    assert(qlink.last_tx_cmd == 0x08);
+    assert(qlink.last_tx_nbits == 32);
+
+    // 2. Default bit length resolution when nbits = 0
+    assert(qlink.transmitParsedIr("SONY", 0x01, 0x12, 0) == true);
+    assert(qlink.last_tx_nbits == 12); // Default Sony is 12
+
+    assert(qlink.transmitParsedIr("PANASONIC", 0x10, 0x20, 0) == true);
+    assert(qlink.last_tx_nbits == 48); // Default Panasonic is 48
+
+    // 3. Strict 24-bit enforcement for RCA and Nikai
+    assert(qlink.transmitParsedIr("NIKAI", 0x00, 0x807F, 0) == true);
+    assert(qlink.last_tx_nbits == 24);
+
+    assert(qlink.transmitParsedIr("NIKAI", 0x00, 0x807F, 24) == true);
+    assert(qlink.last_tx_nbits == 24);
+
+    assert(qlink.transmitParsedIr("NIKAI", 0x00, 0x807F, 32) == false); // Non-24b Nikai rejected!
+    assert(qlink.transmitParsedIr("NIKAI", 0x00, 0x807F, 16) == false);
+
+    assert(qlink.transmitParsedIr("RCA", 0x04, 0x0C, 0) == true);
+    assert(qlink.last_tx_nbits == 24);
+
+    assert(qlink.transmitParsedIr("RCA", 0x04, 0x0C, 24) == true);
+    assert(qlink.last_tx_nbits == 24);
+
+    assert(qlink.transmitParsedIr("RCA", 0x04, 0x0C, 32) == false); // Non-24b RCA rejected!
+
+    // 4. Invalid protocol / out-of-range bit length rejection
+    assert(qlink.transmitParsedIr("", 0x00, 0x00, 32) == false); // Empty protocol rejected
+    assert(qlink.transmitParsedIr("NEC", 0x00, 0x00, 256) == false); // > 128 bits rejected
+    assert(qlink.transmitParsedIr("NEC", 0x00, 0x00, 150) == false);
+
+    printf("  [PASS] Parsed IR transmission validated across NEC, Sony, Panasonic, strict 24b RCA/Nikai, and range checks.\n");
+}
+
+void test_ir_raw_timing_transfer_and_chunking() {
+    printf("\n--- Test: Q-Link Raw IR Timing Transfer, Chunking & Integrity ---\n");
+
+    // 1. Rejection of invalid session start
+    assert(qlink.startRawIr(0, 38000) == false); // Empty count rejected
+    assert(qlink.startRawIr(1025, 38000) == false); // Oversized (>1024) rejected
+    assert(qlink.startRawIr(2000, 38000) == false);
+    assert(qlink.startRawIr(100, 150000) == false); // Freq > 100kHz rejected
+
+    // 2. Successful multi-chunk transfer session (100 timings = 200 bytes)
+    assert(qlink.startRawIr(100, 38000) == true);
+    assert(qlink.isRawIrInProgress() == true);
+    assert(qlink.getRawIrExpectedCount() == 100);
+    assert(qlink.getRawIrReceivedCount() == 0);
+    assert(qlink.getRawIrFrequency() == 38000);
+
+    // Chunk 0: 60 timings = 120 bytes (seq 0)
+    uint8_t chunk0[6 + 120];
+    chunk0[0] = 0xFE;
+    chunk0[1] = 0x03; // Magic for raw IR chunk
+    chunk0[2] = 0x00; // seq hi
+    chunk0[3] = 0x00; // seq lo (0)
+    chunk0[4] = 0x00; // len hi
+    chunk0[5] = 120;  // len lo
+    for (int i = 0; i < 60; i++) {
+        uint16_t t = 500 + i * 10;
+        chunk0[6 + i * 2] = (uint8_t)(t & 0xFF);
+        chunk0[6 + i * 2 + 1] = (uint8_t)((t >> 8) & 0xFF);
+    }
+    qlink.handleBleFilePacket(chunk0, sizeof(chunk0));
+    assert(qlink.getRawIrReceivedCount() == 60);
+    assert(qlink.isRawIrInProgress() == true);
+
+    // Chunk 1: 40 timings = 80 bytes (seq 1) -> Reaches total 100
+    uint8_t chunk1[6 + 80];
+    chunk1[0] = 0xFE;
+    chunk1[1] = 0x03;
+    chunk1[2] = 0x00;
+    chunk1[3] = 0x01; // seq 1
+    chunk1[4] = 0x00;
+    chunk1[5] = 80;
+    for (int i = 0; i < 40; i++) {
+        uint16_t t = 1000 + i * 10;
+        chunk1[6 + i * 2] = (uint8_t)(t & 0xFF);
+        chunk1[6 + i * 2 + 1] = (uint8_t)((t >> 8) & 0xFF);
+    }
+    qlink.handleBleFilePacket(chunk1, sizeof(chunk1));
+    assert(qlink.isRawIrInProgress() == false); // Auto-completed & transmitted on final chunk!
+    assert(qlink.last_tx_raw_count == 100);
+    assert(qlink.last_tx_raw_freq == 38000);
+
+    // 3. Out-of-order sequence packet rejection
+    assert(qlink.startRawIr(50, 38000) == true);
+    uint8_t bad_seq[6 + 20];
+    bad_seq[0] = 0xFE;
+    bad_seq[1] = 0x03;
+    bad_seq[2] = 0x00;
+    bad_seq[3] = 0x05; // Expected seq 0, but got 5!
+    bad_seq[4] = 0x00;
+    bad_seq[5] = 20;
+    for (int i = 0; i < 10; i++) {
+        bad_seq[6 + i * 2] = 0x50;
+        bad_seq[6 + i * 2 + 1] = 0x00;
+    }
+    qlink.handleBleFilePacket(bad_seq, sizeof(bad_seq));
+    assert(qlink.isRawIrInProgress() == false); // Aborted due to sequence mismatch!
+
+    // 4. Zero timing duration rejection
+    assert(qlink.startRawIr(10, 38000) == true);
+    uint8_t zero_t[6 + 20];
+    zero_t[0] = 0xFE;
+    zero_t[1] = 0x03;
+    zero_t[2] = 0x00;
+    zero_t[3] = 0x00;
+    zero_t[4] = 0x00;
+    zero_t[5] = 20;
+    memset(zero_t + 6, 0, 20); // All 0 timings!
+    qlink.handleBleFilePacket(zero_t, sizeof(zero_t));
+    assert(qlink.isRawIrInProgress() == false); // Aborted due to zero duration!
+
+    // 5. Incomplete transfer cannot be transmitted (never transmit partial data)
+    assert(qlink.startRawIr(50, 38000) == true);
+    uint8_t part_chunk[6 + 20];
+    part_chunk[0] = 0xFE;
+    part_chunk[1] = 0x03;
+    part_chunk[2] = 0x00;
+    part_chunk[3] = 0x00;
+    part_chunk[4] = 0x00;
+    part_chunk[5] = 20;
+    for (int i = 0; i < 10; i++) {
+        part_chunk[6 + i * 2] = 0x64;
+        part_chunk[6 + i * 2 + 1] = 0x00;
+    }
+    qlink.handleBleFilePacket(part_chunk, sizeof(part_chunk));
+    assert(qlink.getRawIrReceivedCount() == 10);
+    // Attempt to finish early
+    assert(qlink.finishRawIr(50) == false); // Rejected: received 10 != expected 50!
+    assert(qlink.isRawIrInProgress() == false); // Aborted without transmitting!
+
+    // 6. Explicit cancel
+    assert(qlink.startRawIr(20, 38000) == true);
+    qlink.cancelRawIr();
+    assert(qlink.isRawIrInProgress() == false);
+
+    printf("  [PASS] Raw IR multi-chunk streaming, framing (0xFE, 0x03), sequence check, zero-guard, and partial abort verified.\n");
+}
+
 int main() {
     printf("==========================================\n");
     printf(" RUNNING Q-LINK PROTOCOL VERIFICATION\n");
@@ -271,6 +420,8 @@ int main() {
     test_mochi_anim_validation();
     test_safe_delete_and_storage();
     test_ble_file_upload_protocol();
+    test_ir_parsed_protocol_transmission();
+    test_ir_raw_timing_transfer_and_chunking();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");
     return 0;
 }

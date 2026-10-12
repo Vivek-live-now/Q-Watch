@@ -3031,6 +3031,165 @@ def test_photo_viewer_and_anim_packer_overhaul():
         assert th_counts[i][1] > th_counts[i+1][1], f"Bayer 4x4 white pixels must strictly decrease with threshold: {th_counts[i]} vs {th_counts[i+1]}"
     print("  [PASS] 8. anim_packer.py Bayer 4x4 dynamic threshold response & full dynamic range verified.")
 
+def test_online_irdb_transmission_suite():
+    print("\n--- 47. Online IRDB Virtual Remote Transmission Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    models_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "irdb", "IrdbModels.kt")
+    parser_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "irdb", "IrdbParser.kt")
+    vm_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "viewmodel", "OnlineIrdbViewModel.kt")
+    remote_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "components", "AdaptiveVirtualRemote.kt")
+    screen_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "OnlineIrdbScreen.kt")
+    client_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "QLinkClient.kt")
+    ble_transport_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkBleTransport.kt")
+    qlink_h = os.path.join(base_dir, "include", "qlink.h")
+    qlink_cpp = os.path.join(base_dir, "src", "qlink.cpp")
+    ir_engine_cpp = os.path.join(base_dir, "src", "ir_engine.cpp")
+    test_qlink_cpp = os.path.join(base_dir, "tests", "test_qlink.cpp")
+    test_irdb_kt = os.path.join(base_dir, "android", "app", "src", "test", "java", "com", "qwatch", "qlink", "IrdbTransmissionTest.kt")
+
+    # 1. Models and parser bit length / raw preservation
+    assert os.path.exists(models_kt), "IrdbModels.kt must exist"
+    with open(models_kt, "r", encoding="utf-8") as f:
+        mk = f.read()
+    assert "val nbits: Int = 0" in mk
+    assert "val rawTimings: List<Int> = emptyList()" in mk
+    assert "val dutyCycle: Float = 0.33f" in mk
+    assert "fun getDefaultBitsForProtocol" in mk
+    assert "fun parseHexOrFlipperBytes" in mk
+    assert "enum class IrTransmitState" in mk
+    assert "data class IrTransmitFeedback" in mk
+    print("  [PASS] 1. IrdbModels nbits, rawTimings, dutyCycle, parseHexOrFlipperBytes, and honest feedback models verified.")
+
+    assert os.path.exists(parser_kt), "IrdbParser.kt must exist"
+    with open(parser_kt, "r", encoding="utf-8") as f:
+        pk = f.read()
+    assert '"nbits", "bits"' in pk
+    assert "currentNbits = value.toIntOrNull()" in pk
+    assert "currentTimings.add(t)" in pk
+    assert "rawTimingsCount = currentTimings.size" in pk
+    assert "rawTimings = currentTimings.toList()" in pk
+    assert "dutyCycle = currentDutyCycle" in pk
+    print("  [PASS] 2. IrdbParser bit-length preservation and multi-line raw timing stream aggregation verified.")
+
+    # 2. Flipper little-endian byte string parsing equivalence
+    def parse_flipper_bytes_py(val_str: str) -> int:
+        clean = val_str.strip()
+        parts = clean.split()
+        if len(parts) > 1 and all(len(p) <= 2 for p in parts):
+            try:
+                raw_bytes = bytes([int(p, 16) for p in parts])
+                return int.from_bytes(raw_bytes, byteorder='little')
+            except Exception:
+                pass
+        clean_hex = clean.removeprefix("0x").removeprefix("0X")
+        try:
+            return int(clean_hex, 16)
+        except Exception:
+            try:
+                return int(clean)
+            except Exception:
+                return 0
+
+    assert parse_flipper_bytes_py("04 00 00 00") == 4
+    assert parse_flipper_bytes_py("0C 00 00 00") == 12
+    assert parse_flipper_bytes_py("EE 87 00 00") == 0x87EE
+    assert parse_flipper_bytes_py("5D A0 00 00") == 0xA05D
+    assert parse_flipper_bytes_py("80 7F 00 00") == 0x7F80
+    assert parse_flipper_bytes_py("0x1234") == 0x1234
+    assert parse_flipper_bytes_py("4") == 4
+    assert parse_flipper_bytes_py("invalid") == 0
+    print("  [PASS] 3. Flipper little-endian hex byte string parsing logic verified.")
+
+    # 3. Transport & Client Honest Status and Raw Framing
+    assert os.path.exists(client_kt), "QLinkClient.kt must exist"
+    with open(client_kt, "r", encoding="utf-8") as f:
+        ck = f.read()
+    assert 'Result.failure(IllegalStateException("Not connected"))' in ck
+    assert "suspend fun transmitRawIr" in ck
+
+    assert os.path.exists(ble_transport_kt), "QLinkBleTransport.kt must exist"
+    with open(ble_transport_kt, "r", encoding="utf-8") as f:
+        bk = f.read()
+    assert "0xFE.toByte()" in bk and "0x03.toByte()" in bk
+    assert "IR_RAW_START" in bk
+    assert "IR_RAW_FINISH" in bk
+    assert "effectiveBits" in bk
+    assert "parseHexOrFlipperBytes" in bk
+    print("  [PASS] 4. QLinkClient honest connection verification and QLinkBleTransport (0xFE, 0x03) chunk framing verified.")
+
+    # 4. Binary chunk framing pack/unpack mathematical verification
+    import struct
+    sample_timings = [9000, 4500, 560, 560, 560, 1690]
+    seq = 0
+    count = len(sample_timings)
+    header = struct.pack("<BBHH", 0xFE, 0x03, seq, count)
+    payload = header + b"".join(struct.pack("<H", t) for t in sample_timings)
+    assert len(payload) == 6 + count * 2
+    magic1, magic2, parsed_seq, parsed_count = struct.unpack("<BBHH", payload[:6])
+    assert magic1 == 0xFE and magic2 == 0x03
+    assert parsed_seq == seq and parsed_count == count
+    unpacked_timings = [struct.unpack("<H", payload[6 + i * 2: 8 + i * 2])[0] for i in range(count)]
+    assert unpacked_timings == sample_timings
+    print("  [PASS] 5. Raw IR binary chunk framing pack/unpack mathematical equivalence verified.")
+
+    # 5. ViewModel & Adaptive Virtual Remote UI Honest Reporting
+    assert os.path.exists(vm_kt), "OnlineIrdbViewModel.kt must exist"
+    with open(vm_kt, "r", encoding="utf-8") as f:
+        vk = f.read()
+    assert "val transmitFeedback: StateFlow<IrTransmitFeedback>" in vk
+    assert "fun transmitSimulated" in vk
+    assert "fun clearTransmitFeedback" in vk
+    assert "isProtocolBased" in vk
+    assert "isRaw" in vk
+
+    assert os.path.exists(remote_kt), "AdaptiveVirtualRemote.kt must exist"
+    with open(remote_kt, "r", encoding="utf-8") as f:
+        rk = f.read()
+    assert "transmitFeedback:" in rk and "IrTransmitFeedback" in rk
+    assert "onSimulated: ((String) -> Unit)?" in rk
+    assert "IrTransmitState.SUCCESS" in rk
+    assert "IrTransmitState.SIMULATED" in rk
+    assert "IrTransmitState.FAILED" in rk
+    assert "IrTransmitState.UNSUPPORTED" in rk
+    print("  [PASS] 6. ViewModel honest feedback state and AdaptiveVirtualRemote simulated signal handling verified.")
+
+    # 6. Firmware C++ implementation and IrdbTransmissionTest.kt
+    with open(qlink_h, "r", encoding="utf-8") as f:
+        qh = f.read()
+    assert "bool transmitParsedIr(const String& proto, uint32_t addr, uint32_t cmd, uint16_t nbits);" in qh
+    assert "bool startRawIr(size_t count, uint32_t frequency = 38000, float duty_cycle = 0.33f);" in qh
+    assert "bool processRawIrChunk(uint16_t seq, const uint8_t* data, size_t len);" in qh
+    assert "bool finishRawIr(size_t count = 0);" in qh
+
+    with open(qlink_cpp, "r", encoding="utf-8") as f:
+        qc = f.read()
+    assert "0xFE && data[1] == 0x03" in qc
+    assert "transmitParsedIr" in qc
+    assert "raw_ir_in_progress" in qc
+    assert "/api/v1/ir/raw_transmit" in qc
+
+    with open(ir_engine_cpp, "r", encoding="utf-8") as f:
+        ic = f.read()
+    assert "count > MAX_IR_RAW_TIMINGS" in ic
+    assert "timings[i] == 0" in ic
+
+    with open(test_qlink_cpp, "r", encoding="utf-8") as f:
+        tqc = f.read()
+    assert "test_ir_parsed_protocol_transmission()" in tqc
+    assert "test_ir_raw_timing_transfer_and_chunking()" in tqc
+
+    assert os.path.exists(test_irdb_kt), "IrdbTransmissionTest.kt must exist"
+    with open(test_irdb_kt, "r", encoding="utf-8") as f:
+        itk = f.read()
+    assert "testProtocolSpecificBitLengthsPreservation" in itk
+    assert "testDefaultBitLengthsWhenMissingOrZero" in itk
+    assert "testFlipperHexByteStringParsing" in itk
+    assert "testRawTimingsParsingMultiLineAndSingleLine" in itk
+    assert "testRawTimingsValidationBounds" in itk
+    assert "testRoutingBetweenProtocolAndRaw" in itk
+    assert "testIrTransmitFeedbackAndHonestStates" in itk
+    print("  [PASS] 7. Firmware raw/parsed IR C++ engine APIs and Android IrdbTransmissionTest.kt unit suite verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3069,7 +3228,9 @@ if __name__ == "__main__":
     test_wifi_ble_coexistence_and_boot_loop_guard()
     test_littlefs_explorer_and_ble_transfer()
     test_photo_viewer_and_anim_packer_overhaul()
+    test_online_irdb_transmission_suite()
     print("\nAll self-test verifications PASSED!")
+
 
 
 

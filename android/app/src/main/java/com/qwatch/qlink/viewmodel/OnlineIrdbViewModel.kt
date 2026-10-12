@@ -46,6 +46,9 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
     private val _transferProgress = MutableStateFlow(IrdbTransferProgress())
     val transferProgress: StateFlow<IrdbTransferProgress> = _transferProgress.asStateFlow()
 
+    private val _transmitFeedback = MutableStateFlow(IrTransmitFeedback())
+    val transmitFeedback: StateFlow<IrTransmitFeedback> = _transmitFeedback.asStateFlow()
+
     init {
         _favorites.value = repository.getFavorites()
         loadDatabase()
@@ -140,10 +143,125 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
 
     fun transmitButton(btn: IrParsedButton) {
         viewModelScope.launch {
-            if (client.isConnected()) {
-                client.transmitIr(btn.protocol, btn.address, btn.command, 32)
+            if (!client.isConnected()) {
+                _transmitFeedback.value = IrTransmitFeedback(
+                    state = IrTransmitState.FAILED,
+                    buttonName = btn.name,
+                    message = "Watch not connected (BLE standby)",
+                    error = "Not connected"
+                )
+                return@launch
+            }
+
+            if (btn.isProtocolBased) {
+                val bits = btn.effectiveBits
+                if (bits <= 0 || bits > 128) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.UNSUPPORTED,
+                        buttonName = btn.name,
+                        message = "UNSUPPORTED: Invalid bit length ($bits) for protocol ${btn.protocol}",
+                        error = "Unsupported bit length"
+                    )
+                    return@launch
+                }
+
+                _transmitFeedback.value = IrTransmitFeedback(
+                    state = IrTransmitState.TRANSMITTING,
+                    buttonName = btn.name,
+                    message = "TRANSMITTING: ${btn.name} [${btn.protocol} ${bits}b]..."
+                )
+
+                val res = client.transmitIr(btn.protocol, btn.address, btn.command, bits)
+                if (res.isSuccess && res.getOrNull() == true) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.SUCCESS,
+                        buttonName = btn.name,
+                        message = "SENT: ${btn.name} [${btn.protocol} ${bits}b]"
+                    )
+                } else {
+                    val err = res.exceptionOrNull()?.localizedMessage ?: "Transmission rejected by watch"
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.FAILED,
+                        buttonName = btn.name,
+                        message = "FAILED: $err",
+                        error = err
+                    )
+                }
+            } else if (btn.isRaw) {
+                if (btn.rawTimings.isEmpty()) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.UNSUPPORTED,
+                        buttonName = btn.name,
+                        message = "UNSUPPORTED: ${btn.name} has no timing data",
+                        error = "Empty timings"
+                    )
+                    return@launch
+                }
+
+                if (btn.rawTimings.size > 1024) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.UNSUPPORTED,
+                        buttonName = btn.name,
+                        message = "UNSUPPORTED: ${btn.name} timing count (${btn.rawTimings.size}) exceeds limit (1024)",
+                        error = "Timings count exceeds 1024"
+                    )
+                    return@launch
+                }
+
+                if (btn.rawTimings.any { it <= 0 || it > 65535 }) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.UNSUPPORTED,
+                        buttonName = btn.name,
+                        message = "UNSUPPORTED: ${btn.name} contains invalid timing values",
+                        error = "Invalid timing duration"
+                    )
+                    return@launch
+                }
+
+                val freq = if (btn.frequency > 0) btn.frequency.toInt() else 38000
+                _transmitFeedback.value = IrTransmitFeedback(
+                    state = IrTransmitState.TRANSMITTING,
+                    buttonName = btn.name,
+                    message = "TRANSMITTING: ${btn.name} [RAW ${btn.rawTimings.size}t ${freq / 1000}kHz]..."
+                )
+
+                val res = client.transmitRawIr(btn.rawTimings, freq, btn.dutyCycle)
+                if (res.isSuccess && res.getOrNull() == true) {
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.SUCCESS,
+                        buttonName = btn.name,
+                        message = "SENT: ${btn.name} [RAW ${btn.rawTimings.size}t ${freq / 1000}kHz]"
+                    )
+                } else {
+                    val err = res.exceptionOrNull()?.localizedMessage ?: "Watch rejected raw IR transmission"
+                    _transmitFeedback.value = IrTransmitFeedback(
+                        state = IrTransmitState.FAILED,
+                        buttonName = btn.name,
+                        message = "FAILED: $err",
+                        error = err
+                    )
+                }
+            } else {
+                _transmitFeedback.value = IrTransmitFeedback(
+                    state = IrTransmitState.UNSUPPORTED,
+                    buttonName = btn.name,
+                    message = "UNSUPPORTED: ${btn.name} has no valid protocol or raw data",
+                    error = "No usable protocol or raw data"
+                )
             }
         }
+    }
+
+    fun transmitSimulated(syntheticLabel: String) {
+        _transmitFeedback.value = IrTransmitFeedback(
+            state = IrTransmitState.SIMULATED,
+            buttonName = syntheticLabel,
+            message = "SIMULATED: No IR signal for $syntheticLabel in remote"
+        )
+    }
+
+    fun clearTransmitFeedback() {
+        _transmitFeedback.value = IrTransmitFeedback()
     }
 
     fun openSampleRemote(category: String) {

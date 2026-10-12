@@ -289,14 +289,29 @@ bool IREngine::decodeRCAFromRaw(const uint16_t* raw_arr, size_t len, uint32_t& o
 bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t command, uint16_t nbits) {
     String p = protocol;
     p.trim();
+    if (p.length() == 0) return false;
+
+    uint16_t bits = nbits;
+    if (bits == 0) {
+        bits = getProtocolDefaultBits(p);
+    }
+    if (bits == 0 || bits > 128) return false;
 
     if (p.equalsIgnoreCase("RCA")) {
+        if (bits != 24) return false;
         return sendRCA(address, command, 1);
     }
 
     decode_type_t type = strToDecodeType(protocol);
     if (type == DECODE_TYPE_RCA) {
+        if (bits != 24) return false;
         return sendRCA(address, command, 1);
+    }
+
+    if (type == NIKAI) {
+        if (bits != 24) return false;
+        irsend.sendNikai(command, bits, 1); // 1 repeat for Nikai
+        return true;
     }
 
     if (type == NEC) {
@@ -308,7 +323,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
             // command is already the full 32-bit NEC frame (e.g. from captured results.value)
             data = command;
         }
-        irsend.sendNEC(data, nbits > 0 ? nbits : 32, 1);
+        irsend.sendNEC(data, bits, 1);
         return true;
     } else if (type == SAMSUNG) {
         uint64_t data;
@@ -317,17 +332,17 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendSAMSUNG(data, nbits > 0 ? nbits : 32, 1);
+        irsend.sendSAMSUNG(data, bits, 1);
         return true;
     } else if (type == SONY) {
-        uint16_t bits = (p.equalsIgnoreCase("SIRC15")) ? 15 : ((p.equalsIgnoreCase("SIRC20")) ? 20 : (nbits > 0 ? nbits : 12));
+        uint16_t s_bits = (p.equalsIgnoreCase("SIRC15")) ? 15 : ((p.equalsIgnoreCase("SIRC20")) ? 20 : bits);
         uint64_t data;
         if (address != 0) {
-            data = irsend.encodeSony(bits, command, address);
+            data = irsend.encodeSony(s_bits, command, address);
         } else {
             data = command;
         }
-        irsend.sendSony(data, bits, 2); // Sony SIRC requires min 2 repeats
+        irsend.sendSony(data, s_bits, 2); // Sony SIRC requires min 2 repeats
         return true;
     } else if (type == RC5) {
         uint64_t data;
@@ -336,7 +351,7 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendRC5(data, nbits > 0 ? nbits : 12, 1);
+        irsend.sendRC5(data, bits, 1);
         return true;
     } else if (type == RC6) {
         uint64_t data;
@@ -345,14 +360,9 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
         } else {
             data = command;
         }
-        irsend.sendRC6(data, nbits > 0 ? nbits : 20, 1);
-        return true;
-    } else if (type == NIKAI) {
-        uint16_t bits = (nbits > 0) ? nbits : 24;
-        irsend.sendNikai(command, bits, 1); // 1 repeat for Nikai
+        irsend.sendRC6(data, bits, 1);
         return true;
     } else if (type != UNKNOWN) {
-        uint16_t bits = (nbits > 0) ? nbits : IRsend::defaultBits(type);
         uint16_t repeats = std::max((uint16_t)1, IRsend::minRepeats(type));
         irsend.send(type, command, bits, repeats);
         return true;
@@ -361,10 +371,12 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
 }
 
 bool IREngine::sendRaw(const uint16_t* timings, size_t count, uint32_t frequency) {
-    if (!timings || count == 0) return false;
-    size_t send_count = min(count, MAX_IR_RAW_TIMINGS);
+    if (!timings || count == 0 || count > MAX_IR_RAW_TIMINGS) return false;
+    for (size_t i = 0; i < count; i++) {
+        if (timings[i] == 0) return false;
+    }
     uint16_t khz = (frequency > 1000) ? (frequency / 1000) : (frequency > 0 ? frequency : 38);
-    irsend.sendRaw(timings, send_count, khz);
+    irsend.sendRaw(timings, count, khz);
     return true;
 }
 

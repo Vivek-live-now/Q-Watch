@@ -300,7 +300,11 @@ class QLinkClient private constructor() {
     }
 
     suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int = 32): Result<Boolean> {
-        return currentTransport?.transmitIr(protocol, address, command, nbits) ?: Result.success(true)
+        return currentTransport?.transmitIr(protocol, address, command, nbits) ?: Result.failure(IllegalStateException("Not connected"))
+    }
+
+    suspend fun transmitRawIr(timings: List<Int>, frequency: Int = 38000, dutyCycle: Float = 0.33f): Result<Boolean> {
+        return currentTransport?.transmitRawIr(timings, frequency, dutyCycle) ?: Result.failure(IllegalStateException("Not connected"))
     }
 
     companion object {

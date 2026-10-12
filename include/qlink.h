@@ -58,6 +58,17 @@ public:
         if (to == std::string::npos || to > size()) to = size();
         return String(substr(from, to - from));
     }
+    bool equalsIgnoreCase(const String& s) const {
+        if (size() != s.size()) return false;
+        for (size_t i = 0; i < size(); ++i) {
+            if (tolower((unsigned char)(*this)[i]) != tolower((unsigned char)s[i])) return false;
+        }
+        return true;
+    }
+    bool equalsIgnoreCase(const char* s) const {
+        if (!s) return false;
+        return equalsIgnoreCase(String(s));
+    }
     void reserve(size_t) {}
 };
 #endif
@@ -162,6 +173,16 @@ public:
     bool isUploadInProgress() const { return upload_in_progress; }
     size_t getUploadReceivedBytes() const { return upload_received_size; }
     const String& getUploadPath() const { return upload_file_path; }
+    // IR Protocol & Raw Transmission APIs
+    bool transmitParsedIr(const String& proto, uint32_t addr, uint32_t cmd, uint16_t nbits);
+    bool startRawIr(size_t count, uint32_t frequency = 38000, float duty_cycle = 0.33f);
+    bool processRawIrChunk(uint16_t seq, const uint8_t* data, size_t len);
+    bool finishRawIr(size_t count = 0);
+    void cancelRawIr();
+    bool isRawIrInProgress() const { return raw_ir_in_progress; }
+    size_t getRawIrReceivedCount() const { return raw_ir_received_count; }
+    size_t getRawIrExpectedCount() const { return raw_ir_expected_count; }
+    uint32_t getRawIrFrequency() const { return raw_ir_frequency; }
 
 private:
     uint8_t packet_seq;
@@ -181,6 +202,27 @@ private:
     uint32_t upload_last_chunk_time;
 #ifdef ARDUINO
     File upload_file;
+#endif
+
+    // Raw IR session state
+    bool raw_ir_in_progress;
+    uint32_t raw_ir_frequency;
+    float raw_ir_duty_cycle;
+    size_t raw_ir_expected_count;
+    size_t raw_ir_received_count;
+    uint16_t raw_ir_expected_seq;
+    uint32_t raw_ir_last_activity;
+    uint16_t raw_ir_timings[1024];
+
+#ifndef ARDUINO
+public:
+    String last_tx_proto;
+    uint32_t last_tx_addr;
+    uint32_t last_tx_cmd;
+    uint16_t last_tx_nbits;
+    size_t last_tx_raw_count;
+    uint32_t last_tx_raw_freq;
+private:
 #endif
 };
 

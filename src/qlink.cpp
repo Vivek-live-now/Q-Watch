@@ -50,6 +50,7 @@ class QLinkBleServerCallbacks : public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) override {
         qlink.setBleConnected(false);
         qlink.cancelFileUpload();
+        qlink.cancelRawIr();
         if (qlink.isBleEnabled()) {
             BLEAdvertising* pAdv = pServer->getAdvertising();
             if (pAdv) {
@@ -100,7 +101,23 @@ QLinkEngine::QLinkEngine() :
     upload_file_path(""),
     upload_expected_size(0),
     upload_received_size(0),
-    upload_last_chunk_time(0)
+    upload_last_chunk_time(0),
+    raw_ir_in_progress(false),
+    raw_ir_frequency(38000),
+    raw_ir_duty_cycle(0.33f),
+    raw_ir_expected_count(0),
+    raw_ir_received_count(0),
+    raw_ir_expected_seq(0),
+    raw_ir_last_activity(0)
+#ifndef ARDUINO
+    ,
+    last_tx_proto(""),
+    last_tx_addr(0),
+    last_tx_cmd(0),
+    last_tx_nbits(0),
+    last_tx_raw_count(0),
+    last_tx_raw_freq(0)
+#endif
 {}
 
 void QLinkEngine::begin() {
@@ -113,6 +130,10 @@ void QLinkEngine::begin() {
     upload_file_path = "";
     upload_expected_size = 0;
     upload_received_size = 0;
+    raw_ir_in_progress = false;
+    raw_ir_expected_count = 0;
+    raw_ir_received_count = 0;
+    raw_ir_expected_seq = 0;
 
 #ifdef ARDUINO
     // Only initialize and activate BLE if user has enabled it in settings
@@ -320,6 +341,16 @@ void QLinkEngine::loop() {
     if (upload_in_progress && (now - upload_last_chunk_time > 15000)) {
         cancelFileUpload();
     }
+
+    // 3. Raw IR session timeout guard (5s inactivity)
+    if (raw_ir_in_progress && (now - raw_ir_last_activity > 5000)) {
+        cancelRawIr();
+        if (s_char_file) {
+            String resp = "{\"status\":\"ERROR\",\"code\":408,\"error\":\"timeout\"}";
+            s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+            s_char_file->notify();
+        }
+    }
 #endif
 }
 
@@ -358,10 +389,8 @@ void QLinkEngine::handleBleCommand(const uint8_t* data, size_t len) {
             String proto = doc["protocol"] | "";
             uint32_t addr = doc["address"] | 0;
             uint32_t cmd = doc["command"] | 0;
-            uint16_t nbits = doc["nbits"] | 32;
-            if (proto.length() > 0) {
-                irEngine.sendParsed(proto, addr, cmd, nbits);
-            }
+            uint16_t nbits = doc["nbits"] | 0;
+            transmitParsedIr(proto, addr, cmd, nbits);
         }
     }
 #endif
@@ -370,7 +399,7 @@ void QLinkEngine::handleBleCommand(const uint8_t* data, size_t len) {
 void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
     if (!data || len == 0) return;
 
-    // Binary chunk packet: magic 0xFE, 0x01
+    // Binary file chunk packet: magic 0xFE, 0x01
     if (len >= 6 && data[0] == 0xFE && data[1] == 0x01) {
         size_t chunk_len = ((size_t)data[4] << 8) | data[5];
         if (chunk_len <= len - 6) {
@@ -380,6 +409,38 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
 #ifdef ARDUINO
                 if (s_char_file) {
                     String resp = "{\"status\":\"OK\",\"code\":200,\"message\":\"Complete\",\"size\":" + String((unsigned long)upload_received_size) + "}";
+                    s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                    s_char_file->notify();
+                }
+#endif
+            }
+            return;
+        }
+    }
+
+    // Binary raw IR chunk packet: magic 0xFE, 0x03
+    if (len >= 6 && data[0] == 0xFE && data[1] == 0x03) {
+        uint16_t seq = ((uint16_t)data[2] << 8) | data[3];
+        size_t chunk_len = ((size_t)data[4] << 8) | data[5];
+        if (chunk_len <= len - 6) {
+            bool ok = processRawIrChunk(seq, data + 6, chunk_len);
+            if (!ok) {
+#ifdef ARDUINO
+                if (s_char_file) {
+                    String resp = "{\"status\":\"ERROR\",\"code\":400,\"error\":\"raw_chunk_error\"}";
+                    s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                    s_char_file->notify();
+                }
+#endif
+                return;
+            }
+            if (raw_ir_expected_count > 0 && raw_ir_received_count >= raw_ir_expected_count) {
+                bool txOk = finishRawIr(raw_ir_expected_count);
+#ifdef ARDUINO
+                if (s_char_file) {
+                    String resp = txOk
+                        ? ("{\"status\":\"OK\",\"code\":200,\"action\":\"IR_RAW_TRANSMIT\",\"count\":" + String((unsigned long)raw_ir_received_count) + "}")
+                        : "{\"status\":\"ERROR\",\"code\":500,\"error\":\"transmit_failed\"}";
                     s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
                     s_char_file->notify();
                 }
@@ -581,6 +642,48 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
                 s_char_file->setValue((uint8_t*)json.c_str(), json.length());
                 s_char_file->notify();
             }
+        } else if (strcmp(cmd, "IR_RAW_START") == 0) {
+            size_t count = doc["count"] | 0;
+            uint32_t freq = doc["frequency"] | 38000;
+            float duty = doc["duty_cycle"] | 0.33f;
+            bool ok = startRawIr(count, freq, duty);
+            if (s_char_file) {
+                String resp = ok
+                    ? ("{\"status\":\"OK\",\"code\":200,\"cmd\":\"IR_RAW_START\",\"count\":" + String((unsigned long)count) + "}")
+                    : (count > 1024 ? "{\"status\":\"ERROR\",\"code\":413,\"error\":\"timings_overflow\"}"
+                                    : "{\"status\":\"ERROR\",\"code\":400,\"error\":\"invalid_count\"}");
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "IR_RAW_FINISH") == 0) {
+            size_t count = doc["count"] | raw_ir_expected_count;
+            bool ok = finishRawIr(count);
+            if (s_char_file) {
+                String resp = ok
+                    ? ("{\"status\":\"OK\",\"code\":200,\"action\":\"IR_RAW_TRANSMIT\",\"count\":" + String((unsigned long)count) + "}")
+                    : "{\"status\":\"ERROR\",\"code\":500,\"error\":\"transmit_failed\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+        } else if (strcmp(cmd, "IR_TRANSMIT") == 0) {
+            String proto = doc["protocol"] | "";
+            uint32_t addr = doc["address"] | 0;
+            uint32_t cmd_code = doc["command"] | 0;
+            uint16_t nbits = doc["nbits"] | 0;
+            bool ok = transmitParsedIr(proto, addr, cmd_code, nbits);
+            if (s_char_file) {
+                uint16_t actual_bits = (nbits > 0) ? nbits :
+#ifdef ARDUINO
+                    IREngine::getProtocolDefaultBits(proto);
+#else
+                    32;
+#endif
+                String resp = ok
+                    ? ("{\"status\":\"OK\",\"code\":200,\"action\":\"IR_TRANSMIT\",\"protocol\":\"" + proto + "\",\"nbits\":" + String((unsigned int)actual_bits) + "}")
+                    : "{\"status\":\"ERROR\",\"code\":400,\"error\":\"unsupported_protocol\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
         }
     }
 #endif
@@ -659,6 +762,117 @@ void QLinkEngine::cancelFileUpload() {
     upload_file_path = "";
     upload_expected_size = 0;
     upload_received_size = 0;
+}
+
+bool QLinkEngine::transmitParsedIr(const String& proto, uint32_t addr, uint32_t cmd, uint16_t nbits) {
+    if (proto.length() == 0) return false;
+    uint16_t bits = nbits;
+    if (bits == 0) {
+#ifdef ARDUINO
+        bits = IREngine::getProtocolDefaultBits(proto);
+#else
+        String p = proto;
+        p.trim();
+        if (p.equalsIgnoreCase("RCA") || p.equalsIgnoreCase("NIKAI")) bits = 24;
+        else if (p.equalsIgnoreCase("SONY") || p.equalsIgnoreCase("SIRC") || p.equalsIgnoreCase("RC5")) bits = 12;
+        else if (p.equalsIgnoreCase("SIRC15") || p.equalsIgnoreCase("SHARP") || p.equalsIgnoreCase("DENON")) bits = 15;
+        else if (p.equalsIgnoreCase("SIRC20") || p.equalsIgnoreCase("RC6")) bits = 20;
+        else if (p.equalsIgnoreCase("RC5X")) bits = 13;
+        else if (p.equalsIgnoreCase("JVC")) bits = 16;
+        else if (p.equalsIgnoreCase("PANASONIC")) bits = 48;
+        else if (p.equalsIgnoreCase("NEC42")) bits = 42;
+        else bits = 32;
+#endif
+    }
+    if (bits == 0 || bits > 128) return false;
+    String p = proto;
+    p.trim();
+    if ((p.equalsIgnoreCase("RCA") || p.equalsIgnoreCase("NIKAI")) && bits != 24) {
+        return false;
+    }
+#ifdef ARDUINO
+    return irEngine.sendParsed(proto, addr, cmd, bits);
+#else
+    last_tx_proto = proto;
+    last_tx_addr = addr;
+    last_tx_cmd = cmd;
+    last_tx_nbits = bits;
+    return true;
+#endif
+}
+
+bool QLinkEngine::startRawIr(size_t count, uint32_t frequency, float duty_cycle) {
+    if (count == 0 || count > 1024) return false;
+    if (frequency > 100000) return false;
+    raw_ir_in_progress = true;
+    raw_ir_expected_count = count;
+    raw_ir_received_count = 0;
+    raw_ir_frequency = frequency > 0 ? frequency : 38000;
+    raw_ir_duty_cycle = (duty_cycle > 0.05f && duty_cycle < 0.95f) ? duty_cycle : 0.33f;
+    raw_ir_expected_seq = 0;
+#ifdef ARDUINO
+    raw_ir_last_activity = millis();
+#else
+    raw_ir_last_activity = 0;
+#endif
+    return true;
+}
+
+bool QLinkEngine::processRawIrChunk(uint16_t seq, const uint8_t* data, size_t len) {
+    if (!raw_ir_in_progress || !data || len == 0 || (len % 2 != 0)) {
+        return false;
+    }
+    if (seq != raw_ir_expected_seq) {
+        cancelRawIr();
+        return false;
+    }
+    size_t timings_in_chunk = len / 2;
+    if (raw_ir_received_count + timings_in_chunk > raw_ir_expected_count) {
+        cancelRawIr();
+        return false;
+    }
+    for (size_t i = 0; i < len; i += 2) {
+        uint16_t t = (uint16_t)data[i] | ((uint16_t)data[i + 1] << 8);
+        if (t == 0) {
+            cancelRawIr();
+            return false;
+        }
+        raw_ir_timings[raw_ir_received_count++] = t;
+    }
+    raw_ir_expected_seq++;
+#ifdef ARDUINO
+    raw_ir_last_activity = millis();
+#endif
+    return true;
+}
+
+bool QLinkEngine::finishRawIr(size_t count) {
+    if (!raw_ir_in_progress) return false;
+    if (count > 0 && count != raw_ir_expected_count) {
+        cancelRawIr();
+        return false;
+    }
+    if (raw_ir_received_count != raw_ir_expected_count) {
+        cancelRawIr();
+        return false;
+    }
+    bool success = false;
+#ifdef ARDUINO
+    success = irEngine.sendRaw(raw_ir_timings, raw_ir_received_count, raw_ir_frequency);
+#else
+    last_tx_raw_count = raw_ir_received_count;
+    last_tx_raw_freq = raw_ir_frequency;
+    success = true;
+#endif
+    raw_ir_in_progress = false;
+    return success;
+}
+
+void QLinkEngine::cancelRawIr() {
+    raw_ir_in_progress = false;
+    raw_ir_received_count = 0;
+    raw_ir_expected_count = 0;
+    raw_ir_expected_seq = 0;
 }
 
 void QLinkEngine::setStreamingDisplay(bool enable, uint8_t target_fps) {
@@ -1043,15 +1257,40 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 String proto = doc["protocol"] | "";
                 uint32_t addr = doc["address"] | 0;
                 uint32_t cmd = doc["command"] | 0;
-                uint16_t nbits = doc["nbits"] | 32;
-                if (proto.length() > 0) {
-                    irEngine.sendParsed(proto, addr, cmd, nbits);
+                uint16_t nbits = doc["nbits"] | 0;
+                if (transmitParsedIr(proto, addr, cmd, nbits)) {
                     server.send(200, "application/json", "{\"status\":\"transmitted\"}");
                     return;
                 }
             }
         }
         server.send(400, "application/json", "{\"error\":\"invalid_ir_packet\"}");
+    });
+
+    server.on("/api/v1/ir/raw_transmit", HTTP_POST, [&server, this]() {
+        if (server.hasArg("plain")) {
+            JsonDocument doc;
+            if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+                uint32_t freq = doc["frequency"] | 38000;
+                float duty = doc["duty_cycle"] | 0.33f;
+                JsonArray arr = doc["timings"].as<JsonArray>();
+                size_t count = arr.size();
+                if (count > 0 && count <= 1024 && startRawIr(count, freq, duty)) {
+                    bool valid = true;
+                    for (JsonVariant v : arr) {
+                        uint32_t t = v.as<uint32_t>();
+                        if (t == 0 || t > 65535) { valid = false; break; }
+                        raw_ir_timings[raw_ir_received_count++] = (uint16_t)t;
+                    }
+                    if (valid && finishRawIr(count)) {
+                        server.send(200, "application/json", "{\"status\":\"transmitted\",\"count\":" + String((unsigned long)count) + "}");
+                        return;
+                    }
+                    cancelRawIr();
+                }
+            }
+        }
+        server.send(400, "application/json", "{\"error\":\"invalid_raw_ir_packet\"}");
     });
 
     // 6. Notification Ingestion

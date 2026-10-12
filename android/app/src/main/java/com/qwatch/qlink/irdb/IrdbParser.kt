@@ -13,30 +13,52 @@ object IrdbParser {
         var currentAddress = ""
         var currentCommand = ""
         var currentFreq = 0L
-        var rawCount = 0
+        var currentNbits = 0
+        var currentDutyCycle = 0.33f
+        val currentTimings = mutableListOf<Int>()
+
+        fun buildCurrentButton(): IrParsedButton? {
+            val name = currentName ?: return null
+            val finalType = currentType ?: if (currentProtocol.isNotBlank() && !currentProtocol.equals("raw", ignoreCase = true)) "parsed" else "raw"
+            val effectiveNbits = if (currentNbits > 0) {
+                currentNbits
+            } else if (currentProtocol.isNotBlank()) {
+                IrParsedButton.getDefaultBitsForProtocol(currentProtocol)
+            } else {
+                0
+            }
+            return IrParsedButton(
+                name = name,
+                type = finalType,
+                protocol = currentProtocol,
+                address = currentAddress,
+                command = currentCommand,
+                frequency = currentFreq,
+                rawTimingsCount = currentTimings.size,
+                nbits = effectiveNbits,
+                rawTimings = currentTimings.toList(),
+                dutyCycle = currentDutyCycle
+            )
+        }
+
+        fun resetCurrentButton() {
+            currentName = null
+            currentType = null
+            currentProtocol = ""
+            currentAddress = ""
+            currentCommand = ""
+            currentFreq = 0L
+            currentNbits = 0
+            currentDutyCycle = 0.33f
+            currentTimings.clear()
+        }
 
         for (line in lines) {
             val trimmed = line.trim()
             if (trimmed.startsWith("#") || trimmed.isEmpty()) {
                 if (currentName != null) {
-                    buttons.add(
-                        IrParsedButton(
-                            name = currentName,
-                            type = currentType ?: "parsed",
-                            protocol = currentProtocol,
-                            address = currentAddress,
-                            command = currentCommand,
-                            frequency = currentFreq,
-                            rawTimingsCount = rawCount
-                        )
-                    )
-                    currentName = null
-                    currentType = null
-                    currentProtocol = ""
-                    currentAddress = ""
-                    currentCommand = ""
-                    currentFreq = 0L
-                    rawCount = 0
+                    buildCurrentButton()?.let { buttons.add(it) }
+                    resetCurrentButton()
                 }
                 continue
             }
@@ -49,31 +71,36 @@ object IrdbParser {
 
             when (key) {
                 "filetype" -> filetype = value
-                "name" -> currentName = value
+                "name" -> {
+                    if (currentName != null) {
+                        buildCurrentButton()?.let { buttons.add(it) }
+                        resetCurrentButton()
+                    }
+                    currentName = value
+                }
                 "type" -> currentType = value
                 "protocol" -> currentProtocol = value
                 "address" -> currentAddress = value
                 "command" -> currentCommand = value
+                "nbits", "bits" -> {
+                    currentNbits = value.toIntOrNull()?.takeIf { it > 0 } ?: 0
+                }
                 "frequency" -> currentFreq = value.toLongOrNull() ?: 0L
+                "duty_cycle" -> currentDutyCycle = value.toFloatOrNull() ?: 0.33f
                 "data" -> {
                     val tokens = value.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-                    rawCount = tokens.size
+                    for (token in tokens) {
+                        val t = token.toIntOrNull()
+                        if (t != null && t > 0) {
+                            currentTimings.add(t)
+                        }
+                    }
                 }
             }
         }
 
         if (currentName != null) {
-            buttons.add(
-                IrParsedButton(
-                    name = currentName,
-                    type = currentType ?: "parsed",
-                    protocol = currentProtocol,
-                    address = currentAddress,
-                    command = currentCommand,
-                    frequency = currentFreq,
-                    rawTimingsCount = rawCount
-                )
-            )
+            buildCurrentButton()?.let { buttons.add(it) }
         }
 
         return IrRemoteFile(

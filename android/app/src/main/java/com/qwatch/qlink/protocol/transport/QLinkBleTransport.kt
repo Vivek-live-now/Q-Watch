@@ -5,6 +5,7 @@ import android.bluetooth.*
 import android.content.Context
 import android.os.Build
 import com.qwatch.qlink.anim.TransferProgress
+import com.qwatch.qlink.irdb.IrParsedButton
 import com.qwatch.qlink.model.*
 import com.qwatch.qlink.protocol.QLinkConstants
 import com.qwatch.qlink.protocol.parser.QLinkPacketParser
@@ -657,15 +658,164 @@ class QLinkBleTransport(
     }
 
     override suspend fun transmitIr(protocol: String, address: String, command: String, nbits: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (!isConnected()) {
+            return@withContext Result.failure(IOException("Q-Watch BLE is not connected"))
+        }
+        val addrVal = IrParsedButton.parseHexOrFlipperBytes(address)
+        val cmdVal = IrParsedButton.parseHexOrFlipperBytes(command)
+        val effectiveBits = if (nbits > 0) nbits else IrParsedButton.getDefaultBitsForProtocol(protocol)
+
+        val fileChar = fileCharacteristic
+        if (fileChar != null) {
+            val json = JSONObject().apply {
+                put("cmd", "IR_TRANSMIT")
+                put("protocol", protocol)
+                put("address", addrVal)
+                put("command", cmdVal)
+                put("nbits", effectiveBits)
+            }
+            _fileResponseFlow.resetReplayCache()
+            val sent = writeData(fileChar, json.toString().toByteArray(Charsets.UTF_8))
+            if (sent) {
+                try {
+                    val resp = withTimeout(2500) {
+                        _fileResponseFlow.filter {
+                            it.contains("IR_TRANSMIT") || it.contains("\"code\":200") ||
+                            it.contains("\"code\":400") || it.contains("\"status\":\"OK\"") ||
+                            it.contains("\"status\":\"ERROR\"")
+                        }.first()
+                    }
+                    if (resp.contains("\"code\":200") || resp.contains("\"status\":\"OK\"")) {
+                        return@withContext Result.success(true)
+                    } else {
+                        return@withContext Result.failure(IOException("Watch rejected IR transmission: $resp"))
+                    }
+                } catch (_: Exception) {
+                    // If timeout waiting for notify, check fallback or return failure
+                    return@withContext Result.failure(IOException("Timeout waiting for watch confirmation"))
+                }
+            }
+        }
+
+        // Fallback to command characteristic
         val char = cmdCharacteristic ?: return@withContext Result.failure(IOException("BLE Command characteristic not ready"))
         val json = JSONObject().apply {
             put("action", "IR_TRANSMIT")
             put("protocol", protocol)
-            put("address", address.removePrefix("0x").toLongOrNull(16) ?: 0L)
-            put("command", command.removePrefix("0x").toLongOrNull(16) ?: 0L)
-            put("nbits", nbits)
+            put("address", addrVal)
+            put("command", cmdVal)
+            put("nbits", effectiveBits)
         }
         val ok = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
-        Result.success(ok)
+        if (ok) Result.success(true) else Result.failure(IOException("Failed to send IR command via BLE"))
+    }
+
+    override suspend fun transmitRawIr(timings: List<Int>, frequency: Int, dutyCycle: Float): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (!isConnected()) {
+            return@withContext Result.failure(IOException("Q-Watch BLE is not connected"))
+        }
+        val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
+        if (timings.isEmpty()) {
+            return@withContext Result.failure(IllegalArgumentException("Raw timings sequence is empty"))
+        }
+        if (timings.size > 1024) {
+            return@withContext Result.failure(IllegalArgumentException("Raw timings count (${timings.size}) exceeds watch capacity (1024)"))
+        }
+        if (timings.any { it <= 0 || it > 65535 }) {
+            return@withContext Result.failure(IllegalArgumentException("Raw timings contain invalid duration values"))
+        }
+
+        val freq = if (frequency > 0) frequency else 38000
+
+        // 1. Send IR_RAW_START
+        val startJson = JSONObject().apply {
+            put("cmd", "IR_RAW_START")
+            put("count", timings.size)
+            put("frequency", freq)
+            put("duty_cycle", dutyCycle)
+        }
+        _fileResponseFlow.resetReplayCache()
+        if (!writeData(char, startJson.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send IR_RAW_START"))
+        }
+        try {
+            val startResp = withTimeout(2500) {
+                _fileResponseFlow.filter {
+                    it.contains("IR_RAW_START") || it.contains("\"code\":200") ||
+                    it.contains("\"code\":400") || it.contains("\"status\":\"ERROR\"")
+                }.first()
+            }
+            if (startResp.contains("\"code\":400") || startResp.contains("\"code\":413") || startResp.contains("\"status\":\"ERROR\"")) {
+                return@withContext Result.failure(IOException("Watch rejected raw IR: $startResp"))
+            }
+        } catch (e: Exception) {
+            return@withContext Result.failure(IOException("Timeout waiting for IR_RAW_START ack: ${e.message}"))
+        }
+        delay(15)
+
+        // 2. Stream chunk packets with magic 0xFE, 0x03
+        val rawBytes = ByteArray(timings.size * 2)
+        for (i in timings.indices) {
+            val t = timings[i]
+            rawBytes[i * 2] = (t and 0xFF).toByte()
+            rawBytes[i * 2 + 1] = ((t shr 8) and 0xFF).toByte()
+        }
+
+        val maxChunk = ((currentMtu - 9) and -2).coerceIn(12, 240)
+        var offset = 0
+        var seq = 0
+        while (offset < rawBytes.size) {
+            val chunkLen = minOf(maxChunk, rawBytes.size - offset)
+            val packet = ByteArray(6 + chunkLen)
+            packet[0] = 0xFE.toByte()
+            packet[1] = 0x03.toByte() // 0x03: Raw IR chunk packet
+            packet[2] = ((seq shr 8) and 0xFF).toByte()
+            packet[3] = (seq and 0xFF).toByte()
+            packet[4] = ((chunkLen shr 8) and 0xFF).toByte()
+            packet[5] = (chunkLen and 0xFF).toByte()
+            System.arraycopy(rawBytes, offset, packet, 6, chunkLen)
+
+            var written = false
+            for (attempt in 0 until 5) {
+                if (writeData(char, packet, withoutResponse = true)) {
+                    written = true
+                    break
+                }
+                delay(15L * (attempt + 1))
+            }
+            if (!written) {
+                return@withContext Result.failure(IOException("Failed to write raw IR chunk $seq at offset $offset"))
+            }
+            offset += chunkLen
+            seq++
+            delay(12)
+        }
+
+        // 3. Send IR_RAW_FINISH
+        val finishJson = JSONObject().apply {
+            put("cmd", "IR_RAW_FINISH")
+            put("count", timings.size)
+        }
+        _fileResponseFlow.resetReplayCache()
+        if (!writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send IR_RAW_FINISH"))
+        }
+
+        try {
+            val finishResp = withTimeout(3000) {
+                _fileResponseFlow.filter {
+                    it.contains("IR_RAW_TRANSMIT") || it.contains("\"action\":\"IR_RAW_TRANSMIT\"") ||
+                    it.contains("\"code\":200") || it.contains("\"code\":500") || it.contains("\"code\":400") ||
+                    it.contains("\"status\":\"OK\"") || it.contains("\"status\":\"ERROR\"")
+                }.first()
+            }
+            if (finishResp.contains("\"code\":200") || finishResp.contains("\"status\":\"OK\"")) {
+                Result.success(true)
+            } else {
+                Result.failure(IOException("Watch reported error transmitting raw IR: $finishResp"))
+            }
+        } catch (e: Exception) {
+            Result.failure(IOException("Timeout waiting for raw IR transmission completion: ${e.message}"))
+        }
     }
 }
