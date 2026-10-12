@@ -2711,6 +2711,12 @@ void UICore::loadAnimList() {
 
     scanDir("/anim");
     if (anim_count < MAX_ANIM_ENTRIES) {
+        scanDir("/photos");
+    }
+    if (anim_count < MAX_ANIM_ENTRIES) {
+        scanDir("/images");
+    }
+    if (anim_count < MAX_ANIM_ENTRIES) {
         scanDir("/boot");
     }
 }
@@ -2807,7 +2813,12 @@ void UICore::handleAnimPlayerInput() {
 
     if (up_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavMove();
-        if (animEngine.isPaused()) {
+        if (animEngine.getTotalFrames() <= 1 || animEngine.isBmpFormat()) {
+            if (anim_count > 0) {
+                anim_selection = (anim_selection + anim_count - 1) % anim_count;
+                openAnimationPlayer(anim_entries[anim_selection].fullPath.c_str(), anim_return_state);
+            }
+        } else if (animEngine.isPaused()) {
             animEngine.stepForward();
         } else {
             animEngine.cycleSpeed();
@@ -2818,7 +2829,12 @@ void UICore::handleAnimPlayerInput() {
 
     if (dn_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavMove();
-        if (animEngine.isPaused()) {
+        if (animEngine.getTotalFrames() <= 1 || animEngine.isBmpFormat()) {
+            if (anim_count > 0) {
+                anim_selection = (anim_selection + 1) % anim_count;
+                openAnimationPlayer(anim_entries[anim_selection].fullPath.c_str(), anim_return_state);
+            }
+        } else if (animEngine.isPaused()) {
             animEngine.stepBackward();
         } else {
             animEngine.setLoop(!animEngine.isLooping());

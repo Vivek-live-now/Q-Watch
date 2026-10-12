@@ -28,11 +28,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qwatch.qlink.anim.*
@@ -87,6 +91,12 @@ fun AnimStudioScreen(
     var isLooping by remember { mutableStateOf(true) }
     var isInverted by remember { mutableStateOf(false) }
 
+    // Fast Bitmap Rendering & Drag Tracking
+    var canvasRevision by remember { mutableIntStateOf(0) }
+    val displayBitmap = remember { Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888) }
+    val pixelBuffer = remember { IntArray(128 * 64) }
+    var lastTouchCoord by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+
     // Line / Box shape start coordinates
     var shapeStartPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
@@ -120,6 +130,23 @@ fun AnimStudioScreen(
         redoStack.clear()
     }
 
+    fun drawLineOnFrame(frame: StudioFrame, x0: Int, y0: Int, x1: Int, y1: Int, value: Boolean) {
+        var x = x0
+        var y = y0
+        val dx = kotlin.math.abs(x1 - x0)
+        val dy = -kotlin.math.abs(y1 - y0)
+        val sx = if (x0 < x1) 1 else -1
+        val sy = if (y0 < y1) 1 else -1
+        var err = dx + dy
+        while (true) {
+            frame.setPixel(x, y, value)
+            if (x == x1 && y == y1) break
+            val e2 = 2 * err
+            if (e2 >= dy) { err += dy; x += sx }
+            if (e2 <= dx) { err += dx; y += sy }
+        }
+    }
+
     // Live Playback Loop
     LaunchedEffect(isPlaying, playbackFps, frames.size) {
         if (isPlaying && frames.isNotEmpty()) {
@@ -131,16 +158,18 @@ fun AnimStudioScreen(
         }
     }
 
-    // Media File Picker (GIF, PNG, JPG, .anim)
+    // Media File Picker (GIF, PNG, JPG, BMP, .anim)
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null && bytes.isNotEmpty()) {
+                    val mimeType = context.contentResolver.getType(uri) ?: ""
                     val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "imported"
-                    if (fileName.endsWith(".anim")) {
-                        val bytes = stream.readBytes()
+
+                    if (AnimEncoder.isAnim(bytes) || fileName.endsWith(".anim", ignoreCase = true)) {
                         val parsed = AnimParser.parseAnim(fileName, bytes)
                         if (parsed != null && parsed.frames.isNotEmpty()) {
                             val isMsb = AnimParser.detectLikelyMsb(parsed.frames[0])
@@ -153,12 +182,13 @@ fun AnimStudioScreen(
                             frames = newFrames.toMutableList()
                             currentFrameIndex = 0
                             animName = fileName.removeSuffix(".anim")
-                            statusMessage = "Loaded ${frames.size} frames from $fileName"
+                            canvasRevision++
+                            statusMessage = "Loaded ${frames.size} frames from .anim"
                         } else {
                             statusMessage = "Invalid .anim binary file!"
                         }
-                    } else if (fileName.endsWith(".gif", ignoreCase = true)) {
-                        val gifFrames = AnimEncoder.decodeGif(stream)
+                    } else if (AnimEncoder.isGif(bytes) || mimeType.contains("gif", ignoreCase = true) || fileName.endsWith(".gif", ignoreCase = true)) {
+                        val gifFrames = AnimEncoder.decodeGif(bytes)
                         if (gifFrames.isNotEmpty()) {
                             val newFrames = gifFrames.map { (bmp, delay) ->
                                 AnimEncoder.decodeBitmapToStudioFrame(
@@ -171,14 +201,33 @@ fun AnimStudioScreen(
                             }
                             frames = newFrames.toMutableList()
                             currentFrameIndex = 0
-                            animName = fileName.substringBeforeLast('.')
-                            statusMessage = "Extracted ${frames.size} frames from GIF"
+                            animName = fileName.substringBeforeLast('.').ifBlank { "imported_gif" }
+                            canvasRevision++
+                            statusMessage = "Extracted ${frames.size} frames from animated GIF!"
                         } else {
                             statusMessage = "Failed to extract GIF frames!"
                         }
+                    } else if (AnimEncoder.isBmp(bytes)) {
+                        val bmpFrame = AnimEncoder.decodeBmpToStudioFrame(bytes)
+                        if (bmpFrame != null) {
+                            val newFrames = frames.toMutableList()
+                            newFrames.add(safeIndex + 1, bmpFrame)
+                            frames = newFrames
+                            currentFrameIndex = safeIndex + 1
+                            canvasRevision++
+                            statusMessage = "Imported 128x64 1-bit BMP!"
+                        } else {
+                            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bmp != null) {
+                                pendingImportBitmap = bmp
+                                showImportDialog = true
+                            } else {
+                                statusMessage = "Unsupported BMP format!"
+                            }
+                        }
                     } else {
-                        // Static image
-                        val bmp = BitmapFactory.decodeStream(stream)
+                        // Static image (PNG, JPG, WEBP)
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                         if (bmp != null) {
                             pendingImportBitmap = bmp
                             showImportDialog = true
@@ -415,57 +464,77 @@ fun AnimStudioScreen(
                                         DrawTool.CLEAR -> currentFrame.clear()
                                         DrawTool.FILL -> currentFrame.fillAll()
                                     }
+                                    canvasRevision++
                                 }
                             }
                             .pointerInput(selectedTool, safeIndex) {
-                                detectDragGestures { change, _ ->
-                                    change.consume()
-                                    val px = (change.position.x / size.width * 128).toInt().coerceIn(0, 127)
-                                    val py = (change.position.y / size.height * 64).toInt().coerceIn(0, 63)
-                                    if (selectedTool == DrawTool.PENCIL) {
-                                        currentFrame.setPixel(px, py, true)
-                                    } else if (selectedTool == DrawTool.ERASER) {
-                                        currentFrame.setPixel(px, py, false)
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        val px = (offset.x / size.width * 128).toInt().coerceIn(0, 127)
+                                        val py = (offset.y / size.height * 64).toInt().coerceIn(0, 63)
+                                        pushUndo()
+                                        lastTouchCoord = px to py
+                                        if (selectedTool == DrawTool.PENCIL) {
+                                            currentFrame.setPixel(px, py, true)
+                                            canvasRevision++
+                                        } else if (selectedTool == DrawTool.ERASER) {
+                                            currentFrame.setPixel(px, py, false)
+                                            canvasRevision++
+                                        }
+                                    },
+                                    onDragEnd = { lastTouchCoord = null },
+                                    onDragCancel = { lastTouchCoord = null },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        val px = (change.position.x / size.width * 128).toInt().coerceIn(0, 127)
+                                        val py = (change.position.y / size.height * 64).toInt().coerceIn(0, 63)
+                                        val last = lastTouchCoord
+                                        if (last != null && (last.first != px || last.second != py)) {
+                                            val value = (selectedTool == DrawTool.PENCIL)
+                                            if (selectedTool == DrawTool.PENCIL || selectedTool == DrawTool.ERASER) {
+                                                drawLineOnFrame(currentFrame, last.first, last.second, px, py, value)
+                                                canvasRevision++
+                                            }
+                                        }
+                                        lastTouchCoord = px to py
                                     }
-                                }
+                                )
                             }
                     ) {
-                        val pixelW = size.width / 128f
-                        val pixelH = size.height / 64f
+                        // High-speed Bitmap-backed hardware accelerated Canvas rendering
+                        val rev = canvasRevision
+                        val activeColor = phosphorColor.toArgb()
+                        val offColor = 0xFF050708.toInt()
+                        val onionColor = phosphorColor.copy(alpha = 0.28f).toArgb()
 
-                        // 1. Onion Skin (Previous frame faint overlay)
-                        if (prevFrame != null) {
-                            val onionColor = phosphorColor.copy(alpha = 0.22f)
-                            for (y in 0 until 64) {
-                                for (x in 0 until 128) {
-                                    if (prevFrame.getPixel(x, y)) {
-                                        drawRect(
-                                            color = onionColor,
-                                            topLeft = Offset(x * pixelW, y * pixelH),
-                                            size = Size(pixelW * 0.9f, pixelH * 0.9f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. Active Frame Pixels
                         for (y in 0 until 64) {
+                            val rowOffset = y * 128
                             for (x in 0 until 128) {
-                                if (currentFrame.getPixel(x, y)) {
-                                    drawRect(
-                                        color = phosphorColor,
-                                        topLeft = Offset(x * pixelW, y * pixelH),
-                                        size = Size(pixelW * 0.92f, pixelH * 0.92f)
-                                    )
+                                val idx = rowOffset + x
+                                val isLit = currentFrame.getPixel(x, y)
+                                val isOnion = onionSkin && prevFrame != null && prevFrame.getPixel(x, y)
+                                pixelBuffer[idx] = when {
+                                    isLit -> activeColor
+                                    isOnion -> onionColor
+                                    else -> offColor
                                 }
                             }
                         }
 
-                        // 3. Grid lines when zoomed
-                        if (showGrid && zoomLevel > 1f) {
+                        displayBitmap.setPixels(pixelBuffer, 0, 128, 0, 0, 128, 64)
+
+                        drawImage(
+                            image = displayBitmap.asImageBitmap(),
+                            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                            filterQuality = FilterQuality.None
+                        )
+
+                        // Clean grid overlay only when zoomed
+                        if (showGrid && zoomLevel > 1.2f) {
+                            val pixelW = size.width / 128f
+                            val pixelH = size.height / 64f
                             val gridColor = Color.White.copy(alpha = 0.08f)
-                            for (x in 0..128) {
+                            for (x in 0..128 step 4) {
                                 drawLine(
                                     color = gridColor,
                                     start = Offset(x * pixelW, 0f),
@@ -473,7 +542,7 @@ fun AnimStudioScreen(
                                     strokeWidth = 0.5f
                                 )
                             }
-                            for (y in 0..64) {
+                            for (y in 0..64 step 4) {
                                 drawLine(
                                     color = gridColor,
                                     start = Offset(0f, y * pixelH),
@@ -505,12 +574,15 @@ fun AnimStudioScreen(
                                     if (tool == DrawTool.INVERT) {
                                         pushUndo()
                                         currentFrame.invert()
+                                        canvasRevision++
                                     } else if (tool == DrawTool.CLEAR) {
                                         pushUndo()
                                         currentFrame.clear()
+                                        canvasRevision++
                                     } else if (tool == DrawTool.FILL) {
                                         pushUndo()
                                         currentFrame.fillAll()
+                                        canvasRevision++
                                     }
                                 }
                                 .padding(horizontal = 7.dp, vertical = 4.dp)
@@ -549,6 +621,7 @@ fun AnimStudioScreen(
                                     .clickable {
                                         pushUndo()
                                         currentFrame.shift(delta.first, delta.second)
+                                        canvasRevision++
                                     }
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
@@ -565,6 +638,7 @@ fun AnimStudioScreen(
                                     redoStack.add(currentFrame.pixels.clone())
                                     val prev = undoStack.removeAt(undoStack.size - 1)
                                     System.arraycopy(prev, 0, currentFrame.pixels, 0, prev.size)
+                                    canvasRevision++
                                 }
                             },
                             enabled = undoStack.isNotEmpty(),
@@ -583,6 +657,7 @@ fun AnimStudioScreen(
                                     undoStack.add(currentFrame.pixels.clone())
                                     val next = redoStack.removeAt(redoStack.size - 1)
                                     System.arraycopy(next, 0, currentFrame.pixels, 0, next.size)
+                                    canvasRevision++
                                 }
                             },
                             enabled = redoStack.isNotEmpty(),
@@ -907,76 +982,139 @@ fun AnimStudioScreen(
                     }
                 }
 
-                // Deployment Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Deploy to Watch
-                    Button(
-                        onClick = {
-                            val cleanName = if (animName.endsWith(".anim")) animName else "$animName.anim"
-                            val remotePath = "/mochi/$cleanName"
-                            isDeploying = true
-                            deployProgress = 0.1f
-
-                            scope.launch {
-                                val res = client.uploadFileWithProgress(remotePath, binaryBytes) { prog ->
-                                    deployProgress = prog.progress
-                                }
-                                isDeploying = false
-                                statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Successfully deployed to $remotePath!" else "Failed to deploy to watch!"
-                            }
-                        },
-                        enabled = !isDeploying,
-                        colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
+                // Deployment Action Buttons (Anim & Photo)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("DEPLOY TO WATCH", color = TacticalCyan, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Set as Boot Animation
-                    Button(
-                        onClick = {
-                            isDeploying = true
-                            deployProgress = 0.1f
-                            scope.launch {
-                                val res = client.uploadFileWithProgress("/boot/boot.anim", binaryBytes) { prog ->
-                                    deployProgress = prog.progress
-                                }
-                                isDeploying = false
-                                statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Installed as /boot/boot.anim!" else "Boot deploy failed!"
-                            }
-                        },
-                        enabled = !isDeploying,
-                        colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("SET AS BOOT", color = TacticalAmber, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Save Local File
-                    Button(
-                        onClick = {
-                            try {
+                        // Deploy Animation to /anim/
+                        Button(
+                            onClick = {
                                 val cleanName = if (animName.endsWith(".anim")) animName else "$animName.anim"
-                                val outFile = File(context.filesDir, cleanName)
-                                FileOutputStream(outFile).use { it.write(binaryBytes) }
-                                statusMessage = "Saved to ${outFile.name} (${outFile.length() / 1024} KB)"
-                            } catch (e: Exception) {
-                                statusMessage = "Export failed: ${e.message}"
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, TacticalBorder),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
+                                val remotePath = "/anim/$cleanName"
+                                isDeploying = true
+                                deployProgress = 0.1f
+
+                                scope.launch {
+                                    val res = client.uploadFileWithProgress(remotePath, binaryBytes) { prog ->
+                                        deployProgress = prog.progress
+                                    }
+                                    isDeploying = false
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Successfully deployed to $remotePath!" else "Failed to deploy to watch!"
+                                }
+                            },
+                            enabled = !isDeploying,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("DEPLOY ANIM (/anim)", color = TacticalCyan, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Deploy Photo to /photos/
+                        Button(
+                            onClick = {
+                                val baseName = animName.removeSuffix(".anim").removeSuffix(".bmp")
+                                val cleanBmpName = "$baseName.bmp"
+                                val remotePath = "/photos/$cleanBmpName"
+                                val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
+                                isDeploying = true
+                                deployProgress = 0.1f
+
+                                scope.launch {
+                                    val res = client.uploadFileWithProgress(remotePath, bmpBytes) { prog ->
+                                        deployProgress = prog.progress
+                                    }
+                                    isDeploying = false
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Photo deployed to $remotePath!" else "Photo deploy failed!"
+                                }
+                            },
+                            enabled = !isDeploying,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalGreenDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalGreen),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("DEPLOY PHOTO (/photos)", color = TacticalGreen, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("SAVE FILE", color = TextPrimary, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                        // Set as Boot Animation
+                        Button(
+                            onClick = {
+                                isDeploying = true
+                                deployProgress = 0.1f
+                                scope.launch {
+                                    val res = client.uploadFileWithProgress("/boot/boot.anim", binaryBytes) { prog ->
+                                        deployProgress = prog.progress
+                                    }
+                                    isDeploying = false
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Installed as /boot/boot.anim!" else "Boot deploy failed!"
+                                }
+                            },
+                            enabled = !isDeploying,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("BOOT ANIM", color = TacticalAmber, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Set as Boot Photo Splash
+                        Button(
+                            onClick = {
+                                val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
+                                isDeploying = true
+                                deployProgress = 0.1f
+                                scope.launch {
+                                    val res = client.uploadFileWithProgress("/boot/boot.bmp", bmpBytes) { prog ->
+                                        deployProgress = prog.progress
+                                    }
+                                    isDeploying = false
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Saved as /boot/boot.bmp splash!" else "Boot BMP deploy failed!"
+                                }
+                            },
+                            enabled = !isDeploying,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("BOOT PHOTO", color = TacticalAmber, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Save File
+                        Button(
+                            onClick = {
+                                try {
+                                    val cleanName = if (animName.endsWith(".anim")) animName else "$animName.anim"
+                                    val outFile = File(context.filesDir, cleanName)
+                                    FileOutputStream(outFile).use { it.write(binaryBytes) }
+
+                                    val bmpName = animName.removeSuffix(".anim") + ".bmp"
+                                    val bmpFile = File(context.filesDir, bmpName)
+                                    val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
+                                    FileOutputStream(bmpFile).use { it.write(bmpBytes) }
+
+                                    statusMessage = "Saved $cleanName & $bmpName to app storage!"
+                                } catch (e: Exception) {
+                                    statusMessage = "Export failed: ${e.message}"
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalSurfaceVariant),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalBorder),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE FILES", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
             }

@@ -44,6 +44,7 @@ enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boo
     APPS("APPS", Icons.Default.Apps, false),
     ANIM_MARKET("MARKET", Icons.Default.Storefront, false),
     ANIM_STUDIO("STUDIO", Icons.Default.Palette, false),
+    IMAGE_VIEWER("PHOTOS", Icons.Default.PhotoLibrary, false),
     FILES("FILES", Icons.Default.Folder, false),
     NOTIFICATIONS("ALERTS", Icons.Default.Notifications, false),
     SETTINGS("CONFIG", Icons.Default.Settings, false)
@@ -271,6 +272,7 @@ fun MainAppScaffold() {
                     onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
                     onNavigateToSettings = { navigateTo(Screen.SETTINGS) },
                     onNavigateToAnimStudio = { openAnimStudio() },
+                    onNavigateToImageViewer = { navigateTo(Screen.IMAGE_VIEWER) },
                     onNavigateToMore = { navigateTo(Screen.MORE) }
                 )
                 Screen.MIRROR -> LiveMirrorScreen()
@@ -282,6 +284,7 @@ fun MainAppScaffold() {
                     onNavigateToMochi = { navigateTo(Screen.MOCHI) },
                     onNavigateToAnimMarket = { navigateTo(Screen.ANIM_MARKET) },
                     onNavigateToAnimStudio = { openAnimStudio() },
+                    onNavigateToImageViewer = { navigateTo(Screen.IMAGE_VIEWER) },
                     onNavigateToApps = { navigateTo(Screen.APPS) },
                     onNavigateToFiles = { navigateTo(Screen.FILES) },
                     onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
@@ -300,6 +303,10 @@ fun MainAppScaffold() {
                     onBack = { navigateBack() },
                     initialAnimBytes = studioInitialBytes,
                     initialAnimName = studioInitialName
+                )
+                Screen.IMAGE_VIEWER -> ImageViewerScreen(
+                    onBack = { navigateBack() },
+                    onOpenInAnimStudio = { bytes, name -> openAnimStudio(bytes, name) }
                 )
                 Screen.IRDB -> OnlineIrdbScreen(onBack = { navigateBack() })
                 Screen.SIGINT -> SigintReconScreen(onBack = { navigateBack() })

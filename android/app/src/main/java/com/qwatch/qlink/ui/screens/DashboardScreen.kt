@@ -49,6 +49,7 @@ fun DashboardScreen(
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToAnimStudio: () -> Unit = {},
+    onNavigateToImageViewer: () -> Unit = {},
     onNavigateToMore: () -> Unit = {}
 ) {
     val client = QLinkClient.instance
@@ -664,6 +665,24 @@ fun DashboardScreen(
                         Text("128x64 OLED Canvas, Onion Skin, Dithering & Live Sideload", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                     }
                     Text("STUDIO >", color = TacticalCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+
+                // Photo Viewer & Image Converter
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TacticalSurfaceVariant)
+                        .clickable(onClick = onNavigateToImageViewer)
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("PHOTO VIEWER // IMAGE CONVERTER", color = TacticalGreen, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("Convert Phone Photos to 128x64 OLED BMP & Deploy to Watch", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Text("PHOTOS >", color = TacticalGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
 
                 // Online IRDB Flipper Repository

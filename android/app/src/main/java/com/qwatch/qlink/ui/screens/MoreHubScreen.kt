@@ -32,6 +32,7 @@ fun MoreHubScreen(
     onNavigateToMochi: () -> Unit,
     onNavigateToAnimMarket: () -> Unit,
     onNavigateToAnimStudio: () -> Unit = {},
+    onNavigateToImageViewer: () -> Unit = {},
     onNavigateToApps: () -> Unit,
     onNavigateToFiles: () -> Unit,
     onNavigateToNotifications: () -> Unit,
@@ -169,6 +170,18 @@ fun MoreHubScreen(
                     onClick = {
                         performHaptic()
                         onNavigateToAnimStudio()
+                    }
+                )
+
+                MoreModuleCard(
+                    title = "PHOTO VIEWER // IMAGE CONVERTER",
+                    subtitle = "Convert Phone Photos to 128x64 BMP, Dither Controls & Watch Album",
+                    badge = "PHOTO STUDIO",
+                    icon = Icons.Default.PhotoLibrary,
+                    accentColor = TacticalGreen,
+                    onClick = {
+                        performHaptic()
+                        onNavigateToImageViewer()
                     }
                 )
             }

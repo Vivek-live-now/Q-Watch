@@ -64,25 +64,48 @@ object AnimEncoder {
     }
 
     /**
-     * Converts a single Bitmap into an editable StudioFrame with dithering and aspect ratio controls.
+     * Adjusts brightness (-100..+100) and contrast (-100..+100) of a bitmap via ColorMatrix.
+     */
+    fun adjustBrightnessContrast(src: Bitmap, brightness: Float, contrast: Float): Bitmap {
+        if (brightness == 0f && contrast == 0f) return src
+        val bmp = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val c = ((contrast + 100f) / 100f).coerceIn(0f, 4f)
+        val cm = android.graphics.ColorMatrix(floatArrayOf(
+            c, 0f, 0f, 0f, brightness,
+            0f, c, 0f, 0f, brightness,
+            0f, 0f, c, 0f, brightness,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        paint.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+        canvas.drawBitmap(src, 0f, 0f, paint)
+        return bmp
+    }
+
+    /**
+     * Converts a single Bitmap into an editable StudioFrame with dithering, brightness, contrast, and aspect ratio controls.
      */
     fun decodeBitmapToStudioFrame(
         src: Bitmap,
         ditherMode: DitherMode = DitherMode.FLOYD_STEINBERG,
         threshold: Float = 128f,
         invert: Boolean = false,
-        fitMode: AspectFitMode = AspectFitMode.FIT
+        fitMode: AspectFitMode = AspectFitMode.FIT,
+        brightness: Float = 0f,
+        contrast: Float = 0f
     ): StudioFrame {
+        val adjustedSrc = if (brightness != 0f || contrast != 0f) adjustBrightnessContrast(src, brightness, contrast) else src
         val scaled = Bitmap.createBitmap(AnimParser.ANIM_WIDTH, AnimParser.ANIM_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(scaled)
         canvas.drawColor(Color.BLACK)
 
-        val srcW = src.width.toFloat()
-        val srcH = src.height.toFloat()
+        val srcW = adjustedSrc.width.toFloat()
+        val srcH = adjustedSrc.height.toFloat()
 
         when (fitMode) {
             AspectFitMode.STRETCH -> {
-                canvas.drawBitmap(src, null, Rect(0, 0, AnimParser.ANIM_WIDTH, AnimParser.ANIM_HEIGHT), Paint(Paint.FILTER_BITMAP_FLAG))
+                canvas.drawBitmap(adjustedSrc, null, Rect(0, 0, AnimParser.ANIM_WIDTH, AnimParser.ANIM_HEIGHT), Paint(Paint.FILTER_BITMAP_FLAG))
             }
             AspectFitMode.CROP -> {
                 val scale = (AnimParser.ANIM_WIDTH / srcW).coerceAtLeast(AnimParser.ANIM_HEIGHT / srcH)
@@ -90,7 +113,7 @@ object AnimEncoder {
                 val destH = (srcH * scale).toInt()
                 val offsetX = (AnimParser.ANIM_WIDTH - destW) / 2
                 val offsetY = (AnimParser.ANIM_HEIGHT - destH) / 2
-                canvas.drawBitmap(src, null, Rect(offsetX, offsetY, offsetX + destW, offsetY + destH), Paint(Paint.FILTER_BITMAP_FLAG))
+                canvas.drawBitmap(adjustedSrc, null, Rect(offsetX, offsetY, offsetX + destW, offsetY + destH), Paint(Paint.FILTER_BITMAP_FLAG))
             }
             AspectFitMode.FIT -> {
                 val scale = (AnimParser.ANIM_WIDTH / srcW).coerceAtMost(AnimParser.ANIM_HEIGHT / srcH)
@@ -98,7 +121,7 @@ object AnimEncoder {
                 val destH = (srcH * scale).toInt()
                 val offsetX = (AnimParser.ANIM_WIDTH - destW) / 2
                 val offsetY = (AnimParser.ANIM_HEIGHT - destH) / 2
-                canvas.drawBitmap(src, null, Rect(offsetX, offsetY, offsetX + destW, offsetY + destH), Paint(Paint.FILTER_BITMAP_FLAG))
+                canvas.drawBitmap(adjustedSrc, null, Rect(offsetX, offsetY, offsetX + destW, offsetY + destH), Paint(Paint.FILTER_BITMAP_FLAG))
             }
         }
 
@@ -240,6 +263,141 @@ object AnimEncoder {
         }
 
         return buffer.array()
+    }
+
+    /**
+     * Checks if byte array starts with GIF magic signature ("GIF87a" or "GIF89a").
+     */
+    fun isGif(data: ByteArray): Boolean {
+        if (data.size < 6) return false
+        val s = String(data, 0, 6)
+        return s == "GIF87a" || s == "GIF89a"
+    }
+
+    /**
+     * Checks if byte array starts with Q-Watch .anim magic signature ("QANM" / 0x4D4E4151).
+     */
+    fun isAnim(data: ByteArray): Boolean {
+        if (data.size < 4) return false
+        return (data[0].toInt() and 0xFF) == 0x51 &&
+               (data[1].toInt() and 0xFF) == 0x41 &&
+               (data[2].toInt() and 0xFF) == 0x4E &&
+               (data[3].toInt() and 0xFF) == 0x4D
+    }
+
+    /**
+     * Checks if byte array starts with standard Windows BMP signature ("BM").
+     */
+    fun isBmp(data: ByteArray): Boolean {
+        return data.size >= 2 && data[0] == 'B'.code.toByte() && data[1] == 'M'.code.toByte()
+    }
+
+    /**
+     * Packs an 8192-element BooleanArray (128x64) into a standard Windows 1-bit monochrome BMP (1086 bytes)
+     * natively rendered by Q-Watch AnimEngine.
+     */
+    fun encodeStudioFrameToBmp(
+        frame: StudioFrame,
+        invert: Boolean = false
+    ): ByteArray {
+        val totalSize = 14 + 40 + 8 + 1024 // 1086 bytes
+        val buffer = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN)
+
+        // 14-byte BMP File Header
+        buffer.put('B'.code.toByte())
+        buffer.put('M'.code.toByte())
+        buffer.putInt(totalSize) // File size = 1086
+        buffer.putInt(0)         // Reserved
+        buffer.putInt(62)        // Pixel data offset = 14 + 40 + 8 = 62
+
+        // 40-byte BITMAPINFOHEADER
+        buffer.putInt(40)                      // Header size
+        buffer.putInt(AnimParser.ANIM_WIDTH)   // Width = 128
+        buffer.putInt(AnimParser.ANIM_HEIGHT)  // Height = 64 (positive = bottom-up)
+        buffer.putShort(1.toShort())           // Planes = 1
+        buffer.putShort(1.toShort())           // 1-bit monochrome
+        buffer.putInt(0)                       // BI_RGB (no compression)
+        buffer.putInt(1024)                    // Image size in bytes
+        buffer.putInt(0)                       // X pixels per meter
+        buffer.putInt(0)                       // Y pixels per meter
+        buffer.putInt(2)                       // Colors used = 2
+        buffer.putInt(0)                       // Colors important
+
+        // 8-byte Palette (Color 0 = Black, Color 1 = White)
+        buffer.put(0.toByte()); buffer.put(0.toByte()); buffer.put(0.toByte()); buffer.put(0.toByte())
+        buffer.put(0xFF.toByte()); buffer.put(0xFF.toByte()); buffer.put(0xFF.toByte()); buffer.put(0.toByte())
+
+        // 1024 bytes pixel data (64 rows of 16 bytes each, bottom-up, MSB first)
+        val w = AnimParser.ANIM_WIDTH
+        val h = AnimParser.ANIM_HEIGHT
+        val rowBytes = w / 8 // 16 bytes
+
+        for (fileRow in 0 until h) {
+            val screenY = (h - 1) - fileRow // bottom-up row
+            for (col in 0 until rowBytes) {
+                var byteVal = 0
+                for (b in 0 until 8) {
+                    val screenX = col * 8 + b
+                    var lit = frame.getPixel(screenX, screenY)
+                    if (invert) lit = !lit
+                    if (lit) {
+                        byteVal = byteVal or (1 shl (7 - b)) // MSB first for standard BMP
+                    }
+                }
+                buffer.put(byteVal.toByte())
+            }
+        }
+
+        return buffer.array()
+    }
+
+    /**
+     * Encodes a single Bitmap into a 128x64 1-bit monochrome BMP (1086 bytes) with dithering and fit modes.
+     */
+    fun encodeBitmapToBmp(
+        src: Bitmap,
+        ditherMode: DitherMode = DitherMode.FLOYD_STEINBERG,
+        threshold: Float = 128f,
+        invert: Boolean = false,
+        fitMode: AspectFitMode = AspectFitMode.FIT
+    ): ByteArray {
+        val studioFrame = decodeBitmapToStudioFrame(src, ditherMode, threshold, invert, fitMode)
+        return encodeStudioFrameToBmp(studioFrame, false)
+    }
+
+    /**
+     * Decodes a standard 128x64 1-bit BMP into an editable StudioFrame.
+     */
+    fun decodeBmpToStudioFrame(data: ByteArray): StudioFrame? {
+        if (!isBmp(data) || data.size < 62 + 1024) return null
+        val buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        val pixelOffset = buf.getInt(10)
+        val width = buf.getInt(18)
+        val height = buf.getInt(22)
+        val bpp = buf.getShort(28).toInt()
+
+        if (width != AnimParser.ANIM_WIDTH || kotlin.math.abs(height) != AnimParser.ANIM_HEIGHT || bpp != 1) {
+            return null
+        }
+
+        val isBottomUp = height > 0
+        val frame = StudioFrame()
+        val rowBytes = AnimParser.ANIM_WIDTH / 8
+
+        for (row in 0 until AnimParser.ANIM_HEIGHT) {
+            val fileRow = if (isBottomUp) (AnimParser.ANIM_HEIGHT - 1 - row) else row
+            val offset = pixelOffset + fileRow * rowBytes
+            if (offset + rowBytes > data.size) break
+
+            for (col in 0 until rowBytes) {
+                val bVal = data[offset + col].toInt() and 0xFF
+                for (b in 0 until 8) {
+                    val isSet = (bVal and (1 shl (7 - b))) != 0
+                    frame.setPixel(col * 8 + b, row, isSet)
+                }
+            }
+        }
+        return frame
     }
 
     // =========================================================================
@@ -449,118 +607,168 @@ object AnimEncoder {
      * Extracts individual frames and their delays from an animated GIF.
      */
     fun decodeGif(inputStream: InputStream): List<Pair<Bitmap, Int>> {
-        val data = inputStream.readBytes()
-        if (data.size < 13) return emptyList()
+        return decodeGif(inputStream.readBytes())
+    }
 
-        val sig = String(data, 0, 6)
-        if (sig != "GIF87a" && sig != "GIF89a") return emptyList()
+    /**
+     * Extracts individual frames and their delays from an animated GIF byte array.
+     * Incorporates custom LZW decoding with automatic android.graphics.Movie / BitmapFactory fallback.
+     */
+    fun decodeGif(data: ByteArray): List<Pair<Bitmap, Int>> {
+        if (data.size < 6) return emptyList()
 
-        var pos = 6
-        fun readByte(): Int = data[pos++].toInt() and 0xFF
-        fun readShort(): Int {
-            val v = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
-            pos += 2
-            return v
-        }
-
-        val canvasW = readShort()
-        val canvasH = readShort()
-        val packed = readByte()
-        pos += 2 // skip bg & aspect
-
-        val hasGct = (packed and 0x80) != 0
-        val gctSize = 1 shl ((packed and 0x07) + 1)
-        val gct = IntArray(if (hasGct) gctSize else 0)
-        if (hasGct) {
-            for (i in 0 until gctSize) {
-                val r = readByte()
-                val g = readByte()
-                val b = readByte()
-                gct[i] = Color.rgb(r, g, b)
-            }
-        }
-
-        val frames = mutableListOf<Pair<Bitmap, Int>>()
-        var lastDelayMs = 50
-        var transIdx: Int? = null
-        var currentCanvas = Bitmap.createBitmap(canvasW.coerceAtLeast(1), canvasH.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-
-        while (pos < data.size) {
-            val block = readByte()
-            if (block == 0x3B) break // Trailer
-            if (block == 0x21) {
-                val extType = readByte()
-                if (extType == 0xF9) {
-                    readByte() // size 4
-                    val gcePacked = readByte()
-                    val delay10ms = readShort()
-                    val trans = readByte()
-                    readByte() // terminator
-                    lastDelayMs = (delay10ms * 10).coerceAtLeast(20)
-                    transIdx = if ((gcePacked and 0x01) != 0) trans else null
-                } else {
-                    // Skip sub-blocks
-                    while (pos < data.size) {
-                        val sz = readByte()
-                        if (sz == 0) break
-                        pos += sz
-                    }
-                }
-            } else if (block == 0x2C) {
-                val left = readShort()
-                val top = readShort()
-                val iw = readShort()
-                val ih = readShort()
-                val ipacked = readByte()
-                val hasLct = (ipacked and 0x80) != 0
-                val palette = if (hasLct) {
-                    val lctSize = 1 shl ((ipacked and 0x07) + 1)
-                    val lct = IntArray(lctSize)
-                    for (i in 0 until lctSize) {
-                        lct[i] = Color.rgb(readByte(), readByte(), readByte())
-                    }
-                    lct
-                } else {
-                    gct
+        // 1. Try manual LZW decoder
+        try {
+            val sig = String(data, 0, 6)
+            if (sig == "GIF87a" || sig == "GIF89a") {
+                var pos = 6
+                fun readByte(): Int = data[pos++].toInt() and 0xFF
+                fun readShort(): Int {
+                    val v = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
+                    pos += 2
+                    return v
                 }
 
-                val minCodeSize = readByte()
-                // Read image data sub-blocks
-                val compData = ArrayList<Byte>()
+                val canvasW = readShort()
+                val canvasH = readShort()
+                val packed = readByte()
+                pos += 2 // skip bg & aspect
+
+                val hasGct = (packed and 0x80) != 0
+                val gctSize = 1 shl ((packed and 0x07) + 1)
+                val gct = IntArray(if (hasGct) gctSize else 0)
+                if (hasGct) {
+                    for (i in 0 until gctSize) {
+                        val r = readByte()
+                        val g = readByte()
+                        val b = readByte()
+                        gct[i] = Color.rgb(r, g, b)
+                    }
+                }
+
+                val frames = mutableListOf<Pair<Bitmap, Int>>()
+                var lastDelayMs = 50
+                var transIdx: Int? = null
+                var currentCanvas = Bitmap.createBitmap(canvasW.coerceAtLeast(1), canvasH.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+
                 while (pos < data.size) {
-                    val sz = readByte()
-                    if (sz == 0) break
-                    for (k in 0 until sz) compData.add(data[pos + k])
-                    pos += sz
-                }
-
-                // Decompress LZW
-                val pixels = decompressLzw(compData, minCodeSize, iw * ih)
-                val frameBmp = currentCanvas.copy(Bitmap.Config.ARGB_8888, true)
-                for (y in 0 until ih) {
-                    val cy = top + y
-                    if (cy >= canvasH) break
-                    for (x in 0 until iw) {
-                        val cx = left + x
-                        if (cx >= canvasW) break
-                        val pIdx = y * iw + x
-                        if (pIdx < pixels.size) {
-                            val cIdx = pixels[pIdx]
-                            if (cIdx != transIdx && cIdx in palette.indices) {
-                                frameBmp.setPixel(cx, cy, palette[cIdx])
+                    val block = readByte()
+                    if (block == 0x3B) break // Trailer
+                    if (block == 0x21) {
+                        val extType = readByte()
+                        if (extType == 0xF9) {
+                            readByte() // size 4
+                            val gcePacked = readByte()
+                            val delay10ms = readShort()
+                            val trans = readByte()
+                            readByte() // terminator
+                            lastDelayMs = (delay10ms * 10).coerceAtLeast(20)
+                            transIdx = if ((gcePacked and 0x01) != 0) trans else null
+                        } else {
+                            // Skip sub-blocks
+                            while (pos < data.size) {
+                                val sz = readByte()
+                                if (sz == 0) break
+                                pos += sz
                             }
                         }
+                    } else if (block == 0x2C) {
+                        val left = readShort()
+                        val top = readShort()
+                        val iw = readShort()
+                        val ih = readShort()
+                        val ipacked = readByte()
+                        val hasLct = (ipacked and 0x80) != 0
+                        val palette = if (hasLct) {
+                            val lctSize = 1 shl ((ipacked and 0x07) + 1)
+                            val lct = IntArray(lctSize)
+                            for (i in 0 until lctSize) {
+                                lct[i] = Color.rgb(readByte(), readByte(), readByte())
+                            }
+                            lct
+                        } else {
+                            gct
+                        }
+
+                        val minCodeSize = readByte()
+                        // Read image data sub-blocks
+                        val compData = ArrayList<Byte>()
+                        while (pos < data.size) {
+                            val sz = readByte()
+                            if (sz == 0) break
+                            for (k in 0 until sz) compData.add(data[pos + k])
+                            pos += sz
+                        }
+
+                        // Decompress LZW
+                        val pixels = decompressLzw(compData, minCodeSize, iw * ih)
+                        val frameBmp = currentCanvas.copy(Bitmap.Config.ARGB_8888, true)
+                        for (y in 0 until ih) {
+                            val cy = top + y
+                            if (cy >= canvasH) break
+                            for (x in 0 until iw) {
+                                val cx = left + x
+                                if (cx >= canvasW) break
+                                val pIdx = y * iw + x
+                                if (pIdx < pixels.size) {
+                                    val cIdx = pixels[pIdx]
+                                    if (cIdx != transIdx && cIdx in palette.indices) {
+                                        frameBmp.setPixel(cx, cy, palette[cIdx])
+                                    }
+                                }
+                            }
+                        }
+
+                        currentCanvas = frameBmp
+                        frames.add(frameBmp to lastDelayMs)
+                        lastDelayMs = 50
+                        transIdx = null
                     }
                 }
 
-                currentCanvas = frameBmp
-                frames.add(frameBmp to lastDelayMs)
-                lastDelayMs = 50
-                transIdx = null
+                if (frames.isNotEmpty()) {
+                    return frames
+                }
             }
+        } catch (_: Exception) {
+            // Fall through to fallback decoders
         }
 
-        return if (frames.isNotEmpty()) frames else listOf(currentCanvas to 50)
+        // 2. Fallback: android.graphics.Movie frame extraction
+        try {
+            val movie = android.graphics.Movie.decodeByteArray(data, 0, data.size)
+            if (movie != null && movie.duration() > 0) {
+                val duration = movie.duration()
+                val step = 50 // ms per frame
+                val w = movie.width().coerceAtLeast(1)
+                val h = movie.height().coerceAtLeast(1)
+                val fallbackFrames = mutableListOf<Pair<Bitmap, Int>>()
+                var t = 0
+                while (t < duration && fallbackFrames.size < 120) {
+                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val c = Canvas(bmp)
+                    movie.setTime(t)
+                    movie.draw(c, 0f, 0f)
+                    fallbackFrames.add(bmp to step)
+                    t += step
+                }
+                if (fallbackFrames.isNotEmpty()) return fallbackFrames
+            }
+        } catch (_: Exception) {
+            // Fall through
+        }
+
+        // 3. Fallback: Single frame BitmapFactory
+        try {
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size)
+            if (bmp != null) {
+                return listOf(bmp to 50)
+            }
+        } catch (_: Exception) {
+            // Nothing more
+        }
+
+        return emptyList()
     }
 
     private fun decompressLzw(data: List<Byte>, minCodeSize: Int, expectedPixels: Int): IntArray {

@@ -36,6 +36,8 @@ bool FileManager::begin() {
     LittleFS.mkdir("/ir");
     LittleFS.mkdir("/mochi");
     LittleFS.mkdir("/sounds");
+    LittleFS.mkdir("/photos");
+    LittleFS.mkdir("/images");
     return true;
 }
 

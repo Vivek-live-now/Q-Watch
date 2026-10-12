@@ -2470,16 +2470,16 @@ void DisplayManager::drawAppAnimList() {
     drawTopStatusBar();
 
     oled.setFont(u8g2_font_5x7_tf);
-    oled.drawStr(0, 18, "ANIMATIONS");
+    oled.drawStr(0, 18, "ANIM / PHOTOS");
     oled.drawHLine(0, 21, 128);
 
     int count = ui.getAnimCount();
     if (count == 0) {
         oled.setFont(u8g2_font_6x10_tf);
-        oled.drawStr(10, 36, "NO ANIMATIONS");
+        oled.drawStr(10, 36, "NO MEDIA FOUND");
         oled.setFont(u8g2_font_5x7_tf);
         oled.drawStr(10, 48, "Drop .anim / .bmp");
-        oled.drawStr(10, 58, "to /anim/ or /boot/");
+        oled.drawStr(10, 58, "to /photos or /anim");
         return;
     }
 
@@ -2524,29 +2524,42 @@ void DisplayManager::drawAppAnimPlayer() {
         oled.drawHLine(0, 12, 128);
 
         oled.setFont(u8g2_font_5x7_tf);
-        if (animEngine.isPaused()) {
-            oled.drawStr(2, 9, "|| PAUSE");
+        bool isPhoto = animEngine.isBmpFormat() || (animEngine.getTotalFrames() <= 1);
+        if (isPhoto) {
+            oled.drawStr(2, 9, "[PHOTO]");
+            oled.drawStr(44, 9, "UP/DN:NEXT");
+            char pnum[16];
+            snprintf(pnum, sizeof(pnum), "%d/%d", ui.getAnimSelection() + 1, ui.getAnimCount());
+            int sw = oled.getStrWidth(pnum);
+            oled.drawStr(128 - sw - 2, 9, pnum);
         } else {
-            oled.drawStr(2, 9, "> PLAY");
+            if (animEngine.isPaused()) {
+                oled.drawStr(2, 9, "|| PAUSE");
+            } else {
+                oled.drawStr(2, 9, "> PLAY");
+            }
+
+            char spd[10];
+            snprintf(spd, sizeof(spd), "%.1fx", animEngine.getSpeedMultiplier());
+            oled.drawStr(54, 9, spd);
+
+            char fnum[16];
+            snprintf(fnum, sizeof(fnum), "%u/%u", (unsigned int)(animEngine.getCurrentFrame() + 1), (unsigned int)animEngine.getTotalFrames());
+            int sw = oled.getStrWidth(fnum);
+            oled.drawStr(128 - sw - 2, 9, fnum);
         }
-
-        char spd[10];
-        snprintf(spd, sizeof(spd), "%.1fx", animEngine.getSpeedMultiplier());
-        oled.drawStr(54, 9, spd);
-
-        char fnum[16];
-        snprintf(fnum, sizeof(fnum), "%u/%u", (unsigned int)(animEngine.getCurrentFrame() + 1), (unsigned int)animEngine.getTotalFrames());
-        int sw = oled.getStrWidth(fnum);
-        oled.drawStr(128 - sw - 2, 9, fnum);
 
         oled.setDrawColor(0);
         oled.drawBox(0, 57, 128, 7);
         oled.setDrawColor(1);
         oled.drawHLine(0, 56, 128);
-        if (animEngine.getTotalFrames() > 1) {
+        if (!isPhoto && animEngine.getTotalFrames() > 1) {
             int prog = ((int)animEngine.getCurrentFrame() * 122) / (animEngine.getTotalFrames() - 1);
             if (prog > 122) prog = 122;
             oled.drawBox(3, 59, prog, 3);
+        } else if (isPhoto) {
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(3, 63, "LONG OK: BOOT  CANCEL: EXIT");
         }
     }
 }

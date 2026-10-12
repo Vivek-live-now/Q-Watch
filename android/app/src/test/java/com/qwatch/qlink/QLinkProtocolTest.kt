@@ -218,4 +218,51 @@ class QLinkProtocolTest {
         assertEquals(27, st.animCount)
         assertEquals(20, st.freeAnimSlots)
     }
+
+    @Test
+    fun testBmpEncodingAndDecoding() {
+        val frame = com.qwatch.qlink.anim.StudioFrame()
+        frame.setPixel(0, 0, true)
+        frame.setPixel(127, 0, true)
+        frame.setPixel(64, 32, true)
+        frame.setPixel(0, 63, true)
+        frame.setPixel(127, 63, true)
+
+        val bmpBytes = com.qwatch.qlink.anim.AnimEncoder.encodeStudioFrameToBmp(frame)
+        assertEquals(1086, bmpBytes.size)
+        assertTrue(com.qwatch.qlink.anim.AnimEncoder.isBmp(bmpBytes))
+
+        // Check BMP header
+        assertEquals('B'.code.toByte(), bmpBytes[0])
+        assertEquals('M'.code.toByte(), bmpBytes[1])
+
+        val decoded = com.qwatch.qlink.anim.AnimEncoder.decodeBmpToStudioFrame(bmpBytes)
+        assertNotNull(decoded)
+        decoded?.let { d ->
+            assertTrue(d.getPixel(0, 0))
+            assertTrue(d.getPixel(127, 0))
+            assertTrue(d.getPixel(64, 32))
+            assertTrue(d.getPixel(0, 63))
+            assertTrue(d.getPixel(127, 63))
+            assertFalse(d.getPixel(1, 0))
+            assertFalse(d.getPixel(65, 32))
+        }
+    }
+
+    @Test
+    fun testMagicByteFormatDetection() {
+        val gifBytes = "GIF89aSomeImageData".toByteArray()
+        assertTrue(com.qwatch.qlink.anim.AnimEncoder.isGif(gifBytes))
+
+        val animBytes = byteArrayOf(0x51, 0x41, 0x4E, 0x4D, 0x01, 0x00) // "QANM"
+        assertTrue(com.qwatch.qlink.anim.AnimEncoder.isAnim(animBytes))
+
+        val bmpBytes = byteArrayOf('B'.code.toByte(), 'M'.code.toByte(), 0x3E, 0x04)
+        assertTrue(com.qwatch.qlink.anim.AnimEncoder.isBmp(bmpBytes))
+
+        val randomBytes = byteArrayOf(0x00, 0x01, 0x02, 0x03)
+        assertFalse(com.qwatch.qlink.anim.AnimEncoder.isGif(randomBytes))
+        assertFalse(com.qwatch.qlink.anim.AnimEncoder.isAnim(randomBytes))
+        assertFalse(com.qwatch.qlink.anim.AnimEncoder.isBmp(randomBytes))
+    }
 }

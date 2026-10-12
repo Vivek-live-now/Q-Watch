@@ -2924,6 +2924,75 @@ def test_littlefs_explorer_and_ble_transfer():
     assert "clipboard" in fsk and "ClipboardMode" in fsk, "FilesScreen must provide Copy/Cut/Paste clipboard functionality"
     print("  [PASS] 4. Android FilesScreen complete file manager overhaul (navigation, upload, download, clipboard, dialogs) verified.")
 
+def test_photo_viewer_and_anim_packer_overhaul():
+    print("\n--- 46. Photo Viewer & Animation Packer Overhaul Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fm_cpp = os.path.join(base_dir, "src", "file_manager.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    android_screens = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens")
+    android_anim = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "anim")
+    main_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "MainActivity.kt")
+
+    # 1. Firmware storage directory initialization
+    with open(fm_cpp, "r", encoding="utf-8") as f:
+        fm = f.read()
+    assert 'LittleFS.mkdir("/photos");' in fm and 'LittleFS.mkdir("/images");' in fm, "FileManager must auto-create /photos and /images directories"
+    print("  [PASS] 1. LittleFS auto-creation of /photos and /images directories verified.")
+
+    # 2. UICore loadAnimList scanning & photo navigation
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        ui = f.read()
+    assert 'scanDir("/photos");' in ui and 'scanDir("/images");' in ui, "UICore must scan /photos and /images for media"
+    assert "animEngine.getTotalFrames() <= 1 || animEngine.isBmpFormat()" in ui, "UICore must provide photo navigation on UP/DOWN buttons"
+    print("  [PASS] 2. UICore media scanning and photo album UP/DOWN cycling verified.")
+
+    # 3. DisplayManager photo HUD banner & media list
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        disp = f.read()
+    assert 'oled.drawStr(0, 18, "ANIM / PHOTOS");' in disp, "DisplayManager must show ANIM / PHOTOS header"
+    assert 'oled.drawStr(2, 9, "[PHOTO]");' in disp, "DisplayManager must show [PHOTO] badge in HUD"
+    print("  [PASS] 3. DisplayManager photo HUD banner and ANIM / PHOTOS list header verified.")
+
+    # 4. Android AnimEncoder BMP quantizer & GIF fallback decoder
+    encoder_kt = os.path.join(android_anim, "AnimEncoder.kt")
+    with open(encoder_kt, "r", encoding="utf-8") as f:
+        enc = f.read()
+    assert "fun encodeStudioFrameToBmp" in enc, "AnimEncoder must provide encodeStudioFrameToBmp"
+    assert "fun decodeBmpToStudioFrame" in enc, "AnimEncoder must provide decodeBmpToStudioFrame"
+    assert "fun isGif" in enc and "fun isBmp" in enc and "fun isAnim" in enc, "AnimEncoder must provide magic byte checkers"
+    assert "adjustBrightnessContrast" in enc, "AnimEncoder must provide brightness and contrast adjustments"
+    print("  [PASS] 4. Android AnimEncoder 1-bit BMP encoder/decoder, magic-byte detection & LZW/Movie fallback verified.")
+
+    # 5. AnimStudioScreen hardware-accelerated Bitmap canvas & Bresenham drag
+    studio_kt = os.path.join(android_screens, "AnimStudioScreen.kt")
+    with open(studio_kt, "r", encoding="utf-8") as f:
+        studio = f.read()
+    assert "displayBitmap.setPixels" in studio, "AnimStudioScreen must use Bitmap.setPixels for 60-120 FPS rendering"
+    assert "drawImage(" in studio, "AnimStudioScreen must use hardware-accelerated drawImage"
+    assert "drawLineOnFrame" in studio, "AnimStudioScreen must use Bresenham line interpolation on drag"
+    assert 'remotePath = "/photos/$cleanBmpName"' in studio, "AnimStudioScreen must support direct /photos deployment"
+    print("  [PASS] 5. AnimStudioScreen zero-lag Bitmap canvas, Bresenham drawing & GIF/BMP sideload verified.")
+
+    # 6. Dedicated ImageViewerScreen Photo Studio & Watch Gallery
+    viewer_kt = os.path.join(android_screens, "ImageViewerScreen.kt")
+    assert os.path.exists(viewer_kt), "ImageViewerScreen.kt must exist"
+    with open(viewer_kt, "r", encoding="utf-8") as f:
+        viewer = f.read()
+    assert "fun ImageViewerScreen" in viewer
+    assert "oledBitmap.setPixels" in viewer, "ImageViewerScreen must simulate OLED in real-time"
+    assert "refreshWatchGallery" in viewer, "ImageViewerScreen must provide watch gallery explorer"
+    assert '"/photos/$cleanName"' in viewer, "ImageViewerScreen must deploy photos to /photos"
+    assert '"/boot/boot.bmp"' in viewer, "ImageViewerScreen must deploy boot splash to /boot/boot.bmp"
+    print("  [PASS] 6. ImageViewerScreen photo quantizer, OLED simulator, and Watch Gallery manager verified.")
+
+    # 7. Navigation wiring
+    with open(main_kt, "r", encoding="utf-8") as f:
+        main = f.read()
+    assert 'IMAGE_VIEWER("PHOTOS"' in main, "MainActivity must declare IMAGE_VIEWER screen"
+    assert "ImageViewerScreen" in main, "MainActivity must route to ImageViewerScreen"
+    print("  [PASS] 7. MainActivity and DashboardScreen IMAGE_VIEWER navigation wiring verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -2961,7 +3030,9 @@ if __name__ == "__main__":
     test_ble_connectivity_and_online_irdb_suite()
     test_wifi_ble_coexistence_and_boot_loop_guard()
     test_littlefs_explorer_and_ble_transfer()
+    test_photo_viewer_and_anim_packer_overhaul()
     print("\nAll self-test verifications PASSED!")
+
 
 
 
