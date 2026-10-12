@@ -664,9 +664,10 @@ def generate_radar_frames(total_frames=24):
         buf = bytearray(ANIM_FRAME_BYTES)
         def px(x, y, v=1):
             if 0 <= x < 128 and 0 <= y < 64:
-                idx = x + (y // 8) * 128
-                if v: buf[idx] |= (1 << (y % 8))
-                else: buf[idx] &= ~(1 << (y % 8))
+                idx = y * 16 + (x // 8)
+                bit = x % 8
+                if v: buf[idx] |= (1 << bit)
+                else: buf[idx] &= ~(1 << bit)
 
         # Corner brackets
         for i in range(8):
@@ -711,9 +712,10 @@ def generate_gunbarrel_frames(total_frames=20):
         buf = bytearray(ANIM_FRAME_BYTES)
         def px(x, y, v=1):
             if 0 <= x < 128 and 0 <= y < 64:
-                idx = x + (y // 8) * 128
-                if v: buf[idx] |= (1 << (y % 8))
-                else: buf[idx] &= ~(1 << (y % 8))
+                idx = y * 16 + (x // 8)
+                bit = x % 8
+                if v: buf[idx] |= (1 << bit)
+                else: buf[idx] &= ~(1 << bit)
 
         phase = t / total_frames
         grooves = 8
@@ -748,8 +750,9 @@ def generate_matrix_frames(total_frames=24):
         buf = bytearray(ANIM_FRAME_BYTES)
         def px(x, y, v=1):
             if 0 <= x < 128 and 0 <= y < 64:
-                idx = x + (y // 8) * 128
-                if v: buf[idx] |= (1 << (y % 8))
+                idx = y * 16 + (x // 8)
+                bit = x % 8
+                if v: buf[idx] |= (1 << bit)
 
         for c in range(cols):
             head_y = (col_offsets[c] + t * col_speeds[c]) % 80
@@ -791,7 +794,9 @@ def generate_ecg_frames(total_frames=24):
         buf = bytearray(ANIM_FRAME_BYTES)
         def px(x, y):
             if 0 <= x < 128 and 0 <= y < 64:
-                buf[x + (y // 8) * 128] |= (1 << (y % 8))
+                idx = y * 16 + (x // 8)
+                bit = x % 8
+                buf[idx] |= (1 << bit)
 
         # Faint grid background
         for gx in range(0, 128, 16):
@@ -824,7 +829,9 @@ def generate_lockon_frames(total_frames=20):
         buf = bytearray(ANIM_FRAME_BYTES)
         def px(x, y):
             if 0 <= x < 128 and 0 <= y < 64:
-                buf[x + (y // 8) * 128] |= (1 << (y % 8))
+                idx = y * 16 + (x // 8)
+                bit = x % 8
+                buf[idx] |= (1 << bit)
 
         # Contracting box
         box_sz = 26 - int(6 * math.sin((t / total_frames) * math.pi))

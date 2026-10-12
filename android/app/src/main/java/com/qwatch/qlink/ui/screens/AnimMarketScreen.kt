@@ -40,6 +40,7 @@ import com.qwatch.qlink.viewmodel.AnimMarketViewModel
 @Composable
 fun AnimMarketScreen(
     onBack: (() -> Unit)? = null,
+    onOpenStudio: ((bytes: ByteArray?, name: String) -> Unit)? = null,
     viewModel: AnimMarketViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -142,8 +143,18 @@ fun AnimMarketScreen(
                 }
             }
 
-            IconButton(onClick = { viewModel.loadCatalog(context) }) {
-                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = TacticalCyan)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (onOpenStudio != null) {
+                    IconButton(
+                        onClick = { onOpenStudio(null, "new_anim") },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Palette, contentDescription = "Studio", tint = TacticalCyan)
+                    }
+                }
+                IconButton(onClick = { viewModel.loadCatalog(context) }) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = TacticalCyan)
+                }
             }
         }
 
@@ -494,7 +505,27 @@ fun AnimMarketScreen(
                         onDeploy = { viewModel.deployToWatch(context, item, isReplace = false) },
                         onReplace = { viewModel.deployToWatch(context, item, isReplace = true) },
                         onDelete = { viewModel.deleteFromWatch(item) },
-                        onSetBoot = { viewModel.setAsBootAnimation(context, item) }
+                        onSetBoot = { viewModel.setAsBootAnimation(context, item) },
+                        onEdit = if (onOpenStudio != null) {
+                            {
+                                try {
+                                    val bytes = if (item.isCustom) {
+                                        activeAnim?.let { anim ->
+                                            AnimEncoder.encodeAnimation(
+                                                bitmaps = anim.frames.map { AnimParser.decodeFrameToBitmap(it) },
+                                                delayMs = anim.header.frameDelayMs,
+                                                loop = anim.header.isLooping
+                                            )
+                                        }
+                                    } else {
+                                        context.assets.open("mochi_market/${item.name}").use { it.readBytes() }
+                                    }
+                                    onOpenStudio(bytes, item.name.removeSuffix(".anim"))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Failed to load animation: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else null
                     )
                 }
             }
@@ -607,7 +638,8 @@ fun AnimMarketCard(
     onDeploy: () -> Unit,
     onReplace: () -> Unit,
     onDelete: () -> Unit,
-    onSetBoot: () -> Unit
+    onSetBoot: () -> Unit,
+    onEdit: (() -> Unit)? = null
 ) {
     val borderColor = if (isSelected) TacticalAmber else TacticalBorder
 
@@ -716,7 +748,7 @@ fun AnimMarketCard(
             // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (!item.isInstalled) {
                     Button(
@@ -725,15 +757,33 @@ fun AnimMarketCard(
                         colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
                         border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan),
                         shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1.3f)
                     ) {
                         Text(
                             text = "DEPLOY TO WATCH",
                             color = TacticalCyan,
-                            fontSize = 9.sp,
+                            fontSize = 8.5.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (onEdit != null) {
+                        Button(
+                            onClick = onEdit,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(0.7f)
+                        ) {
+                            Text(
+                                text = "EDIT",
+                                color = TacticalAmber,
+                                fontSize = 8.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 } else {
                     Button(
@@ -747,10 +797,28 @@ fun AnimMarketCard(
                         Text(
                             text = "REPLACE",
                             color = TacticalCyan,
-                            fontSize = 8.5.sp,
+                            fontSize = 8.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (onEdit != null) {
+                        Button(
+                            onClick = onEdit,
+                            colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(0.8f)
+                        ) {
+                            Text(
+                                text = "EDIT",
+                                color = TacticalAmber,
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     Button(
@@ -763,7 +831,7 @@ fun AnimMarketCard(
                         Text(
                             text = "SET BOOT",
                             color = TacticalAmber,
-                            fontSize = 8.5.sp,
+                            fontSize = 8.sp,
                             fontFamily = FontFamily.Monospace
                         )
                     }
@@ -773,12 +841,12 @@ fun AnimMarketCard(
                         colors = ButtonDefaults.buttonColors(containerColor = TacticalRedDim),
                         border = androidx.compose.foundation.BorderStroke(1.dp, TacticalRed),
                         shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(0.8f)
                     ) {
                         Text(
                             text = "DELETE",
                             color = TacticalRed,
-                            fontSize = 8.5.sp,
+                            fontSize = 8.sp,
                             fontFamily = FontFamily.Monospace
                         )
                     }

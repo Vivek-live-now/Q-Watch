@@ -125,3 +125,175 @@ object AnimClassifier {
             .uppercase()
     }
 }
+
+/**
+ * Pixel drawing tools for the full-fledged Live OLED Studio & Editor.
+ */
+enum class DrawTool(val label: String) {
+    PENCIL("PEN"),
+    ERASER("ERASE"),
+    LINE("LINE"),
+    RECT("BOX"),
+    FILL_RECT("FILL BOX"),
+    CIRCLE("CIRCLE"),
+    INVERT("INVERT"),
+    CLEAR("CLEAR"),
+    FILL("FILL ALL")
+}
+
+/**
+ * Advanced dithering algorithms for media quantization.
+ */
+enum class DitherMode(val label: String) {
+    FLOYD_STEINBERG("FLOYD-STEINBERG"),
+    ATKINSON("ATKINSON"),
+    BAYER("BAYER 4X4"),
+    THRESHOLD("THRESHOLD")
+}
+
+/**
+ * Aspect ratio handling when importing images and GIFs.
+ */
+enum class AspectFitMode(val label: String) {
+    FIT("LETTERBOX (FIT)"),
+    STRETCH("STRETCH"),
+    CROP("CENTER CROP")
+}
+
+/**
+ * Single mutable frame in the Live Animation Studio with full pixel editing utilities.
+ */
+data class StudioFrame(
+    val pixels: BooleanArray = BooleanArray(128 * 64),
+    var delayMs: Int = 50
+) {
+    fun clone(): StudioFrame = StudioFrame(pixels.clone(), delayMs)
+
+    fun getPixel(x: Int, y: Int): Boolean {
+        if (x !in 0 until 128 || y !in 0 until 64) return false
+        return pixels[y * 128 + x]
+    }
+
+    fun setPixel(x: Int, y: Int, value: Boolean) {
+        if (x in 0 until 128 && y in 0 until 64) {
+            pixels[y * 128 + x] = value
+        }
+    }
+
+    fun clear() {
+        pixels.fill(false)
+    }
+
+    fun fillAll() {
+        pixels.fill(true)
+    }
+
+    fun invert() {
+        for (i in pixels.indices) pixels[i] = !pixels[i]
+    }
+
+    fun drawLine(x0: Int, y0: Int, x1: Int, y1: Int, value: Boolean) {
+        var x = x0
+        var y = y0
+        val dx = kotlin.math.abs(x1 - x0)
+        val dy = kotlin.math.abs(y1 - y0)
+        val sx = if (x0 < x1) 1 else -1
+        val sy = if (y0 < y1) 1 else -1
+        var err = dx - dy
+
+        while (true) {
+            setPixel(x, y, value)
+            if (x == x1 && y == y1) break
+            val e2 = 2 * err
+            if (e2 > -dy) {
+                err -= dy
+                x += sx
+            }
+            if (e2 < dx) {
+                err += dx
+                y += sy
+            }
+        }
+    }
+
+    fun drawRect(x0: Int, y0: Int, x1: Int, y1: Int, fill: Boolean, value: Boolean) {
+        val minX = kotlin.math.min(x0, x1)
+        val maxX = kotlin.math.max(x0, x1)
+        val minY = kotlin.math.min(y0, y1)
+        val maxY = kotlin.math.max(y0, y1)
+
+        if (fill) {
+            for (y in minY..maxY) {
+                for (x in minX..maxX) {
+                    setPixel(x, y, value)
+                }
+            }
+        } else {
+            for (x in minX..maxX) {
+                setPixel(x, minY, value)
+                setPixel(x, maxY, value)
+            }
+            for (y in minY..maxY) {
+                setPixel(minX, y, value)
+                setPixel(maxX, y, value)
+            }
+        }
+    }
+
+    fun drawCircle(cx: Int, cy: Int, radius: Int, value: Boolean) {
+        var x = 0
+        var y = radius
+        var d = 3 - 2 * radius
+        fun plot8(px: Int, py: Int) {
+            setPixel(cx + px, cy + py, value)
+            setPixel(cx - px, cy + py, value)
+            setPixel(cx + px, cy - py, value)
+            setPixel(cx - px, cy - py, value)
+            setPixel(cx + py, cy + px, value)
+            setPixel(cx - py, cy + px, value)
+            setPixel(cx + py, cy - px, value)
+            setPixel(cx - py, cy - px, value)
+        }
+        plot8(x, y)
+        while (y >= x) {
+            x++
+            d += if (d > 0) {
+                y--
+                4 * (x - y) + 10
+            } else {
+                4 * x + 6
+            }
+            plot8(x, y)
+        }
+    }
+
+    fun shift(dx: Int, dy: Int) {
+        val next = BooleanArray(pixels.size)
+        val w = 128
+        val h = 64
+        for (y in 0 until h) {
+            val ny = y + dy
+            if (ny !in 0 until h) continue
+            for (x in 0 until w) {
+                val nx = x + dx
+                if (nx in 0 until w) {
+                    next[ny * w + nx] = pixels[y * w + x]
+                }
+            }
+        }
+        System.arraycopy(next, 0, pixels, 0, pixels.size)
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is StudioFrame) return false
+        return pixels.contentEquals(other.pixels) && delayMs == other.delayMs
+    }
+
+    override fun hashCode(): Int {
+        var result = pixels.contentHashCode()
+        result = 31 * result + delayMs
+        return result
+    }
+}
+

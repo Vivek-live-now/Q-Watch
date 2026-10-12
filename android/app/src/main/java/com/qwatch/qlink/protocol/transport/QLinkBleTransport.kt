@@ -9,6 +9,7 @@ import com.qwatch.qlink.model.*
 import com.qwatch.qlink.protocol.QLinkConstants
 import com.qwatch.qlink.protocol.parser.QLinkPacketParser
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,14 +49,15 @@ class QLinkBleTransport(
     private val _displayFrameFlow = MutableSharedFlow<DisplayFrame>(extraBufferCapacity = 4)
     override val displayFrameFlow: Flow<DisplayFrame> = _displayFrameFlow.asSharedFlow()
 
-    private val _fileResponseFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    private val _fileDownloadChunkFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    private val _fileResponseFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 64)
+    private val _fileDownloadChunkFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 256)
+    private var activeDownloadChannel: Channel<ByteArray>? = null
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    _connectionState.value = ConnectionState.CONNECTED_BLE
+                    _connectionState.value = ConnectionState.CONNECTING
                     gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     val requested = gatt?.requestMtu(512) ?: false
                     // Fallback to service discovery if MTU request not supported or delayed
@@ -90,12 +92,24 @@ class QLinkBleTransport(
                     telemetryCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_TELEMETRY_UUID)
                     fileCharacteristic = service.getCharacteristic(QLinkConstants.CHAR_FILE_UUID)
 
+                    // Fallback timer to transition to CONNECTED_BLE in case descriptors don't callback
+                    scope.launch {
+                        delay(1200)
+                        if (_connectionState.value == ConnectionState.CONNECTING && cmdCharacteristic != null) {
+                            _connectionState.value = ConnectionState.CONNECTED_BLE
+                        }
+                    }
+
                     // Strictly serialize descriptor writes via onDescriptorWrite
                     notificationSetupJob?.cancel()
                     notificationSetupJob = scope.launch {
                         if (!isActive || bluetoothGatt == null) return@launch
                         telemetryCharacteristic?.let { char ->
                             enableNotification(gatt, char)
+                        } ?: fileCharacteristic?.let { char ->
+                            enableNotification(gatt, char)
+                        } ?: run {
+                            _connectionState.value = ConnectionState.CONNECTED_BLE
                         }
                     }
                 }
@@ -110,8 +124,12 @@ class QLinkBleTransport(
                         if (!isActive || bluetoothGatt == null) return@launch
                         fileCharacteristic?.let { char ->
                             enableNotification(gatt, char)
+                        } ?: run {
+                            _connectionState.value = ConnectionState.CONNECTED_BLE
                         }
                     }
+                } else if (descriptor.characteristic?.uuid == QLinkConstants.CHAR_FILE_UUID) {
+                    _connectionState.value = ConnectionState.CONNECTED_BLE
                 }
             }
         }
@@ -143,6 +161,7 @@ class QLinkBleTransport(
             }
         } else if (uuid == QLinkConstants.CHAR_FILE_UUID) {
             if (bytes.size >= 6 && bytes[0] == 0xFE.toByte() && bytes[1] == 0x02.toByte()) {
+                activeDownloadChannel?.trySend(bytes)
                 scope.launch { _fileDownloadChunkFlow.emit(bytes) }
             } else {
                 val text = String(bytes, Charsets.UTF_8)
@@ -213,6 +232,8 @@ class QLinkBleTransport(
         serviceDiscoveryJob = null
         notificationSetupJob?.cancel()
         notificationSetupJob = null
+        activeDownloadChannel?.close()
+        activeDownloadChannel = null
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
@@ -305,11 +326,14 @@ class QLinkBleTransport(
             put("cmd", "LIST")
             put("path", path)
         }
-        writeData(char, json.toString().toByteArray(Charsets.UTF_8))
+        _fileResponseFlow.resetReplayCache()
+        if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send BLE list command"))
+        }
 
         // Wait for list response with filter.first()
         try {
-            val resp = withTimeout(3500) {
+            val resp = withTimeout(4000) {
                 _fileResponseFlow.filter { it.contains("LIST_RESP") }.first()
             }
             val obj = JSONObject(resp)
@@ -337,15 +361,19 @@ class QLinkBleTransport(
 
     override suspend fun downloadFile(path: String): Result<ByteArray> = withContext(Dispatchers.IO) {
         val char = fileCharacteristic ?: return@withContext Result.failure(IOException("BLE File characteristic not ready"))
-        val json = JSONObject().apply {
-            put("cmd", "DOWNLOAD")
-            put("path", path)
-        }
-        if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
-            return@withContext Result.failure(IOException("Failed to send BLE download request"))
-        }
+        val chunkChannel = Channel<ByteArray>(capacity = 512)
+        activeDownloadChannel = chunkChannel
 
         try {
+            val json = JSONObject().apply {
+                put("cmd", "DOWNLOAD")
+                put("path", path)
+            }
+            _fileResponseFlow.resetReplayCache()
+            if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
+                return@withContext Result.failure(IOException("Failed to send BLE download request"))
+            }
+
             val startResp = withTimeout(4000) {
                 _fileResponseFlow.filter { it.contains("DOWNLOAD_START") || it.contains("\"code\":404") || it.contains("\"code\":400") }.first()
             }
@@ -360,10 +388,10 @@ class QLinkBleTransport(
             }
 
             val outputStream = java.io.ByteArrayOutputStream(totalSize.toInt().coerceAtLeast(1024))
-            withTimeout(30000) {
+            withTimeout(35000) {
                 while (outputStream.size() < totalSize) {
                     val chunk = withTimeout(4000) {
-                        _fileDownloadChunkFlow.first()
+                        chunkChannel.receive()
                     }
                     if (chunk.size >= 6) {
                         val chunkLen = ((chunk[4].toInt() and 0xFF) shl 8) or (chunk[5].toInt() and 0xFF)
@@ -377,6 +405,9 @@ class QLinkBleTransport(
             Result.success(outputStream.toByteArray())
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            activeDownloadChannel = null
+            chunkChannel.close()
         }
     }
 
@@ -407,14 +438,29 @@ class QLinkBleTransport(
             put("path", path)
             put("size", data.size)
         }
+        _fileResponseFlow.resetReplayCache()
         if (!writeData(char, startJson.toString().toByteArray(Charsets.UTF_8))) {
             return@withContext Result.failure(IOException("Failed to send BLE file START"))
         }
-        delay(40) // Allow watch LittleFS to open file handle
+
+        try {
+            val startResp = withTimeout(3000) {
+                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"status\":\"OK\"") || it.contains("\"code\":400") }.first()
+            }
+            if (startResp.contains("\"code\":400")) {
+                return@withContext Result.failure(IOException("Watch rejected file upload START for $path"))
+            }
+        } catch (_: Exception) {
+            // Proceed if response delayed
+        }
+        delay(20) // Allow watch LittleFS to open file handle
 
         // 2. Stream chunk packets
-        // Maximum chunk size governed by MTU (subtract 3 bytes for ATT header and 6 bytes for framing)
-        val maxChunk = (if (currentMtu > 30) currentMtu - 12 else 20).coerceIn(20, 240)
+        // Maximum chunk size governed by MTU:
+        // Framing header is 6 bytes [0xFE, 0x01, seq(2), len(2)]
+        // ATT max write payload = currentMtu - 3
+        // Therefore max chunkLen = currentMtu - 3 - 6 = currentMtu - 9.
+        val maxChunk = (currentMtu - 9).coerceIn(12, 240)
         var offset = 0
         var seq = 0
 
@@ -429,10 +475,19 @@ class QLinkBleTransport(
             packet[5] = (chunkLen and 0xFF).toByte()
             System.arraycopy(data, offset, packet, 6, chunkLen)
 
-            val success = writeData(char, packet, withoutResponse = true)
-            if (!success) {
-                delay(20)
-                writeData(char, packet, withoutResponse = false)
+            var written = false
+            for (attempt in 0 until 5) {
+                if (writeData(char, packet, withoutResponse = true)) {
+                    written = true
+                    break
+                }
+                delay(20L * (attempt + 1))
+            }
+            if (!written) {
+                delay(30)
+                if (!writeData(char, packet, withoutResponse = true)) {
+                    return@withContext Result.failure(IOException("Failed to write BLE chunk $seq at offset $offset"))
+                }
             }
 
             offset += chunkLen
@@ -448,8 +503,8 @@ class QLinkBleTransport(
                 )
             )
 
-            // Gentle delay for BLE stack throughput stability
-            delay(12)
+            // Inter-chunk pacing delay to prevent HCI buffer congestion
+            delay(16)
         }
 
         // 3. Send FINISH packet
@@ -458,8 +513,20 @@ class QLinkBleTransport(
             put("path", path)
             put("size", data.size)
         }
+        _fileResponseFlow.resetReplayCache()
         writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))
-        delay(30)
+
+        try {
+            val finishResp = withTimeout(2000) {
+                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"code\":500") || it.contains("\"status\":\"OK\"") }.first()
+            }
+            if (finishResp.contains("\"code\":500")) {
+                return@withContext Result.failure(IOException("Watch reported error finishing upload for $path"))
+            }
+        } catch (_: Exception) {
+            // Succeeded on chunk stream completion
+        }
+
         onProgress(
             TransferProgress(
                 progress = 1f,
@@ -478,8 +545,17 @@ class QLinkBleTransport(
             put("cmd", "DELETE")
             put("path", path)
         }
+        _fileResponseFlow.resetReplayCache()
         val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
-        Result.success(success)
+        if (!success) return@withContext Result.failure(IOException("Failed to send BLE delete"))
+        try {
+            val resp = withTimeout(2500) {
+                _fileResponseFlow.filter { it.contains("\"deleted\"") || it.contains("\"code\":404") || it.contains("\"code\":500") }.first()
+            }
+            Result.success(!resp.contains("\"code\":404") && !resp.contains("\"code\":500"))
+        } catch (_: Exception) {
+            Result.success(true)
+        }
     }
 
     override suspend fun createDirectory(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -488,8 +564,17 @@ class QLinkBleTransport(
             put("cmd", "MKDIR")
             put("path", path)
         }
+        _fileResponseFlow.resetReplayCache()
         val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
-        Result.success(success)
+        if (!success) return@withContext Result.failure(IOException("Failed to send BLE mkdir"))
+        try {
+            val resp = withTimeout(2500) {
+                _fileResponseFlow.filter { it.contains("\"created\"") || it.contains("\"code\":500") }.first()
+            }
+            Result.success(!resp.contains("\"code\":500"))
+        } catch (_: Exception) {
+            Result.success(true)
+        }
     }
 
     override suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -499,8 +584,17 @@ class QLinkBleTransport(
             put("from", oldPath)
             put("to", newPath)
         }
+        _fileResponseFlow.resetReplayCache()
         val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
-        Result.success(success)
+        if (!success) return@withContext Result.failure(IOException("Failed to send BLE rename"))
+        try {
+            val resp = withTimeout(2500) {
+                _fileResponseFlow.filter { it.contains("\"from\"") || it.contains("\"code\":500") }.first()
+            }
+            Result.success(!resp.contains("\"code\":500"))
+        } catch (_: Exception) {
+            Result.success(true)
+        }
     }
 
     override suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -510,8 +604,17 @@ class QLinkBleTransport(
             put("src", sourcePath)
             put("dst", destPath)
         }
+        _fileResponseFlow.resetReplayCache()
         val success = writeData(char, json.toString().toByteArray(Charsets.UTF_8))
-        Result.success(success)
+        if (!success) return@withContext Result.failure(IOException("Failed to send BLE copy"))
+        try {
+            val resp = withTimeout(2500) {
+                _fileResponseFlow.filter { it.contains("\"copied\"") || it.contains("\"code\":500") }.first()
+            }
+            Result.success(!resp.contains("\"code\":500"))
+        } catch (_: Exception) {
+            Result.success(true)
+        }
     }
 
     override suspend fun getStorageTelemetry(): Result<StorageTelemetry> = withContext(Dispatchers.IO) {
@@ -519,11 +622,12 @@ class QLinkBleTransport(
         val json = JSONObject().apply {
             put("cmd", "STORAGE")
         }
+        _fileResponseFlow.resetReplayCache()
         if (!writeData(char, json.toString().toByteArray(Charsets.UTF_8))) {
             return@withContext Result.success(StorageTelemetry())
         }
         try {
-            val resp = withTimeout(2000) {
+            val resp = withTimeout(2500) {
                 _fileResponseFlow.filter { it.contains("fs_total_bytes") }.first()
             }
             val obj = JSONObject(resp)

@@ -70,9 +70,16 @@ class QLinkBleCommandCallbacks : public BLECharacteristicCallbacks {
 
 class QLinkBleFileCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pChar) override {
-        std::string val = pChar->getValue();
-        if (!val.empty()) {
-            qlink.handleBleFilePacket((const uint8_t*)val.data(), val.size());
+        if (!pChar) return;
+        size_t len = pChar->getLength();
+        const uint8_t* pData = pChar->getData();
+        if (pData && len > 0) {
+            qlink.handleBleFilePacket(pData, len);
+        } else {
+            std::string val = pChar->getValue();
+            if (!val.empty()) {
+                qlink.handleBleFilePacket((const uint8_t*)val.data(), val.size());
+            }
         }
     }
 };
@@ -126,10 +133,13 @@ void QLinkEngine::startBle() {
 
     if (!BLEDevice::getInitialized()) {
         BLEDevice::init("Q-Watch");
+        BLEDevice::setMTU(517);
         s_ble_server = nullptr;
         s_char_command = nullptr;
         s_char_telemetry = nullptr;
         s_char_file = nullptr;
+    } else {
+        BLEDevice::setMTU(517);
     }
 
     if (!s_ble_server) {
@@ -413,7 +423,7 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
             }
         } else if (strcmp(cmd, "FINISH") == 0) {
             size_t size = doc["size"] | upload_received_size;
-            bool ok = finishFileUpload(size);
+            bool ok = upload_in_progress ? finishFileUpload(size) : true;
             if (s_char_file) {
                 String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"size\":" + String((unsigned long)size) + "}")
                                  : "{\"status\":\"ERROR\",\"code\":500}";
@@ -426,8 +436,11 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
             size_t count = fileManager.listDir(path, files, 32);
             String json = "{\"cmd\":\"LIST_RESP\",\"path\":\"" + path + "\",\"files\":[";
             for (size_t i = 0; i < count; i++) {
-                if (i > 0) json += ",";
-                json += "{\"name\":\"" + files[i].name + "\",\"size\":" + String((unsigned long)files[i].size) + ",\"is_dir\":" + (files[i].isDir ? "true" : "false") + "}";
+                String entry = (i > 0 ? "," : "") + String("{\"name\":\"") + files[i].name + "\",\"size\":" + String((unsigned long)files[i].size) + ",\"is_dir\":" + (files[i].isDir ? "true" : "false") + "}";
+                if (json.length() + entry.length() + 2 > 500) {
+                    break;
+                }
+                json += entry;
             }
             json += "]}";
             if (s_char_file) {
@@ -550,7 +563,7 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
                         }
                         sent += read_bytes;
                         seq++;
-                        delay(12);
+                        delay(20);
                     }
                     f.close();
 
@@ -577,16 +590,25 @@ bool QLinkEngine::startFileUpload(const String& path, size_t total_size) {
     if (path.length() == 0 || path.indexOf("..") != -1) return false;
     cancelFileUpload();
 #ifdef ARDUINO
-    if (!FileManager::isPathSafe(path)) return false;
-    FileManager::ensureParentDir(path);
-    upload_file = LittleFS.open(path, FILE_WRITE);
+    String clean_path = FileManager::normalizePath(path);
+    if (!FileManager::isPathSafe(clean_path)) return false;
+    FileManager::ensureParentDir(clean_path);
+    if (animEngine.isOpen()) {
+        animEngine.stop();
+        animEngine.close();
+    }
+    if (LittleFS.exists(clean_path)) {
+        LittleFS.remove(clean_path);
+    }
+    upload_file = LittleFS.open(clean_path, FILE_WRITE);
     if (!upload_file) return false;
     upload_last_chunk_time = millis();
 #else
+    String clean_path = path;
     upload_last_chunk_time = 0;
 #endif
     upload_in_progress = true;
-    upload_file_path = path;
+    upload_file_path = clean_path;
     upload_expected_size = total_size;
     upload_received_size = 0;
     return true;
@@ -614,6 +636,9 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
     if (upload_file_path.endsWith(".ir")) {
         ui.showToast("IR Remote Loaded!", 2000);
         soundManager.playTone(2000, 100);
+    } else if (upload_file_path.endsWith(".anim")) {
+        ui.showToast("Anim Saved!", 2000);
+        soundManager.playTone(2400, 80);
     }
 #endif
     upload_in_progress = false;

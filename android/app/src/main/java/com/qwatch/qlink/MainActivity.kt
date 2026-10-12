@@ -43,6 +43,7 @@ enum class Screen(val title: String, val icon: ImageVector, val inBottomBar: Boo
     IRDB("IRDB", Icons.Default.Sensors, false),
     APPS("APPS", Icons.Default.Apps, false),
     ANIM_MARKET("MARKET", Icons.Default.Storefront, false),
+    ANIM_STUDIO("STUDIO", Icons.Default.Palette, false),
     FILES("FILES", Icons.Default.Folder, false),
     NOTIFICATIONS("ALERTS", Icons.Default.Notifications, false),
     SETTINGS("CONFIG", Icons.Default.Settings, false)
@@ -130,6 +131,15 @@ fun MainAppScaffold() {
         if (backStack.size > 1) {
             backStack.removeAt(backStack.size - 1)
         }
+    }
+
+    var studioInitialBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var studioInitialName by remember { mutableStateOf<String?>(null) }
+
+    fun openAnimStudio(bytes: ByteArray? = null, name: String? = null) {
+        studioInitialBytes = bytes
+        studioInitialName = name
+        navigateTo(Screen.ANIM_STUDIO)
     }
 
     // Intercept back button only when not on DASHBOARD
@@ -260,6 +270,7 @@ fun MainAppScaffold() {
                     onNavigateToFiles = { navigateTo(Screen.FILES) },
                     onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
                     onNavigateToSettings = { navigateTo(Screen.SETTINGS) },
+                    onNavigateToAnimStudio = { openAnimStudio() },
                     onNavigateToMore = { navigateTo(Screen.MORE) }
                 )
                 Screen.MIRROR -> LiveMirrorScreen()
@@ -270,6 +281,7 @@ fun MainAppScaffold() {
                     onNavigateToIrdb = { navigateTo(Screen.IRDB) },
                     onNavigateToMochi = { navigateTo(Screen.MOCHI) },
                     onNavigateToAnimMarket = { navigateTo(Screen.ANIM_MARKET) },
+                    onNavigateToAnimStudio = { openAnimStudio() },
                     onNavigateToApps = { navigateTo(Screen.APPS) },
                     onNavigateToFiles = { navigateTo(Screen.FILES) },
                     onNavigateToNotifications = { navigateTo(Screen.NOTIFICATIONS) },
@@ -280,7 +292,15 @@ fun MainAppScaffold() {
                     onBack = { navigateBack() },
                     onNavigateToMarket = { navigateTo(Screen.ANIM_MARKET) }
                 )
-                Screen.ANIM_MARKET -> AnimMarketScreen(onBack = { navigateBack() })
+                Screen.ANIM_MARKET -> AnimMarketScreen(
+                    onBack = { navigateBack() },
+                    onOpenStudio = { bytes, name -> openAnimStudio(bytes, name) }
+                )
+                Screen.ANIM_STUDIO -> AnimStudioScreen(
+                    onBack = { navigateBack() },
+                    initialAnimBytes = studioInitialBytes,
+                    initialAnimName = studioInitialName
+                )
                 Screen.IRDB -> OnlineIrdbScreen(onBack = { navigateBack() })
                 Screen.SIGINT -> SigintReconScreen(onBack = { navigateBack() })
                 Screen.FILES -> FilesScreen()

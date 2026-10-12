@@ -120,10 +120,61 @@ object AnimParser {
     }
 
     /**
-     * Unpacks 1024-byte XBM row-major frame into an 8192-element BooleanArray (true = ON, false = OFF).
-     * Format: 64 rows of 16 bytes each. Within each byte, bit 0 is leftmost pixel (x % 8 == 0).
+     * Bit reversal helper: flips bits within a byte (MSB <-> LSB).
      */
-    fun decodeFramePixels(frameData: ByteArray): BooleanArray {
+    fun reverseByteBits(b: Byte): Byte {
+        val v = b.toInt() and 0xFF
+        var r = (v and 0xF0) ushr 4 or ((v and 0x0F) shl 4)
+        r = (r and 0xCC) ushr 2 or ((r and 0x33) shl 2)
+        r = (r and 0xAA) ushr 1 or ((r and 0x55) shl 1)
+        return r.toByte()
+    }
+
+    /**
+     * Inverts the bit order of all bytes in a frame (converts between MSB-first and LSB-first).
+     */
+    fun reverseFrameBits(frameData: ByteArray): ByteArray {
+        val out = ByteArray(frameData.size)
+        for (i in frameData.indices) {
+            out[i] = reverseByteBits(frameData[i])
+        }
+        return out
+    }
+
+    /**
+     * Heuristic analysis of horizontal pixel transitions to detect if a frame was saved MSB-first.
+     */
+    fun detectLikelyMsb(frameData: ByteArray): Boolean {
+        if (frameData.size < ANIM_FRAME_BYTES) return false
+        var transitionsLsb = 0
+        var transitionsMsb = 0
+
+        for (y in 0 until ANIM_HEIGHT) {
+            val rowOffset = y * 16
+            var prevLsb = false
+            var prevMsb = false
+            for (x in 0 until ANIM_WIDTH) {
+                val byteVal = frameData[rowOffset + (x shr 3)].toInt() and 0xFF
+                val bitLsb = ((byteVal and (1 shl (x and 7)))) != 0
+                val bitMsb = ((byteVal and (1 shl (7 - (x and 7))))) != 0
+
+                if (bitLsb != prevLsb) transitionsLsb++
+                if (bitMsb != prevMsb) transitionsMsb++
+
+                prevLsb = bitLsb
+                prevMsb = bitMsb
+            }
+        }
+        return transitionsMsb < (transitionsLsb * 0.7f)
+    }
+
+    /**
+     * Unpacks 1024-byte XBM row-major frame into an 8192-element BooleanArray (true = ON, false = OFF).
+     * Format: 64 rows of 16 bytes each.
+     * When isMsb = false (standard XBM): bit 0 is leftmost pixel (x % 8 == 0).
+     * When isMsb = true (standard BMP/displayBitmap): bit 7 is leftmost pixel.
+     */
+    fun decodeFramePixels(frameData: ByteArray, isMsb: Boolean = false): BooleanArray {
         val pixels = BooleanArray(ANIM_WIDTH * ANIM_HEIGHT)
         if (frameData.size < ANIM_FRAME_BYTES) return pixels
 
@@ -132,7 +183,7 @@ object AnimParser {
             val pixelRowOffset = y * ANIM_WIDTH
             for (x in 0 until ANIM_WIDTH) {
                 val byteIndex = rowOffset + (x shr 3)
-                val bitIndex = x and 7
+                val bitIndex = if (isMsb) (7 - (x and 7)) else (x and 7)
                 val isSet = ((frameData[byteIndex].toInt() and 0xFF) and (1 shl bitIndex)) != 0
                 pixels[pixelRowOffset + x] = isSet
             }
@@ -146,7 +197,8 @@ object AnimParser {
     fun decodeFrameToBitmap(
         frameData: ByteArray,
         onColor: Int = Color.WHITE,
-        offColor: Int = Color.BLACK
+        offColor: Int = Color.BLACK,
+        isMsb: Boolean = false
     ): Bitmap {
         val bmp = Bitmap.createBitmap(ANIM_WIDTH, ANIM_HEIGHT, Bitmap.Config.ARGB_8888)
         if (frameData.size < ANIM_FRAME_BYTES) return bmp
@@ -157,7 +209,7 @@ object AnimParser {
             val pixelRowOffset = y * ANIM_WIDTH
             for (x in 0 until ANIM_WIDTH) {
                 val byteIndex = rowOffset + (x shr 3)
-                val bitIndex = x and 7
+                val bitIndex = if (isMsb) (7 - (x and 7)) else (x and 7)
                 val isSet = ((frameData[byteIndex].toInt() and 0xFF) and (1 shl bitIndex)) != 0
                 pixelArray[pixelRowOffset + x] = if (isSet) onColor else offColor
             }

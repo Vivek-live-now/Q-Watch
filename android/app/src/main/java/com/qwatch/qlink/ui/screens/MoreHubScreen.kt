@@ -31,6 +31,7 @@ fun MoreHubScreen(
     onNavigateToIrdb: () -> Unit,
     onNavigateToMochi: () -> Unit,
     onNavigateToAnimMarket: () -> Unit,
+    onNavigateToAnimStudio: () -> Unit = {},
     onNavigateToApps: () -> Unit,
     onNavigateToFiles: () -> Unit,
     onNavigateToNotifications: () -> Unit,
@@ -156,6 +157,18 @@ fun MoreHubScreen(
                     onClick = {
                         performHaptic()
                         onNavigateToAnimMarket()
+                    }
+                )
+
+                MoreModuleCard(
+                    title = "ANIMATION STUDIO // PIXEL PACKER",
+                    subtitle = "128x64 OLED Pixel Editor, GIF/Image Dithering & Live Watch Sideload",
+                    badge = "EDITOR & PACKER",
+                    icon = Icons.Default.Palette,
+                    accentColor = TacticalCyan,
+                    onClick = {
+                        performHaptic()
+                        onNavigateToAnimStudio()
                     }
                 )
             }
