@@ -24,7 +24,7 @@ data class IrdbEntry(
 
 data class IrParsedButton(
     val name: String,
-    val type: String, // "parsed" or "raw"
+    val type: String = "parsed", // "parsed" or "raw"
     val protocol: String = "",
     val address: String = "",
     val command: String = "",

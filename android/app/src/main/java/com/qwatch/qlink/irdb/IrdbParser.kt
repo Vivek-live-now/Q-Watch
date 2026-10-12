@@ -2,6 +2,20 @@ package com.qwatch.qlink.irdb
 
 object IrdbParser {
 
+    fun parse(content: String, filename: String = "remote.ir"): IrRemoteFile {
+        val dummyEntry = IrdbEntry(
+            filename = filename,
+            deviceType = "Remote",
+            brand = "Generic",
+            model = filename.removeSuffix(".ir"),
+            path = filename
+        )
+        return parse(dummyEntry, content)
+    }
+
+    fun parseIrFile(content: String, filename: String = "remote.ir"): IrRemoteFile =
+        parse(content, filename)
+
     fun parse(entry: IrdbEntry, content: String): IrRemoteFile {
         val lines = content.lines()
         var filetype = "IR signals file"

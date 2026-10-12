@@ -1,7 +1,7 @@
 package com.qwatch.qlink
 
 import com.qwatch.qlink.irdb.IrParsedButton
-import com.qwatch.qlink.irdb.IrParsedRemote
+import com.qwatch.qlink.irdb.IrRemoteFile
 import com.qwatch.qlink.irdb.IrTransmitFeedback
 import com.qwatch.qlink.irdb.IrTransmitState
 import com.qwatch.qlink.irdb.IrdbParser
