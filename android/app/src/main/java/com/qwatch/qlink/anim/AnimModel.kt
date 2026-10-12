@@ -136,6 +136,8 @@ enum class DrawTool(val label: String) {
     RECT("BOX"),
     FILL_RECT("FILL BOX"),
     CIRCLE("CIRCLE"),
+    FILL_CIRCLE("FILL CIR"),
+    BUCKET("BUCKET"),
     INVERT("INVERT"),
     CLEAR("CLEAR"),
     FILL("FILL ALL")
@@ -240,30 +242,91 @@ data class StudioFrame(
         }
     }
 
-    fun drawCircle(cx: Int, cy: Int, radius: Int, value: Boolean) {
-        var x = 0
-        var y = radius
-        var d = 3 - 2 * radius
-        fun plot8(px: Int, py: Int) {
-            setPixel(cx + px, cy + py, value)
-            setPixel(cx - px, cy + py, value)
-            setPixel(cx + px, cy - py, value)
-            setPixel(cx - px, cy - py, value)
-            setPixel(cx + py, cy + px, value)
-            setPixel(cx - py, cy + px, value)
-            setPixel(cx + py, cy - px, value)
-            setPixel(cx - py, cy - px, value)
+    fun drawCircle(cx: Int, cy: Int, radius: Int, value: Boolean, fill: Boolean = false) {
+        if (radius <= 0) {
+            setPixel(cx, cy, value)
+            return
         }
-        plot8(x, y)
-        while (y >= x) {
-            x++
-            d += if (d > 0) {
-                y--
-                4 * (x - y) + 10
-            } else {
-                4 * x + 6
+        if (fill) {
+            val r2 = radius * radius
+            for (dy in -radius..radius) {
+                val py = cy + dy
+                if (py !in 0 until 64) continue
+                val maxDx = kotlin.math.sqrt((r2 - dy * dy).toDouble()).toInt()
+                for (dx in -maxDx..maxDx) {
+                    val px = cx + dx
+                    if (px in 0 until 128) {
+                        setPixel(px, py, value)
+                    }
+                }
+            }
+        } else {
+            var x = 0
+            var y = radius
+            var d = 3 - 2 * radius
+            fun plot8(px: Int, py: Int) {
+                setPixel(cx + px, cy + py, value)
+                setPixel(cx - px, cy + py, value)
+                setPixel(cx + px, cy - py, value)
+                setPixel(cx - px, cy - py, value)
+                setPixel(cx + py, cy + px, value)
+                setPixel(cx - py, cy + px, value)
+                setPixel(cx + py, cy - px, value)
+                setPixel(cx - py, cy - px, value)
             }
             plot8(x, y)
+            while (y >= x) {
+                x++
+                d += if (d > 0) {
+                    y--
+                    4 * (x - y) + 10
+                } else {
+                    4 * x + 6
+                }
+                plot8(x, y)
+            }
+        }
+    }
+
+    fun floodFill(startX: Int, startY: Int, fillValue: Boolean) {
+        if (startX !in 0 until 128 || startY !in 0 until 64) return
+        val targetValue = getPixel(startX, startY)
+        if (targetValue == fillValue) return
+
+        val queue = java.util.ArrayDeque<Int>()
+        val visited = java.util.BitSet(128 * 64)
+
+        fun pack(x: Int, y: Int): Int = x or (y shl 8)
+        fun unpackX(p: Int): Int = p and 0xFF
+        fun unpackY(p: Int): Int = (p shr 8) and 0xFF
+
+        val startPack = pack(startX, startY)
+        queue.add(startPack)
+        visited.set(startY * 128 + startX)
+        setPixel(startX, startY, fillValue)
+
+        while (!queue.isEmpty()) {
+            val p = queue.poll()
+            val cx = unpackX(p)
+            val cy = unpackY(p)
+
+            val neighbors = arrayOf(
+                (cx + 1) to cy,
+                (cx - 1) to cy,
+                cx to (cy + 1),
+                cx to (cy - 1)
+            )
+
+            for ((nx, ny) in neighbors) {
+                if (nx in 0 until 128 && ny in 0 until 64) {
+                    val idx = ny * 128 + nx
+                    if (!visited.get(idx) && getPixel(nx, ny) == targetValue) {
+                        visited.set(idx)
+                        setPixel(nx, ny, fillValue)
+                        queue.add(pack(nx, ny))
+                    }
+                }
+            }
         }
     }
 

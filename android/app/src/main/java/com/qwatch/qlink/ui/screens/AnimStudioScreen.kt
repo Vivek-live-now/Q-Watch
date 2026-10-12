@@ -43,9 +43,11 @@ import com.qwatch.qlink.anim.*
 import com.qwatch.qlink.protocol.QLinkClient
 import com.qwatch.qlink.ui.components.TacticalCard
 import com.qwatch.qlink.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -97,8 +99,11 @@ fun AnimStudioScreen(
     val pixelBuffer = remember { IntArray(128 * 64) }
     var lastTouchCoord by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-    // Line / Box shape start coordinates
-    var shapeStartPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // Interactive Drag Shape State & Telemetry
+    var dragStartPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var dragCurrentPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var isDraggingShape by remember { mutableStateOf(false) }
+    var hoverCoord by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Undo / Redo History Stacks (Per-Frame)
     val undoStack = remember { mutableStateListOf<BooleanArray>() }
@@ -109,13 +114,31 @@ fun AnimStudioScreen(
     var deployProgress by remember { mutableFloatStateOf(0f) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
-    // Import Dialog State
+    // Static Image Import Dialog State
     var showImportDialog by remember { mutableStateOf(false) }
     var pendingImportBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var importDitherMode by remember { mutableStateOf(DitherMode.FLOYD_STEINBERG) }
     var importThreshold by remember { mutableFloatStateOf(128f) }
+    var importBrightness by remember { mutableFloatStateOf(0f) }
+    var importContrast by remember { mutableFloatStateOf(0f) }
     var importInvert by remember { mutableStateOf(false) }
-    var importFitMode by remember { mutableStateOf(AspectFitMode.FIT) }
+    var importFitMode by remember { mutableStateOf(AspectFitMode.CROP) }
+
+    // Animated GIF Import Dialog State
+    var showGifImportDialog by remember { mutableStateOf(false) }
+    var pendingGifFrames by remember { mutableStateOf<List<Pair<Bitmap, Int>>>(emptyList()) }
+    var pendingGifFileName by remember { mutableStateOf("imported_gif") }
+    var gifDitherMode by remember { mutableStateOf(DitherMode.FLOYD_STEINBERG) }
+    var gifFitMode by remember { mutableStateOf(AspectFitMode.CROP) }
+    var gifBrightness by remember { mutableFloatStateOf(0f) }
+    var gifContrast by remember { mutableFloatStateOf(0f) }
+    var gifThreshold by remember { mutableFloatStateOf(128f) }
+    var gifInvert by remember { mutableStateOf(false) }
+    var gifFpsOverride by remember { mutableIntStateOf(0) }
+    var gifSubsample by remember { mutableIntStateOf(1) }
+    var isProcessingGif by remember { mutableStateOf(false) }
+    var gifPreviewIndex by remember { mutableIntStateOf(0) }
+    var gifPreviewPlaying by remember { mutableStateOf(true) }
 
     // Presets Dialog State
     var showPresetsDialog by remember { mutableStateOf(false) }
@@ -190,20 +213,12 @@ fun AnimStudioScreen(
                     } else if (AnimEncoder.isGif(bytes) || mimeType.contains("gif", ignoreCase = true) || fileName.endsWith(".gif", ignoreCase = true)) {
                         val gifFrames = AnimEncoder.decodeGif(bytes)
                         if (gifFrames.isNotEmpty()) {
-                            val newFrames = gifFrames.map { (bmp, delay) ->
-                                AnimEncoder.decodeBitmapToStudioFrame(
-                                    src = bmp,
-                                    ditherMode = importDitherMode,
-                                    threshold = importThreshold,
-                                    invert = importInvert,
-                                    fitMode = importFitMode
-                                ).copy(delayMs = delay)
-                            }
-                            frames = newFrames.toMutableList()
-                            currentFrameIndex = 0
-                            animName = fileName.substringBeforeLast('.').ifBlank { "imported_gif" }
-                            canvasRevision++
-                            statusMessage = "Extracted ${frames.size} frames from animated GIF!"
+                            pendingGifFrames = gifFrames
+                            pendingGifFileName = fileName.substringBeforeLast('.').ifBlank { "imported_gif" }
+                            gifPreviewIndex = 0
+                            gifPreviewPlaying = true
+                            showGifImportDialog = true
+                            statusMessage = "Loaded ${gifFrames.size} frames. Configure quantization options."
                         } else {
                             statusMessage = "Failed to extract GIF frames!"
                         }
@@ -330,28 +345,25 @@ fun AnimStudioScreen(
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Zoom cycle button
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(TacticalSurfaceVariant)
-                                .border(1.dp, TacticalBorder, RoundedCornerShape(3.dp))
-                                .clickable {
-                                    zoomLevel = when (zoomLevel) {
-                                        1f -> 2f
-                                        2f -> 3.5f
-                                        else -> 1f
-                                    }
-                                }
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "ZOOM ${zoomLevel.toInt()}X",
-                                color = TacticalCyan,
-                                fontSize = 7.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
+                        // Zoom toggles
+                        listOf(1f to "1X (FIT)", 2f to "2X", 3f to "3X", 4f to "4X").forEach { (lvl, lbl) ->
+                            val isSel = zoomLevel == lvl
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalCyan else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalCyan else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { zoomLevel = lvl }
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = lbl,
+                                    color = if (isSel) OledBlack else TacticalCyan,
+                                    fontSize = 7.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         // Grid Toggle
@@ -364,9 +376,9 @@ fun AnimStudioScreen(
                                 .padding(horizontal = 5.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = if (showGrid) "GRID ON" else "GRID OFF",
+                                text = if (showGrid) "GRID" else "NO GRID",
                                 color = if (showGrid) TacticalCyan else TextMuted,
-                                fontSize = 7.5.sp,
+                                fontSize = 7.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold
                             )
@@ -382,9 +394,9 @@ fun AnimStudioScreen(
                                 .padding(horizontal = 5.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = if (onionSkin) "ONION ON" else "ONION OFF",
+                                text = if (onionSkin) "ONION" else "NO ONION",
                                 color = if (onionSkin) TacticalGreen else TextMuted,
-                                fontSize = 7.5.sp,
+                                fontSize = 7.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold
                             )
@@ -392,111 +404,186 @@ fun AnimStudioScreen(
                     }
                 }
 
-                // Interactive Drawing Canvas (128x64)
-                val prevFrame = if (onionSkin && safeIndex > 0) frames[safeIndex - 1] else null
-                val canvasScrollState = rememberScrollState()
-
-                Box(
+                // Interactive OLED Matrix Coordinates & Tool Telemetry HUD
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(PhosphorOff)
-                        .border(1.5.dp, TacticalBorder, RoundedCornerShape(4.dp))
-                        .horizontalScroll(canvasScrollState)
+                        .background(TacticalSurfaceVariant)
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val displayWidth = 128f * (if (zoomLevel > 1f) zoomLevel * 3.5f else 2.6f)
-                    val displayHeight = 64f * (if (zoomLevel > 1f) zoomLevel * 3.5f else 2.6f)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "X: ${hoverCoord?.first ?: "--"}  Y: ${hoverCoord?.second ?: "--"}",
+                            color = TacticalGreen,
+                            fontSize = 8.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "TOOL: ${selectedTool.label}",
+                            color = TacticalCyan,
+                            fontSize = 8.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = "128x64 MONO OLED (2:1)",
+                        color = TextMuted,
+                        fontSize = 7.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
 
+                // Authentic 128x64 Interactive Drawing Canvas Container
+                val prevFrame = if (onionSkin && safeIndex > 0) frames[safeIndex - 1] else null
+                val canvasHorizScroll = rememberScrollState()
+                val canvasVertScroll = rememberScrollState()
+
+                val canvasModifier = if (zoomLevel > 1f) {
+                    Modifier
+                        .size((128f * zoomLevel * 2.6f).dp, (64f * zoomLevel * 2.6f).dp)
+                } else {
+                    Modifier.fillMaxSize()
+                }
+
+                val containerModifier = if (zoomLevel > 1f) {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF040608))
+                        .border(1.5.dp, TacticalBorder, RoundedCornerShape(6.dp))
+                        .horizontalScroll(canvasHorizScroll)
+                        .verticalScroll(canvasVertScroll)
+                } else {
+                    Modifier
+                        .fillMaxWidth().aspectRatio(128f / 64f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF040608))
+                        .border(1.5.dp, TacticalBorder, RoundedCornerShape(6.dp))
+                }
+
+                Box(
+                    modifier = containerModifier,
+                    contentAlignment = Alignment.Center
+                ) {
                     Canvas(
-                        modifier = Modifier
-                            .size(displayWidth.dp, displayHeight.dp)
-                            .pointerInput(selectedTool, safeIndex) {
-                                detectTapGestures { offset ->
-                                    val px = (offset.x / size.width * 128).toInt().coerceIn(0, 127)
-                                    val py = (offset.y / size.height * 64).toInt().coerceIn(0, 63)
-                                    pushUndo()
-
-                                    when (selectedTool) {
-                                        DrawTool.PENCIL -> currentFrame.setPixel(px, py, true)
-                                        DrawTool.ERASER -> currentFrame.setPixel(px, py, false)
-                                        DrawTool.LINE -> {
-                                            val start = shapeStartPos
-                                            if (start == null) {
-                                                shapeStartPos = px to py
-                                            } else {
-                                                currentFrame.drawLine(start.first, start.second, px, py, true)
-                                                shapeStartPos = null
-                                            }
-                                        }
-                                        DrawTool.RECT -> {
-                                            val start = shapeStartPos
-                                            if (start == null) {
-                                                shapeStartPos = px to py
-                                            } else {
-                                                currentFrame.drawRect(start.first, start.second, px, py, fill = false, value = true)
-                                                shapeStartPos = null
-                                            }
-                                        }
-                                        DrawTool.FILL_RECT -> {
-                                            val start = shapeStartPos
-                                            if (start == null) {
-                                                shapeStartPos = px to py
-                                            } else {
-                                                currentFrame.drawRect(start.first, start.second, px, py, fill = true, value = true)
-                                                shapeStartPos = null
-                                            }
-                                        }
-                                        DrawTool.CIRCLE -> {
-                                            val start = shapeStartPos
-                                            if (start == null) {
-                                                shapeStartPos = px to py
-                                            } else {
-                                                val radius = kotlin.math.max(
-                                                    kotlin.math.abs(px - start.first),
-                                                    kotlin.math.abs(py - start.second)
-                                                )
-                                                currentFrame.drawCircle(start.first, start.second, radius, true)
-                                                shapeStartPos = null
-                                            }
-                                        }
-                                        DrawTool.INVERT -> currentFrame.invert()
-                                        DrawTool.CLEAR -> currentFrame.clear()
-                                        DrawTool.FILL -> currentFrame.fillAll()
-                                    }
-                                    canvasRevision++
-                                }
-                            }
+                        modifier = canvasModifier
                             .pointerInput(selectedTool, safeIndex) {
                                 detectDragGestures(
                                     onDragStart = { offset ->
                                         val px = (offset.x / size.width * 128).toInt().coerceIn(0, 127)
                                         val py = (offset.y / size.height * 64).toInt().coerceIn(0, 63)
+                                        hoverCoord = px to py
                                         pushUndo()
-                                        lastTouchCoord = px to py
-                                        if (selectedTool == DrawTool.PENCIL) {
-                                            currentFrame.setPixel(px, py, true)
-                                            canvasRevision++
-                                        } else if (selectedTool == DrawTool.ERASER) {
-                                            currentFrame.setPixel(px, py, false)
-                                            canvasRevision++
+
+                                        when (selectedTool) {
+                                            DrawTool.PENCIL -> {
+                                                lastTouchCoord = px to py
+                                                currentFrame.setPixel(px, py, true)
+                                                canvasRevision++
+                                            }
+                                            DrawTool.ERASER -> {
+                                                lastTouchCoord = px to py
+                                                currentFrame.setPixel(px, py, false)
+                                                canvasRevision++
+                                            }
+                                            DrawTool.BUCKET -> {
+                                                currentFrame.floodFill(px, py, true)
+                                                canvasRevision++
+                                            }
+                                            DrawTool.LINE, DrawTool.RECT, DrawTool.FILL_RECT, DrawTool.CIRCLE, DrawTool.FILL_CIRCLE -> {
+                                                dragStartPos = px to py
+                                                dragCurrentPos = px to py
+                                                isDraggingShape = true
+                                            }
+                                            DrawTool.INVERT -> {
+                                                currentFrame.invert()
+                                                canvasRevision++
+                                            }
+                                            DrawTool.CLEAR -> {
+                                                currentFrame.clear()
+                                                canvasRevision++
+                                            }
+                                            DrawTool.FILL -> {
+                                                currentFrame.fillAll()
+                                                canvasRevision++
+                                            }
                                         }
                                     },
-                                    onDragEnd = { lastTouchCoord = null },
-                                    onDragCancel = { lastTouchCoord = null },
                                     onDrag = { change, _ ->
                                         change.consume()
                                         val px = (change.position.x / size.width * 128).toInt().coerceIn(0, 127)
                                         val py = (change.position.y / size.height * 64).toInt().coerceIn(0, 63)
-                                        val last = lastTouchCoord
-                                        if (last != null && (last.first != px || last.second != py)) {
-                                            val value = (selectedTool == DrawTool.PENCIL)
-                                            if (selectedTool == DrawTool.PENCIL || selectedTool == DrawTool.ERASER) {
-                                                drawLineOnFrame(currentFrame, last.first, last.second, px, py, value)
-                                                canvasRevision++
+                                        hoverCoord = px to py
+
+                                        when (selectedTool) {
+                                            DrawTool.PENCIL -> {
+                                                val last = lastTouchCoord
+                                                if (last != null && (last.first != px || last.second != py)) {
+                                                    drawLineOnFrame(currentFrame, last.first, last.second, px, py, true)
+                                                    lastTouchCoord = px to py
+                                                    canvasRevision++
+                                                }
+                                            }
+                                            DrawTool.ERASER -> {
+                                                val last = lastTouchCoord
+                                                if (last != null && (last.first != px || last.second != py)) {
+                                                    drawLineOnFrame(currentFrame, last.first, last.second, px, py, false)
+                                                    lastTouchCoord = px to py
+                                                    canvasRevision++
+                                                }
+                                            }
+                                            DrawTool.LINE, DrawTool.RECT, DrawTool.FILL_RECT, DrawTool.CIRCLE, DrawTool.FILL_CIRCLE -> {
+                                                dragCurrentPos = px to py
+                                            }
+                                            else -> {}
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val start = dragStartPos
+                                        val end = dragCurrentPos ?: hoverCoord
+                                        if (start != null && end != null) {
+                                            when (selectedTool) {
+                                                DrawTool.LINE -> {
+                                                    currentFrame.drawLine(start.first, start.second, end.first, end.second, true)
+                                                    canvasRevision++
+                                                }
+                                                DrawTool.RECT -> {
+                                                    currentFrame.drawRect(start.first, start.second, end.first, end.second, fill = false, value = true)
+                                                    canvasRevision++
+                                                }
+                                                DrawTool.FILL_RECT -> {
+                                                    currentFrame.drawRect(start.first, start.second, end.first, end.second, fill = true, value = true)
+                                                    canvasRevision++
+                                                }
+                                                DrawTool.CIRCLE -> {
+                                                    val radius = kotlin.math.hypot((end.first - start.first).toDouble(), (end.second - start.second).toDouble()).toInt()
+                                                    currentFrame.drawCircle(start.first, start.second, radius, value = true, fill = false)
+                                                    canvasRevision++
+                                                }
+                                                DrawTool.FILL_CIRCLE -> {
+                                                    val radius = kotlin.math.hypot((end.first - start.first).toDouble(), (end.second - start.second).toDouble()).toInt()
+                                                    currentFrame.drawCircle(start.first, start.second, radius, value = true, fill = true)
+                                                    canvasRevision++
+                                                }
+                                                else -> {}
                                             }
                                         }
-                                        lastTouchCoord = px to py
+                                        dragStartPos = null
+                                        dragCurrentPos = null
+                                        isDraggingShape = false
+                                        lastTouchCoord = null
+                                    },
+                                    onDragCancel = {
+                                        dragStartPos = null
+                                        dragCurrentPos = null
+                                        isDraggingShape = false
+                                        lastTouchCoord = null
                                     }
                                 )
                             }
@@ -529,12 +616,91 @@ fun AnimStudioScreen(
                             filterQuality = FilterQuality.None
                         )
 
-                        // Clean grid overlay only when zoomed
-                        if (showGrid && zoomLevel > 1.2f) {
+                        // Real-time Interactive Drag Shape Overlay Preview
+                        if (isDraggingShape && dragStartPos != null && dragCurrentPos != null) {
+                            val s = dragStartPos!!
+                            val e = dragCurrentPos!!
                             val pixelW = size.width / 128f
                             val pixelH = size.height / 64f
-                            val gridColor = Color.White.copy(alpha = 0.08f)
-                            for (x in 0..128 step 4) {
+                            val previewColor = phosphorColor.copy(alpha = 0.9f)
+                            val previewFillColor = phosphorColor.copy(alpha = 0.35f)
+
+                            when (selectedTool) {
+                                DrawTool.LINE -> {
+                                    drawLine(
+                                        color = previewColor,
+                                        start = Offset((s.first + 0.5f) * pixelW, (s.second + 0.5f) * pixelH),
+                                        end = Offset((e.first + 0.5f) * pixelW, (e.second + 0.5f) * pixelH),
+                                        strokeWidth = pixelW.coerceAtLeast(1.5f)
+                                    )
+                                }
+                                DrawTool.RECT -> {
+                                    val left = kotlin.math.min(s.first, e.first) * pixelW
+                                    val top = kotlin.math.min(s.second, e.second) * pixelH
+                                    val right = (kotlin.math.max(s.first, e.first) + 1) * pixelW
+                                    val bottom = (kotlin.math.max(s.second, e.second) + 1) * pixelH
+                                    drawRect(
+                                        color = previewColor,
+                                        topLeft = Offset(left, top),
+                                        size = Size(right - left, bottom - top),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = pixelW.coerceAtLeast(1.5f))
+                                    )
+                                }
+                                DrawTool.FILL_RECT -> {
+                                    val left = kotlin.math.min(s.first, e.first) * pixelW
+                                    val top = kotlin.math.min(s.second, e.second) * pixelH
+                                    val right = (kotlin.math.max(s.first, e.first) + 1) * pixelW
+                                    val bottom = (kotlin.math.max(s.second, e.second) + 1) * pixelH
+                                    drawRect(
+                                        color = previewFillColor,
+                                        topLeft = Offset(left, top),
+                                        size = Size(right - left, bottom - top)
+                                    )
+                                    drawRect(
+                                        color = previewColor,
+                                        topLeft = Offset(left, top),
+                                        size = Size(right - left, bottom - top),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = pixelW.coerceAtLeast(1.5f))
+                                    )
+                                }
+                                DrawTool.CIRCLE -> {
+                                    val radiusPx = kotlin.math.hypot((e.first - s.first).toDouble(), (e.second - s.second).toDouble()).toFloat()
+                                    val center = Offset((s.first + 0.5f) * pixelW, (s.second + 0.5f) * pixelH)
+                                    val visualRadius = radiusPx * pixelW
+                                    drawCircle(
+                                        color = previewColor,
+                                        center = center,
+                                        radius = visualRadius,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = pixelW.coerceAtLeast(1.5f))
+                                    )
+                                }
+                                DrawTool.FILL_CIRCLE -> {
+                                    val radiusPx = kotlin.math.hypot((e.first - s.first).toDouble(), (e.second - s.second).toDouble()).toFloat()
+                                    val center = Offset((s.first + 0.5f) * pixelW, (s.second + 0.5f) * pixelH)
+                                    val visualRadius = radiusPx * pixelW
+                                    drawCircle(
+                                        color = previewFillColor,
+                                        center = center,
+                                        radius = visualRadius
+                                    )
+                                    drawCircle(
+                                        color = previewColor,
+                                        center = center,
+                                        radius = visualRadius,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = pixelW.coerceAtLeast(1.5f))
+                                    )
+                                }
+                                else -> {}
+                            }
+                        }
+
+                        // Grid overlay when enabled
+                        if (showGrid && (zoomLevel > 1.2f || zoomLevel == 1f)) {
+                            val pixelW = size.width / 128f
+                            val pixelH = size.height / 64f
+                            val gridAlpha = if (zoomLevel > 1.2f) 0.12f else 0.04f
+                            val gridColor = Color.White.copy(alpha = gridAlpha)
+                            for (x in 0..128 step 8) {
                                 drawLine(
                                     color = gridColor,
                                     start = Offset(x * pixelW, 0f),
@@ -542,7 +708,7 @@ fun AnimStudioScreen(
                                     strokeWidth = 0.5f
                                 )
                             }
-                            for (y in 0..64 step 4) {
+                            for (y in 0..64 step 8) {
                                 drawLine(
                                     color = gridColor,
                                     start = Offset(0f, y * pixelH),
@@ -554,7 +720,7 @@ fun AnimStudioScreen(
                     }
                 }
 
-                // 3. Drawing Tools Strip
+                // 3. Drawing Tools Ribbon
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -570,7 +736,9 @@ fun AnimStudioScreen(
                                 .border(1.dp, if (isSelected) TacticalAmber else TacticalBorder, RoundedCornerShape(3.dp))
                                 .clickable {
                                     selectedTool = tool
-                                    shapeStartPos = null
+                                    dragStartPos = null
+                                    dragCurrentPos = null
+                                    isDraggingShape = false
                                     if (tool == DrawTool.INVERT) {
                                         pushUndo()
                                         currentFrame.invert()
@@ -1122,21 +1290,443 @@ fun AnimStudioScreen(
     }
 
     // =========================================================================
-    // IMPORT FINE-TUNING DIALOG
+    // FULL-FLEDGED ANIMATED GIF IMPORT STUDIO DIALOG
+    // =========================================================================
+    if (showGifImportDialog && pendingGifFrames.isNotEmpty()) {
+        val gifDialogScrollState = rememberScrollState()
+        val previewOledBitmap = remember { Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888) }
+        val previewPixelBuffer = remember { IntArray(128 * 64) }
+        var previewRendered by remember { mutableStateOf<Bitmap?>(null) }
+
+        // Live preview animation loop
+        LaunchedEffect(gifPreviewPlaying, pendingGifFrames.size, gifFpsOverride) {
+            if (gifPreviewPlaying && pendingGifFrames.isNotEmpty()) {
+                while (isActive && gifPreviewPlaying) {
+                    val stepDelay = if (gifFpsOverride > 0) (1000 / gifFpsOverride) else pendingGifFrames[gifPreviewIndex.coerceIn(pendingGifFrames.indices)].second
+                    delay(stepDelay.coerceAtLeast(20).toLong())
+                    gifPreviewIndex = (gifPreviewIndex + 1) % pendingGifFrames.size
+                }
+            }
+        }
+
+        // Recompute 1-bit quantized preview frame
+        LaunchedEffect(gifPreviewIndex, gifDitherMode, gifFitMode, gifBrightness, gifContrast, gifThreshold, gifInvert) {
+            if (pendingGifFrames.isNotEmpty()) {
+                val rawBmp = pendingGifFrames[gifPreviewIndex.coerceIn(pendingGifFrames.indices)].first
+                val sf = AnimEncoder.decodeBitmapToStudioFrame(
+                    src = rawBmp,
+                    ditherMode = gifDitherMode,
+                    threshold = gifThreshold,
+                    invert = gifInvert,
+                    fitMode = gifFitMode,
+                    brightness = gifBrightness,
+                    contrast = gifContrast
+                )
+                val active = phosphorColor.toArgb()
+                val off = 0xFF040608.toInt()
+                for (y in 0 until 64) {
+                    val row = y * 128
+                    for (x in 0 until 128) {
+                        previewPixelBuffer[row + x] = if (sf.getPixel(x, y)) active else off
+                    }
+                }
+                previewOledBitmap.setPixels(previewPixelBuffer, 0, 128, 0, 0, 128, 64)
+                previewRendered = previewOledBitmap
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!isProcessingGif) {
+                    showGifImportDialog = false
+                    pendingGifFrames = emptyList()
+                }
+            },
+            containerColor = TacticalSurface,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "GIF IMPORT & QUANTIZATION STUDIO",
+                            color = TacticalAmber,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = "${pendingGifFrames.size} FRAMES · ${pendingGifFileName}.gif",
+                            color = TextMuted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 8.sp
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(gifDialogScrollState),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 1. Live 128x64 OLED Animated Preview
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(128f / 64f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF040608))
+                            .border(1.5.dp, TacticalBorder, RoundedCornerShape(4.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val bmp = previewRendered
+                        if (bmp != null) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = bmp.asImageBitmap(),
+                                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                                    filterQuality = FilterQuality.None
+                                )
+                            }
+                        }
+                    }
+
+                    // Scrubber & Playback Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { gifPreviewPlaying = !gifPreviewPlaying },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (gifPreviewPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = "Toggle Preview",
+                                    tint = TacticalCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Text(
+                                text = "FRAME ${gifPreviewIndex + 1}/${pendingGifFrames.size}",
+                                color = TacticalCyan,
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        val estFrames = if (gifSubsample == 2) ((pendingGifFrames.size + 1) / 2) else pendingGifFrames.size
+                        val estSizeKb = (AnimParser.ANIM_HEADER_SIZE + (estFrames * AnimParser.ANIM_FRAME_BYTES)) / 1024
+                        Text(
+                            text = "~$estSizeKb KB ($estFrames fr)",
+                            color = TacticalGreen,
+                            fontSize = 7.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Slider(
+                        value = gifPreviewIndex.toFloat(),
+                        onValueChange = {
+                            gifPreviewPlaying = false
+                            gifPreviewIndex = it.toInt().coerceIn(0, (pendingGifFrames.size - 1).coerceAtLeast(0))
+                        },
+                        valueRange = 0f..(pendingGifFrames.size - 1).coerceAtLeast(1).toFloat(),
+                        colors = SliderDefaults.colors(thumbColor = TacticalCyan, activeTrackColor = TacticalCyan),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 2. Dithering Algorithm Chips
+                    Text("DITHERING ALGORITHM:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        DitherMode.values().forEach { dm ->
+                            val isSel = gifDitherMode == dm
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalAmber else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalAmber else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { gifDitherMode = dm }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Text(dm.label, color = if (isSel) OledBlack else TextPrimary, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // 3. Aspect Ratio / Framing (Fill Screen vs Fit vs Stretch)
+                    Text("GEOMETRY & SCREEN FRAMING:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        AspectFitMode.values().forEach { fm ->
+                            val isSel = gifFitMode == fm
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalCyan else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalCyan else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { gifFitMode = fm }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = when (fm) {
+                                        AspectFitMode.CROP -> "FILL SCREEN (CROP)"
+                                        AspectFitMode.FIT -> "LETTERBOX (FIT)"
+                                        AspectFitMode.STRETCH -> "STRETCH"
+                                    },
+                                    color = if (isSel) OledBlack else TextPrimary,
+                                    fontSize = 7.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Threshold Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("THRESHOLD", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${gifThreshold.toInt()}", color = TacticalGreen, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = gifThreshold,
+                        onValueChange = { gifThreshold = it },
+                        valueRange = 0f..255f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalGreen, activeTrackColor = TacticalGreen),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 5. Brightness Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("BRIGHTNESS", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${gifBrightness.toInt()}", color = TacticalCyan, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = gifBrightness,
+                        onValueChange = { gifBrightness = it },
+                        valueRange = -100f..100f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalCyan, activeTrackColor = TacticalCyan),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 6. Contrast Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("CONTRAST", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${gifContrast.toInt()}", color = TacticalAmber, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = gifContrast,
+                        onValueChange = { gifContrast = it },
+                        valueRange = -100f..100f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalAmber, activeTrackColor = TacticalAmber),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 7. Invert Colors Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("INVERT COLORS", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        Switch(
+                            checked = gifInvert,
+                            onCheckedChange = { gifInvert = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = TacticalAmber),
+                            modifier = Modifier.height(20.dp)
+                        )
+                    }
+
+                    // 8. FPS / Frame Delay Override
+                    Text("TIMING / FPS OVERRIDE:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(
+                            0 to "ORIGINAL",
+                            20 to "20 FPS (50ms)",
+                            15 to "15 FPS (66ms)",
+                            10 to "10 FPS (100ms)",
+                            30 to "30 FPS (33ms)"
+                        ).forEach { (fps, lbl) ->
+                            val isSel = gifFpsOverride == fps
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalCyan else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalCyan else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { gifFpsOverride = fps }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(lbl, color = if (isSel) OledBlack else TextPrimary, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    // 9. Frame Subsampling
+                    Text("FRAME SUBSAMPLING:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1 to "ALL FRAMES", 2 to "SKIP EVERY 2ND (1/2 SIZE)").forEach { (sub, lbl) ->
+                            val isSel = gifSubsample == sub
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalAmber else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalAmber else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { gifSubsample = sub }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(lbl, color = if (isSel) OledBlack else TextPrimary, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    if (isProcessingGif) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = TacticalAmber)
+                            Text("Quantizing all frames with $gifDitherMode...", color = TacticalAmber, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isProcessingGif = true
+                            withContext(Dispatchers.Default) {
+                                val step = if (gifSubsample == 2) 2 else 1
+                                val selectedFrames = pendingGifFrames.filterIndexed { idx, _ -> idx % step == 0 }
+                                val converted = selectedFrames.map { (bmp, delay) ->
+                                    val finalDelay = if (gifFpsOverride > 0) (1000 / gifFpsOverride) else delay
+                                    AnimEncoder.decodeBitmapToStudioFrame(
+                                        src = bmp,
+                                        ditherMode = gifDitherMode,
+                                        threshold = gifThreshold,
+                                        invert = gifInvert,
+                                        fitMode = gifFitMode,
+                                        brightness = gifBrightness,
+                                        contrast = gifContrast
+                                    ).copy(delayMs = finalDelay)
+                                }
+                                frames = converted.toMutableList()
+                                currentFrameIndex = 0
+                                animName = pendingGifFileName
+                                canvasRevision++
+                            }
+                            isProcessingGif = false
+                            showGifImportDialog = false
+                            pendingGifFrames = emptyList()
+                            statusMessage = "Imported ${frames.size} frames from GIF!"
+                        }
+                    },
+                    enabled = !isProcessingGif,
+                    colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber)
+                ) {
+                    Text("IMPORT ANIMATION", color = TacticalAmber, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showGifImportDialog = false
+                        pendingGifFrames = emptyList()
+                    },
+                    enabled = !isProcessingGif
+                ) {
+                    Text("CANCEL", color = TextMuted, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        )
+    }
+
+    // =========================================================================
+    // ENHANCED STATIC IMAGE IMPORT & QUANTIZATION DIALOG
     // =========================================================================
     if (showImportDialog && pendingImportBitmap != null) {
         val bmp = pendingImportBitmap!!
+        val previewOledBitmap = remember { Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888) }
+        val previewPixelBuffer = remember { IntArray(128 * 64) }
+        var imagePreviewRendered by remember { mutableStateOf<Bitmap?>(null) }
+
+        LaunchedEffect(importDitherMode, importFitMode, importBrightness, importContrast, importThreshold, importInvert) {
+            val sf = AnimEncoder.decodeBitmapToStudioFrame(
+                src = bmp,
+                ditherMode = importDitherMode,
+                threshold = importThreshold,
+                invert = importInvert,
+                fitMode = importFitMode,
+                brightness = importBrightness,
+                contrast = importContrast
+            )
+            val active = phosphorColor.toArgb()
+            val off = 0xFF040608.toInt()
+            for (y in 0 until 64) {
+                val row = y * 128
+                for (x in 0 until 128) {
+                    previewPixelBuffer[row + x] = if (sf.getPixel(x, y)) active else off
+                }
+            }
+            previewOledBitmap.setPixels(previewPixelBuffer, 0, 128, 0, 0, 128, 64)
+            imagePreviewRendered = previewOledBitmap
+        }
+
         AlertDialog(
-            onDismissRequest = { showImportDialog = false },
+            onDismissRequest = {
+                showImportDialog = false
+                pendingImportBitmap = null
+            },
             containerColor = TacticalSurface,
             title = {
-                Text("IMPORT & QUANTIZE IMAGE", color = TacticalCyan, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("IMAGE IMPORT & 1-BIT QUANTIZER", color = TacticalCyan, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select 1-bit dithering algorithm and geometry:", color = TextMuted, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 1. Live 128x64 OLED Preview
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(128f / 64f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF040608))
+                            .border(1.5.dp, TacticalBorder, RoundedCornerShape(4.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val img = imagePreviewRendered
+                        if (img != null) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = img.asImageBitmap(),
+                                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                                    filterQuality = FilterQuality.None
+                                )
+                            }
+                        }
+                    }
 
-                    // Dithering Mode Chips
+                    // 2. Dithering Mode Chips
+                    Text("DITHERING ALGORITHM:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1147,66 +1737,161 @@ fun AnimStudioScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(3.dp))
                                     .background(if (isSel) TacticalCyan else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalCyan else TacticalBorder, RoundedCornerShape(3.dp))
                                     .clickable { importDitherMode = dm }
                                     .padding(horizontal = 6.dp, vertical = 3.dp)
                             ) {
-                                Text(dm.label, color = if (isSel) OledBlack else TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text(dm.label, color = if (isSel) OledBlack else TextPrimary, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    // Threshold Slider
-                    Column {
-                        Text("THRESHOLD: ${importThreshold.toInt()}", color = TextMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Slider(
-                            value = importThreshold,
-                            onValueChange = { importThreshold = it },
-                            valueRange = 0f..255f,
-                            colors = SliderDefaults.colors(thumbColor = TacticalCyan, activeTrackColor = TacticalCyan)
-                        )
+                    // 3. Screen Framing (Fill Screen / Crop vs Fit vs Stretch)
+                    Text("GEOMETRY & SCREEN FRAMING:", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        AspectFitMode.values().forEach { fm ->
+                            val isSel = importFitMode == fm
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (isSel) TacticalAmber else TacticalSurfaceVariant)
+                                    .border(1.dp, if (isSel) TacticalAmber else TacticalBorder, RoundedCornerShape(3.dp))
+                                    .clickable { importFitMode = fm }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = when (fm) {
+                                        AspectFitMode.CROP -> "FILL SCREEN (CROP)"
+                                        AspectFitMode.FIT -> "LETTERBOX (FIT)"
+                                        AspectFitMode.STRETCH -> "STRETCH"
+                                    },
+                                    color = if (isSel) OledBlack else TextPrimary,
+                                    fontSize = 7.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
-                    // Invert Colors Switch
+                    // 4. Threshold Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("THRESHOLD", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${importThreshold.toInt()}", color = TacticalGreen, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = importThreshold,
+                        onValueChange = { importThreshold = it },
+                        valueRange = 0f..255f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalGreen, activeTrackColor = TacticalGreen),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 5. Brightness Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("BRIGHTNESS", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${importBrightness.toInt()}", color = TacticalCyan, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = importBrightness,
+                        onValueChange = { importBrightness = it },
+                        valueRange = -100f..100f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalCyan, activeTrackColor = TacticalCyan),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 6. Contrast Slider
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("CONTRAST", color = TextMuted, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("${importContrast.toInt()}", color = TacticalAmber, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = importContrast,
+                        onValueChange = { importContrast = it },
+                        valueRange = -100f..100f,
+                        colors = SliderDefaults.colors(thumbColor = TacticalAmber, activeTrackColor = TacticalAmber),
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    // 7. Invert Colors Switch
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("INVERT COLORS", color = TextPrimary, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                        Text("INVERT COLORS", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                         Switch(
                             checked = importInvert,
                             onCheckedChange = { importInvert = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = TacticalAmber)
+                            colors = SwitchDefaults.colors(checkedThumbColor = TacticalAmber),
+                            modifier = Modifier.height(20.dp)
                         )
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val sf = AnimEncoder.decodeBitmapToStudioFrame(
-                            src = bmp,
-                            ditherMode = importDitherMode,
-                            threshold = importThreshold,
-                            invert = importInvert,
-                            fitMode = importFitMode
-                        )
-                        val newFrames = frames.toMutableList()
-                        newFrames.add(safeIndex + 1, sf)
-                        frames = newFrames
-                        currentFrameIndex = safeIndex + 1
-                        showImportDialog = false
-                        statusMessage = "Imported 1-bit frame!"
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan)
-                ) {
-                    Text("ADD FRAME", color = TacticalCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Button(
+                        onClick = {
+                            val sf = AnimEncoder.decodeBitmapToStudioFrame(
+                                src = bmp,
+                                ditherMode = importDitherMode,
+                                threshold = importThreshold,
+                                invert = importInvert,
+                                fitMode = importFitMode,
+                                brightness = importBrightness,
+                                contrast = importContrast
+                            )
+                            val newFrames = frames.toMutableList()
+                            newFrames.add(safeIndex + 1, sf)
+                            frames = newFrames
+                            currentFrameIndex = safeIndex + 1
+                            showImportDialog = false
+                            pendingImportBitmap = null
+                            canvasRevision++
+                            statusMessage = "Added new frame!"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalCyanDim),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TacticalCyan)
+                    ) {
+                        Text("+ ADD FRAME", color = TacticalCyan, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            pushUndo()
+                            val sf = AnimEncoder.decodeBitmapToStudioFrame(
+                                src = bmp,
+                                ditherMode = importDitherMode,
+                                threshold = importThreshold,
+                                invert = importInvert,
+                                fitMode = importFitMode,
+                                brightness = importBrightness,
+                                contrast = importContrast
+                            )
+                            currentFrame.clear()
+                            for (i in sf.pixels.indices) currentFrame.pixels[i] = sf.pixels[i]
+                            showImportDialog = false
+                            pendingImportBitmap = null
+                            canvasRevision++
+                            statusMessage = "Replaced current frame!"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalAmberDim),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TacticalAmber)
+                    ) {
+                        Text("REPLACE", color = TacticalAmber, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text("CANCEL", color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                TextButton(onClick = {
+                    showImportDialog = false
+                    pendingImportBitmap = null
+                }) {
+                    Text("CANCEL", color = TextMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                 }
             }
         )

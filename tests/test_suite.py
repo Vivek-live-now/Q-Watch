@@ -2964,15 +2964,27 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert "adjustBrightnessContrast" in enc, "AnimEncoder must provide brightness and contrast adjustments"
     print("  [PASS] 4. Android AnimEncoder 1-bit BMP encoder/decoder, magic-byte detection & LZW/Movie fallback verified.")
 
-    # 5. AnimStudioScreen hardware-accelerated Bitmap canvas & Bresenham drag
+    # 5. AnimStudioScreen 128x64 authentic OLED canvas, shape tools suite, and GIF Import Studio
     studio_kt = os.path.join(android_screens, "AnimStudioScreen.kt")
     with open(studio_kt, "r", encoding="utf-8") as f:
         studio = f.read()
     assert "displayBitmap.setPixels" in studio, "AnimStudioScreen must use Bitmap.setPixels for 60-120 FPS rendering"
     assert "drawImage(" in studio, "AnimStudioScreen must use hardware-accelerated drawImage"
     assert "drawLineOnFrame" in studio, "AnimStudioScreen must use Bresenham line interpolation on drag"
+    assert "aspectRatio(128f / 64f)" in studio and "fillMaxWidth()" in studio, "AnimStudioScreen must frame canvas at crisp 128x64 (2:1) OLED aspect ratio"
+    assert "isDraggingShape" in studio and "dragStartPos" in studio, "AnimStudioScreen must provide real-time interactive drag shape preview"
+    assert "showGifImportDialog" in studio and "pendingGifFrames" in studio, "AnimStudioScreen must provide animated GIF Import Studio dialog"
+    assert "gifDitherMode" in studio and "gifFitMode" in studio, "AnimStudioScreen GIF Import must support dither and fit selection"
+    assert "gifBrightness" in studio and "gifContrast" in studio and "gifThreshold" in studio, "AnimStudioScreen GIF Import must provide fine-tuning sliders"
     assert 'remotePath = "/photos/$cleanBmpName"' in studio, "AnimStudioScreen must support direct /photos deployment"
-    print("  [PASS] 5. AnimStudioScreen zero-lag Bitmap canvas, Bresenham drawing & GIF/BMP sideload verified.")
+
+    model_kt = os.path.join(android_anim, "AnimModel.kt")
+    with open(model_kt, "r", encoding="utf-8") as f:
+        model = f.read()
+    assert "FILL_CIRCLE" in model and "BUCKET" in model, "AnimModel must provide FILL_CIRCLE and BUCKET tools"
+    assert "fun floodFill" in model, "StudioFrame must implement BFS floodFill"
+    assert "fun drawCircle" in model and "fill: Boolean = false" in model, "StudioFrame drawCircle must support filled circles"
+    print("  [PASS] 5. AnimStudioScreen 128x64 OLED canvas, interactive shape drag suite & GIF Import Studio verified.")
 
     # 6. Dedicated ImageViewerScreen Photo Studio & Watch Gallery
     viewer_kt = os.path.join(android_screens, "ImageViewerScreen.kt")
