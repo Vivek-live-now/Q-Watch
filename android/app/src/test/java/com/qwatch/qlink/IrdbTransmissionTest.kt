@@ -194,20 +194,24 @@ class IrdbTransmissionTest {
 
     @Test
     fun testIrTransmitFeedbackAndHonestStates() {
-        val idleFb = IrTransmitFeedback(IrTransmitState.IDLE, "READY")
+        val idleFb = IrTransmitFeedback(state = IrTransmitState.IDLE, message = "READY")
         assertEquals(IrTransmitState.IDLE, idleFb.state)
+        assertEquals("READY", idleFb.message)
 
-        val simFb = IrTransmitFeedback(IrTransmitState.SIMULATED, "SIMULATED: No IR signal for CH_UP")
+        val simFb = IrTransmitFeedback(state = IrTransmitState.SIMULATED, message = "SIMULATED: No IR signal for CH_UP")
         assertEquals(IrTransmitState.SIMULATED, simFb.state)
         assertTrue(simFb.message.startsWith("SIMULATED"))
 
-        val failFb = IrTransmitFeedback(IrTransmitState.FAILED, "Watch not connected")
+        val failFb = IrTransmitFeedback(state = IrTransmitState.FAILED, message = "Watch not connected")
         assertEquals(IrTransmitState.FAILED, failFb.state)
+        assertEquals("Watch not connected", failFb.message)
 
-        val unsuppFb = IrTransmitFeedback(IrTransmitState.UNSUPPORTED, "Unsupported signal format")
+        val unsuppFb = IrTransmitFeedback(state = IrTransmitState.UNSUPPORTED, message = "Unsupported signal format")
         assertEquals(IrTransmitState.UNSUPPORTED, unsuppFb.state)
+        assertEquals("Unsupported signal format", unsuppFb.message)
 
-        val succFb = IrTransmitFeedback(IrTransmitState.SUCCESS, "SENT: Power (SIRC 12b)")
+        val succFb = IrTransmitFeedback(state = IrTransmitState.SUCCESS, message = "SENT: Power (SIRC 12b)")
         assertEquals(IrTransmitState.SUCCESS, succFb.state)
+        assertEquals("SENT: Power (SIRC 12b)", succFb.message)
     }
 }

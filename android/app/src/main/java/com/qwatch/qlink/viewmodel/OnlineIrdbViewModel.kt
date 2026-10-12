@@ -187,7 +187,7 @@ class OnlineIrdbViewModel(application: Application) : AndroidViewModel(applicati
                         error = err
                     )
                 }
-            } else if (btn.isRaw) {
+            } else if (btn.isRaw || btn.type.equals("raw", ignoreCase = true)) {
                 if (btn.rawTimings.isEmpty()) {
                     _transmitFeedback.value = IrTransmitFeedback(
                         state = IrTransmitState.UNSUPPORTED,

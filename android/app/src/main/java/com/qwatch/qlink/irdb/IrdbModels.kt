@@ -41,10 +41,7 @@ data class IrParsedButton(
                 !protocol.equals("unknown", ignoreCase = true)
 
     val isRaw: Boolean
-        get() = type.equals("raw", ignoreCase = true) ||
-                protocol.isBlank() ||
-                protocol.equals("raw", ignoreCase = true) ||
-                rawTimings.isNotEmpty()
+        get() = rawTimings.isNotEmpty() || (type.equals("raw", ignoreCase = true) && rawTimingsCount > 0)
 
     val effectiveBits: Int
         get() = if (nbits > 0) nbits else getDefaultBitsForProtocol(protocol)
@@ -98,8 +95,8 @@ enum class IrTransmitState {
 
 data class IrTransmitFeedback(
     val state: IrTransmitState = IrTransmitState.IDLE,
-    val buttonName: String = "",
     val message: String = "",
+    val buttonName: String = "",
     val error: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
