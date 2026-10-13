@@ -14,13 +14,19 @@ SensorManager sensors;
 #define MPU6500_GYRO_CONFIG    0x1B
 #define MPU6500_ACCEL_CONFIG   0x1C
 #define MPU6500_ACCEL_CONFIG_2 0x1D
+#define MPU6500_LP_ACCEL_ODR   0x1E
+#define MPU6500_WOM_THR        0x1F
 #define MPU6500_INT_PIN_CFG    0x37
 #define MPU6500_INT_ENABLE     0x38
 #define MPU6500_ACCEL_XOUT_H   0x3B
+#define MPU6500_ACCEL_INTEL_CTRL 0x69
 #define MPU6500_PWR_MGMT_1     0x6B
 #define MPU6500_PWR_MGMT_2     0x6C
 #define MPU6500_WHO_AM_I       0x75
 #define MPU6500_ADDR           0x68
+
+// BME280 Register
+#define BME280_REGISTER_CONTROL 0xF4
 
 // QMC5883P Addresses & Registers (0x2C)
 #define QMC5883P_ADDR          0x2C
@@ -46,7 +52,7 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0), sensors_sleeping(false), mag_active(true), gyro_active(true) {
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -1021,6 +1027,7 @@ void SensorManager::saveCurrentCalibration() {
 }
 
 void SensorManager::loop() {
+    if (sensors_sleeping) return;
     uint32_t now = millis();
 
     if (now - last_fusion_update >= 10) {
@@ -1029,7 +1036,7 @@ void SensorManager::loop() {
 
         readMpu();
 
-        if (now - last_mag_update >= 20) {
+        if (mag_active && (now - last_mag_update >= 20)) {
             readMag();
             updateMagCalibration();
             last_mag_update = now;
@@ -1054,26 +1061,152 @@ OrientationData SensorManager::getOrientation() const {
 void SensorManager::setupMpuInterrupt() {
     if (!mpu_ok) return;
     // Configure INT pin: Active Low (bit 7 = 1), Open Drain (bit 6 = 1), Latch until cleared (bit 5 = 1), Clear on any read (bit 4 = 1)
-    writeRegister(mpu_i2c_addr, 0x37, 0xF0);
+    writeRegister(mpu_i2c_addr, MPU6500_INT_PIN_CFG, 0xF0);
 }
 
 void SensorManager::enableMotionInterruptForSleep() {
-    if (!mpu_ok) return;
-    // Set INT pin active low open-drain latched
-    writeRegister(mpu_i2c_addr, 0x37, 0xF0);
-
-    // Set motion threshold (WOM_THR 0x1F)
-    writeRegister(mpu_i2c_addr, 0x1F, 0x20); // ~62.5mg threshold
-
-    // Enable Accel hardware intelligence control (ACCEL_INTEL_CTRL 0x69)
-    writeRegister(mpu_i2c_addr, 0x69, 0xC0); // Enable WOM logic and compare with previous sample
-
-    // Enable WOM interrupt in INT_ENABLE (0x38)
-    writeRegister(mpu_i2c_addr, 0x38, 0x40); // Bit 6 = WOM_EN
+    enterSleep(true);
 }
 
 void SensorManager::clearMpuInterrupt() {
     if (!mpu_ok) return;
     // Read INT_STATUS register (0x3A) to clear interrupt
     readRegister(mpu_i2c_addr, 0x3A);
+}
+
+void SensorManager::enterSleep(bool keep_wom_active) {
+    if (sensors_sleeping) return;
+
+    if (mpu_ok) {
+        if (keep_wom_active) {
+            // Configure INT pin: Active Low (bit 7 = 1), Open Drain (bit 6 = 1), Latch until cleared (bit 5 = 1), Clear on any read (bit 4 = 1)
+            writeRegister(mpu_i2c_addr, MPU6500_INT_PIN_CFG, 0xF0);
+
+            // Motion threshold: WOM_THR (0x1F) = 0x20 (~62.5mg)
+            writeRegister(mpu_i2c_addr, MPU6500_WOM_THR, 0x20);
+
+            // Enable Accel hardware intelligence control (ACCEL_INTEL_CTRL 0x69)
+            writeRegister(mpu_i2c_addr, MPU6500_ACCEL_INTEL_CTRL, 0xC0);
+
+            // Enable WOM interrupt in INT_ENABLE (0x38)
+            writeRegister(mpu_i2c_addr, MPU6500_INT_ENABLE, 0x40);
+
+            // Put Gyroscope into Standby (STBY_XG, STBY_YG, STBY_ZG = bits 2,1,0 = 1)
+            writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_2, 0x07);
+
+            // Set Low-Power Accel ODR to 31.25 Hz (0x06)
+            writeRegister(mpu_i2c_addr, MPU6500_LP_ACCEL_ODR, 0x06);
+
+            // Enable Accel Cycle mode: bit 5 = 1 (CYCLE), bit 6 = 0 (SLEEP)
+            writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x20);
+        } else {
+            // Disarm interrupts
+            writeRegister(mpu_i2c_addr, MPU6500_INT_ENABLE, 0x00);
+
+            // Full MPU Sleep: bit 6 = 1 (SLEEP)
+            writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x40);
+        }
+    }
+
+    if (mag_ok) {
+        if (mag_type == MagChipType::QMC5883P) {
+            writeRegister(mag_i2c_addr, QMC5883P_MODE, 0x00);
+        } else if (mag_type == MagChipType::QMC5883L) {
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1C);
+        } else if (mag_type == MagChipType::HMC5883L) {
+            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x02);
+        }
+    }
+
+    if (bme_ok) {
+        // Put BME280 into Sleep mode: ctrl_meas (0xF4) bits [1:0] = 00
+        writeRegister(0x76, BME280_REGISTER_CONTROL, 0x00);
+    }
+
+    sensors_sleeping = true;
+}
+
+void SensorManager::wakeFromSleep() {
+    if (!sensors_sleeping) return;
+
+    if (mpu_ok) {
+        // Wake MPU and auto-select optimal clock source (PLL with gyro reference)
+        writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x01);
+        delay(10);
+
+        // Re-enable all 6 axes or keep gyro in standby based on gyro_active
+        writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_2, gyro_active ? 0x00 : 0x07);
+
+        // Restore Hardware DLPF: Gyro 42Hz filter
+        writeRegister(mpu_i2c_addr, MPU6500_CONFIG, 0x03);
+
+        // Restore Hardware DLPF: Accel 44.8Hz filter
+        writeRegister(mpu_i2c_addr, MPU6500_ACCEL_CONFIG_2, 0x03);
+
+        // Sample Rate Divider: 1000Hz / (1 + 4) = 200 Hz
+        writeRegister(mpu_i2c_addr, MPU6500_SMPLRT_DIV, 0x04);
+
+        // Ranges: Gyro ±2000 dps (0x18), Accel ±8g (0x10)
+        writeRegister(mpu_i2c_addr, MPU6500_GYRO_CONFIG, 0x18);
+        writeRegister(mpu_i2c_addr, MPU6500_ACCEL_CONFIG, 0x10);
+
+        // Clear interrupt status
+        clearMpuInterrupt();
+    }
+
+    if (mag_ok && mag_active) {
+        if (mag_type == MagChipType::QMC5883P) {
+            writeRegister(mag_i2c_addr, QMC5883P_CONFIG, 0x08);
+            delay(5);
+            writeRegister(mag_i2c_addr, QMC5883P_MODE, 0xCF);
+        } else if (mag_type == MagChipType::QMC5883L) {
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1D);
+        } else if (mag_type == MagChipType::HMC5883L) {
+            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x00);
+        }
+    }
+
+    if (bme_ok) {
+        // Restore BME280 normal mode: osrs_t x1 (001), osrs_p x1 (001), mode normal (11) = 0x27
+        writeRegister(0x76, BME280_REGISTER_CONTROL, 0x27);
+    }
+
+    sensors_sleeping = false;
+    last_fusion_update = millis();
+    last_mag_update = millis();
+    last_bme_update = millis();
+}
+
+void SensorManager::setMagActive(bool active) {
+    if (!mag_ok || mag_active == active) return;
+    mag_active = active;
+    if (sensors_sleeping) return;
+
+    if (!mag_active) {
+        if (mag_type == MagChipType::QMC5883P) {
+            writeRegister(mag_i2c_addr, QMC5883P_MODE, 0x00);
+        } else if (mag_type == MagChipType::QMC5883L) {
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1C);
+        } else if (mag_type == MagChipType::HMC5883L) {
+            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x02);
+        }
+    } else {
+        if (mag_type == MagChipType::QMC5883P) {
+            writeRegister(mag_i2c_addr, QMC5883P_CONFIG, 0x08);
+            delay(5);
+            writeRegister(mag_i2c_addr, QMC5883P_MODE, 0xCF);
+        } else if (mag_type == MagChipType::QMC5883L) {
+            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1D);
+        } else if (mag_type == MagChipType::HMC5883L) {
+            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x00);
+        }
+    }
+}
+
+void SensorManager::setGyroActive(bool active) {
+    if (!mpu_ok || gyro_active == active) return;
+    gyro_active = active;
+    if (sensors_sleeping) return;
+
+    writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_2, gyro_active ? 0x00 : 0x07);
 }

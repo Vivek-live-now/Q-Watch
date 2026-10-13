@@ -38,6 +38,7 @@ public:
     void disableSensor();
     bool isEnabled() const { return sensor_enabled; }
     bool retryInit();
+    uint32_t getNoFingerDurationMs() const { return (no_finger_start_time > 0) ? (millis() - no_finger_start_time) : 0; }
 
     // Visual heart beat pulse detection for HUD
     bool isBeating() const { return (last_beat_time > 0 && (millis() - last_beat_time) < 220); }
@@ -97,6 +98,7 @@ private:
     // DC baseline tracking filter
     uint32_t ir_dc_filter;
     uint32_t red_dc_filter;
+    uint32_t no_finger_start_time;
 
     void processSample(uint32_t red, uint32_t ir);
     void resetBeatState();

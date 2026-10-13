@@ -140,6 +140,15 @@ public:
     void enableMotionInterruptForSleep();
     void clearMpuInterrupt();
 
+    // Four-Sensor Sleep & Power Management Engine
+    void enterSleep(bool keep_wom_active);
+    void wakeFromSleep();
+    bool isSleeping() const { return sensors_sleeping; }
+    void setMagActive(bool active);
+    void setGyroActive(bool active);
+    bool isMagActive() const { return mag_active; }
+    bool isGyroActive() const { return gyro_active; }
+
     // For Telemetry
     RawSensorData getRawData() const { return raw_data; }
     CalibratedSensorData getCalData() const { return cal_data; }
@@ -180,6 +189,9 @@ private:
     MagChipType mag_type;
     uint8_t mag_i2c_addr;
     uint8_t mpu_i2c_addr;
+    bool sensors_sleeping;
+    bool mag_active;
+    bool gyro_active;
 
     Adafruit_BME280 bme;
     EnvironmentData env_data;

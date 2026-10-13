@@ -17,7 +17,7 @@ static File uploadFile;
 static String s_portal_upload_path;
 static bool s_portal_upload_ok = true;
 
-WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), scan_in_progress(false), scanned_count(0) {}
+WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), portal_start_time(0), scan_in_progress(false), scanned_count(0) {}
 
 void WifiPortal::begin() {
     configManager.load();
@@ -140,6 +140,7 @@ void WifiPortal::connectToNetwork(const String& ssid, const String& password) {
 void WifiPortal::startPortal() {
     Serial.println("Starting Captive Portal...");
     state = WifiState::PORTAL;
+    portal_start_time = millis();
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("Q-Watch-Setup");
 
@@ -278,6 +279,18 @@ void WifiPortal::loop() {
     } else if (state == WifiState::PORTAL) {
         dnsServer.processNextRequest();
         server.handleClient();
+
+        // 3-Minute Inactivity Auto-Timeout: If no station is connected for 3 minutes,
+        // automatically stop the portal to avoid high battery drain (~80-120 mA).
+        if (WiFi.softAPgetStationNum() == 0) {
+            if (millis() - portal_start_time >= 180000) {
+                Serial.println("Portal inactivity timeout (3 min, 0 clients). Stopping SoftAP...");
+                stopPortal();
+            }
+        } else {
+            // Keep timeout timer alive while a client is actively connected
+            portal_start_time = millis();
+        }
     }
 }
 

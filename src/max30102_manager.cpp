@@ -33,7 +33,8 @@ MAX30102Manager::MAX30102Manager() :
     cycle_red_dc_sum(0),
     cycle_samples(0),
     ir_dc_filter(50000),
-    red_dc_filter(50000) {
+    red_dc_filter(50000),
+    no_finger_start_time(0) {
     memset(&current_metrics, 0, sizeof(HealthMetrics));
     memset(ppg_buffer, 128, sizeof(ppg_buffer));
     memset(bpm_history, 0, sizeof(bpm_history));
@@ -115,6 +116,7 @@ void MAX30102Manager::enableSensor() {
     Wire.setTimeOut(10);
 
     sensor_enabled = true;
+    no_finger_start_time = 0;
     resetBeatState();
     readTemperature();
 }
@@ -123,6 +125,7 @@ void MAX30102Manager::disableSensor() {
     if (!sensor_ok) return;
     particleSensor.shutDown();
     sensor_enabled = false;
+    no_finger_start_time = 0;
     current_metrics.finger_detected = false;
     current_metrics.bpm = 0;
     current_metrics.spo2 = 0;
@@ -208,9 +211,19 @@ void MAX30102Manager::processSample(uint32_t red, uint32_t ir) {
         ppg_buffer[ppg_head] = 128;
         ppg_head = (ppg_head + 1) % PPG_BUF_LEN;
         prev_filtered_ac = 0;
+
+        // Auto-timeout: If finger is absent for >= 8 seconds while sensor is running,
+        // shut down optical LEDs to conserve battery power (saves 15-25 mA)
+        if (no_finger_start_time == 0) {
+            no_finger_start_time = millis();
+        } else if (millis() - no_finger_start_time >= 8000) {
+            disableSensor();
+            no_finger_start_time = 0;
+        }
         return;
     }
 
+    no_finger_start_time = 0;
     current_metrics.finger_detected = true;
 
     // Slow baseline DC tracking (~2.5 sec time constant at 25Hz)

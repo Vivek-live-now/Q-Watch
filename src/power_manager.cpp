@@ -1,5 +1,6 @@
 #include "power_manager.h"
 #include "settings_data.h"
+#include "hw_config.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -32,7 +33,8 @@ PowerManager::PowerManager() :
     eco_led_block(false),
     eco_audio_mute(false),
     ulp_test_wake_count(0),
-    ulp_sentry_active(false)
+    ulp_sentry_active(false),
+    boost_mhz(0)
 {}
 
 void PowerManager::begin() {
@@ -151,11 +153,21 @@ uint32_t PowerManager::getTargetCpuFreqMhz() const {
 
 void PowerManager::applyCpuFrequency() {
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
-    uint32_t target_mhz = getTargetCpuFreqMhz();
+    uint32_t target_mhz = (boost_mhz > 0) ? boost_mhz : getTargetCpuFreqMhz();
     if (getCpuFrequencyMhz() != target_mhz) {
         setCpuFrequencyMhz(target_mhz);
     }
 #endif
+}
+
+void PowerManager::boostCpuFrequency(uint32_t mhz) {
+    boost_mhz = mhz;
+    applyCpuFrequency();
+}
+
+void PowerManager::releaseCpuBoost() {
+    boost_mhz = 0;
+    applyCpuFrequency();
 }
 
 float PowerManager::getEstimatedCurrentMa() const {
@@ -237,6 +249,20 @@ void PowerManager::triggerUlpSentryTest() {
 
 void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t wake_mask) {
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+    // Hardware Pin Isolation: Drive buzzer and haptic motor MOSFET gates strictly LOW
+    gpio_set_direction((gpio_num_t)BUZZER_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)BUZZER_PIN, 0);
+    gpio_hold_en((gpio_num_t)BUZZER_PIN);
+
+    gpio_set_direction((gpio_num_t)VIBRATOR_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)VIBRATOR_PIN, 0);
+    gpio_hold_en((gpio_num_t)VIBRATOR_PIN);
+
+    gpio_set_direction((gpio_num_t)RGB_LED, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)RGB_LED, 0);
+    gpio_hold_en((gpio_num_t)RGB_LED);
+    gpio_deep_sleep_hold_en();
+
     switch (current_sleep_engine) {
         case SleepEngine::DEEP_SLEEP: {
             if (sleep_sec > 0) {
@@ -258,12 +284,18 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
             esp_light_sleep_start();
-            // On wake, execution continues immediately here!
+            // On wake, release pin holds
+            gpio_hold_dis((gpio_num_t)BUZZER_PIN);
+            gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
+            gpio_hold_dis((gpio_num_t)RGB_LED);
             break;
         }
 
         case SleepEngine::DISPLAY_OFF: {
             // Display off only: no deep/light sleep, CPU yields
+            gpio_hold_dis((gpio_num_t)BUZZER_PIN);
+            gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
+            gpio_hold_dis((gpio_num_t)RGB_LED);
             delay(10);
             break;
         }

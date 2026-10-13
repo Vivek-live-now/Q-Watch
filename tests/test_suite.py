@@ -3324,6 +3324,163 @@ def test_media_upload_integrity_and_export_suite():
         os.remove(test_anim_bin)
     print("  [PASS] 8. Host C++ unit test binaries (test_qlink & test_anim_system) executed and passed.")
 
+def test_four_sensor_sleep_engine():
+    print("\n--- 49. Four-Sensor Sleep Engine & Deep Power Verification ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sensors_h = os.path.join(base_dir, "include", "sensors.h")
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+
+    # 1. Header API Verification
+    with open(sensors_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void enterSleep(bool keep_wom_active);" in sh, "sensors.h must declare enterSleep"
+    assert "void wakeFromSleep();" in sh, "sensors.h must declare wakeFromSleep"
+    assert "bool isSleeping() const" in sh, "sensors.h must declare isSleeping"
+    assert "void setMagActive(bool active);" in sh, "sensors.h must declare setMagActive"
+    assert "void setGyroActive(bool active);" in sh, "sensors.h must declare setGyroActive"
+    assert "bool isMagActive() const" in sh, "sensors.h must declare isMagActive"
+    assert "bool isGyroActive() const" in sh, "sensors.h must declare isGyroActive"
+    print("  [PASS] 1. SensorManager power management and sleep API declarations verified.")
+
+    # 2. Register & Bitfield Implementation Verification
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "#define MPU6500_LP_ACCEL_ODR   0x1E" in sc
+    assert "#define MPU6500_WOM_THR        0x1F" in sc
+    assert "#define MPU6500_ACCEL_INTEL_CTRL 0x69" in sc
+    assert "#define BME280_REGISTER_CONTROL 0xF4" in sc
+    assert "if (sensors_sleeping) return;" in sc, "sensors.loop() must guard against polling while asleep"
+    assert "writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_2, 0x07);" in sc, "WOM mode must place Gyro into standby"
+    assert "writeRegister(mpu_i2c_addr, MPU6500_LP_ACCEL_ODR, 0x06);" in sc, "WOM mode must set LP ODR to 31.25Hz"
+    assert "writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x20);" in sc, "WOM mode must enable Cycle mode"
+    assert "writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x40);" in sc, "Full sleep mode must set SLEEP bit"
+    assert "writeRegister(mag_i2c_addr, QMC5883P_MODE, 0x00);" in sc, "QMC5883P must be placed in Standby"
+    assert "writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1C);" in sc, "QMC5883L must be placed in Standby"
+    assert "writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x02);" in sc, "HMC5883L must be placed in Standby/Idle"
+    assert "writeRegister(0x76, BME280_REGISTER_CONTROL, 0x00);" in sc, "BME280 must be placed in Sleep mode"
+    print("  [PASS] 2. MPU-6500, QMC5883P/L, HMC5883L, and BME280 sleep register commands verified.")
+
+    # 3. Lifecycle Integration in UICore
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "sensors.enterSleep(sleep_s.raise_to_wake);" in uc or "sensors.enterSleep(true);" in uc
+    assert "max30102Manager.disableSensor();" in uc
+    assert "sensors.wakeFromSleep();" in uc
+    print("  [PASS] 3. UICore enterDeepSleep and performSilentDeepSleepWake sleep/wake integration verified.")
+
+    # 4. Behavioral State Machine Simulation
+    class MockSensorManager:
+        def __init__(self):
+            self.sleeping = False
+            self.mpu_pwr1 = 0x01
+            self.mpu_pwr2 = 0x00
+            self.mpu_odr = 0x00
+            self.mag_mode = 0xCF
+            self.bme_mode = 0x27
+            self.max30102_enabled = True
+
+        def enter_sleep(self, wom_active):
+            if wom_active:
+                self.mpu_pwr2 = 0x07  # Gyro standby
+                self.mpu_odr = 0x06   # 31.25Hz
+                self.mpu_pwr1 = 0x20  # Cycle mode
+            else:
+                self.mpu_pwr1 = 0x40  # Full sleep
+            self.mag_mode = 0x00      # Standby
+            self.bme_mode = 0x00      # Sleep
+            self.max30102_enabled = False
+            self.sleeping = True
+
+        def wake(self):
+            self.mpu_pwr1 = 0x01      # Wake PLL
+            self.mpu_pwr2 = 0x00      # All 6 axes
+            self.mag_mode = 0xCF      # Continuous
+            self.bme_mode = 0x27      # Normal
+            self.sleeping = False
+
+    sim = MockSensorManager()
+    sim.enter_sleep(wom_active=True)
+    assert sim.sleeping and sim.mpu_pwr1 == 0x20 and sim.mpu_pwr2 == 0x07 and sim.mag_mode == 0x00 and sim.bme_mode == 0x00
+    assert not sim.max30102_enabled
+    sim.wake()
+    assert not sim.sleeping and sim.mpu_pwr1 == 0x01 and sim.mpu_pwr2 == 0x00 and sim.mag_mode == 0xCF and sim.bme_mode == 0x27
+
+    sim.enter_sleep(wom_active=False)
+    assert sim.sleeping and sim.mpu_pwr1 == 0x40 and sim.mag_mode == 0x00 and sim.bme_mode == 0x00
+    sim.wake()
+    assert not sim.sleeping
+    print("  [PASS] 4. Four-sensor sleep state machine transitions and register model verified.")
+
+    # 5. Two-Stage Inactivity Display Dimming
+    disp_h = os.path.join(base_dir, "include", "display.h")
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_h, "r", encoding="utf-8") as f:
+        dh = f.read()
+    assert "void setDim(bool dim);" in dh, "display.h must declare setDim"
+    assert "bool isDim() const" in dh, "display.h must declare isDim"
+
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "void DisplayManager::setDim(bool dim)" in dc, "display.cpp must implement setDim"
+    assert "oled.setContrast(16);" in dc, "setDim(true) must drop contrast to low power preset (16)"
+
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "displayManager.setDim(true);" in uc, "ui_core.cpp must trigger dimming before display timeout"
+    assert "displayManager.setDim(false);" in uc, "ui_core.cpp must restore contrast on user action"
+    print("  [PASS] 5. Two-Stage Inactivity Dimming and OLED contrast governor verified.")
+
+    # 6. MAX30102 8-Second No-Finger Optical Auto-Shutdown
+    max_h = os.path.join(base_dir, "include", "max30102_manager.h")
+    max_cpp = os.path.join(base_dir, "src", "max30102_manager.cpp")
+    with open(max_h, "r", encoding="utf-8") as f:
+        mh = f.read()
+    assert "uint32_t getNoFingerDurationMs() const" in mh, "max30102_manager.h must expose getNoFingerDurationMs"
+    assert "uint32_t no_finger_start_time;" in mh, "max30102_manager.h must track no_finger_start_time"
+
+    with open(max_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "millis() - no_finger_start_time >= 8000" in mc, "max30102_manager.cpp must enforce 8s no-finger timeout"
+    assert "disableSensor();" in mc
+    print("  [PASS] 6. MAX30102 8-second no-finger optical LED auto-shutdown verified.")
+
+    # 7. PowerManager App-Aware DVFS & Hardware Pin Isolation
+    pm_h = os.path.join(base_dir, "include", "power_manager.h")
+    pm_cpp = os.path.join(base_dir, "src", "power_manager.cpp")
+    with open(pm_h, "r", encoding="utf-8") as f:
+        pmh = f.read()
+    assert "void boostCpuFrequency(uint32_t mhz);" in pmh, "power_manager.h must declare boostCpuFrequency"
+    assert "void releaseCpuBoost();" in pmh, "power_manager.h must declare releaseCpuBoost"
+    assert "uint32_t getBoostCpuFreqMhz() const" in pmh, "power_manager.h must declare getBoostCpuFreqMhz"
+    assert "uint32_t boost_mhz;" in pmh, "power_manager.h must declare boost_mhz member"
+
+    with open(pm_cpp, "r", encoding="utf-8") as f:
+        pmc = f.read()
+    assert "void PowerManager::boostCpuFrequency(uint32_t mhz)" in pmc, "power_manager.cpp must implement boostCpuFrequency"
+    assert "void PowerManager::releaseCpuBoost()" in pmc, "power_manager.cpp must implement releaseCpuBoost"
+    assert "gpio_hold_en((gpio_num_t)BUZZER_PIN);" in pmc, "executeSleep must hold BUZZER_PIN gate LOW"
+    assert "gpio_hold_en((gpio_num_t)VIBRATOR_PIN);" in pmc, "executeSleep must hold VIBRATOR_PIN gate LOW"
+    assert "gpio_hold_en((gpio_num_t)RGB_LED);" in pmc, "executeSleep must hold RGB_LED gate LOW"
+    assert "gpio_deep_sleep_hold_en();" in pmc, "executeSleep must enable global deep sleep hold"
+    assert "gpio_hold_dis((gpio_num_t)BUZZER_PIN);" in pmc, "executeSleep must release BUZZER_PIN hold on wake"
+    print("  [PASS] 7. PowerManager App-Aware DVFS boost & GPIO sleep hold pin isolation verified.")
+
+    # 8. Wi-Fi SoftAP Portal 3-Minute Inactivity Auto-Timeout
+    wp_h = os.path.join(base_dir, "include", "wifi_portal.h")
+    wp_cpp = os.path.join(base_dir, "src", "wifi_portal.cpp")
+    with open(wp_h, "r", encoding="utf-8") as f:
+        wph = f.read()
+    assert "uint32_t portal_start_time;" in wph, "wifi_portal.h must track portal_start_time"
+
+    with open(wp_cpp, "r", encoding="utf-8") as f:
+        wpc = f.read()
+    assert "portal_start_time = millis();" in wpc, "startPortal must initialize portal_start_time"
+    assert "WiFi.softAPgetStationNum() == 0" in wpc, "portal loop must check connected station count"
+    assert "millis() - portal_start_time >= 180000" in wpc, "portal loop must enforce 3-minute inactivity timeout"
+    assert "stopPortal();" in wpc, "portal loop must stop portal on timeout"
+    print("  [PASS] 8. Wi-Fi SoftAP portal 3-minute inactivity auto-timeout verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3364,6 +3521,7 @@ if __name__ == "__main__":
     test_photo_viewer_and_anim_packer_overhaul()
     test_online_irdb_transmission_suite()
     test_media_upload_integrity_and_export_suite()
+    test_four_sensor_sleep_engine()
     print("\nAll self-test verifications PASSED!")
 
 

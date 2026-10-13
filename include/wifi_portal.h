@@ -60,6 +60,7 @@ private:
     WifiState state;
     uint32_t connect_start_time;
     uint32_t last_reconnect_attempt;
+    uint32_t portal_start_time;
     bool scan_in_progress;
 
     ScannedNetwork scanned_networks[16];

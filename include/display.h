@@ -6,7 +6,7 @@
 
 class DisplayManager {
 public:
-    DisplayManager() : mag_history_idx(0) {
+    DisplayManager() : mag_history_idx(0), display_dimmed(false) {
         for(int i=0; i<64; i++) mag_history[i] = 0;
     }
 public:
@@ -14,6 +14,8 @@ public:
     void update();
     void applyDisplaySettings();
     void setPowerSave(bool enable);
+    void setDim(bool dim);
+    bool isDim() const { return display_dimmed; }
     const uint8_t* getBufferPtr() const;
     size_t getBufferSize() const { return 1024; }
     void invertBuffer();
@@ -125,6 +127,8 @@ private:
     void drawTopStatusBar();
     void drawTacticalOverlay();
     void drawToastOverlay();
+
+    bool display_dimmed;
 };
 
 extern DisplayManager displayManager;

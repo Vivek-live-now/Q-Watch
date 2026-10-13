@@ -2998,6 +2998,15 @@ void DisplayManager::setPowerSave(bool enable) {
     oled.setPowerSave(enable ? 1 : 0);
 }
 
+void DisplayManager::setDim(bool dim) {
+    display_dimmed = dim;
+    if (dim) {
+        oled.setContrast(16); // Ultra-low contrast (saves up to 70% OLED emission power)
+    } else {
+        applyDisplaySettings();
+    }
+}
+
 static void drawBmeGraph(U8G2& oled, const float* data, int count, float min_val, float max_val, const char* unit_str) {
     int gx = 4;
     int gy = 58;

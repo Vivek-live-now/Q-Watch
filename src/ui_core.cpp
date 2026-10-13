@@ -167,13 +167,15 @@ void UICore::performSilentDeepSleepWake() {
     uint64_t wake_mask = (1ULL << BTN_CANCEL);
 
     if (s.raise_to_wake) {
-        sensors.enableMotionInterruptForSleep();
+        sensors.enterSleep(true);
         rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
         rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
         wake_mask |= (1ULL << MPU_INT);
     } else {
+        sensors.enterSleep(false);
         sensors.clearMpuInterrupt();
     }
+    max30102Manager.disableSensor();
 
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
     esp_deep_sleep_start();
@@ -313,6 +315,7 @@ void UICore::loop() {
     if (any_button) {
         if (display_off || current_state == UIState::SLEEPING) {
             display_off = false;
+            displayManager.setDim(false);
             displayManager.setPowerSave(false);
             if (settingsManager.get().ble_enabled) {
                 qlink.resumeBleAdvertising();
@@ -326,6 +329,9 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
+        if (displayManager.isDim()) {
+            displayManager.setDim(false);
+        }
         last_activity_time = millis();
     }
 
@@ -333,8 +339,19 @@ void UICore::loop() {
 
     if (!display_off && s.display_timeout_idx < 4) {
         uint32_t disp_timeouts_ms[] = {10000, 30000, 60000, 300000};
-        if (millis() - last_activity_time >= disp_timeouts_ms[s.display_timeout_idx]) {
+        uint32_t to = disp_timeouts_ms[s.display_timeout_idx];
+        uint32_t elapsed = millis() - last_activity_time;
+
+        // Stage 1: Two-Stage Inactivity Dimming (auto-dim to ultra-low contrast 4s before screen off)
+        uint32_t dim_lead = (to > 6000) ? 4000 : (to / 2);
+        if (elapsed >= (to - dim_lead) && !displayManager.isDim()) {
+            displayManager.setDim(true);
+        }
+
+        // Stage 2: Turn display completely off
+        if (elapsed >= to) {
             display_off = true;
+            displayManager.setDim(false);
             displayManager.setPowerSave(true);
             display_off_time = millis();
             if (s.eco_radio_cut) {
@@ -349,6 +366,7 @@ void UICore::loop() {
             // Wrist raise detection: typical watch viewing angle
             if (o.pitch >= 15.0f && o.pitch <= 65.0f && fabsf(o.roll) <= 35.0f) {
                 display_off = false;
+                displayManager.setDim(false);
                 displayManager.setPowerSave(false);
                 if (s.ble_enabled) {
                     qlink.resumeBleAdvertising();
@@ -2938,13 +2956,15 @@ void UICore::enterDeepSleep() {
     uint64_t wake_mask = (1ULL << BTN_CANCEL);
 
     if (sleep_s.raise_to_wake) {
-        sensors.enableMotionInterruptForSleep();
+        sensors.enterSleep(true);
         rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
         rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
         wake_mask |= (1ULL << MPU_INT);
     } else {
+        sensors.enterSleep(false);
         sensors.clearMpuInterrupt();
     }
+    max30102Manager.disableSensor();
 
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
@@ -2965,7 +2985,10 @@ void UICore::enterDeepSleep() {
         if (cause == ESP_SLEEP_WAKEUP_TIMER) {
             // Background timer fired: record silently without turning on OLED!
             if (sleep_s.auto_record_enabled) {
+                sensors.wakeFromSleep();
                 performSilentBackgroundRecording();
+                sensors.enterSleep(sleep_s.raise_to_wake);
+                max30102Manager.disableSensor();
                 sleep_sec = calculateNextRecordIntervalSec();
             } else {
                 sleep_sec = 0;
@@ -2985,6 +3008,7 @@ void UICore::enterDeepSleep() {
         break;
     }
 
+    sensors.wakeFromSleep();
     display_off = false;
     displayManager.setPowerSave(false);
     if (sleep_s.ble_enabled) {

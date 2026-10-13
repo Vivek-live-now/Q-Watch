@@ -47,9 +47,12 @@ public:
     const char* getSleepEngineNameCStr(SleepEngine engine) const;
     const char* getSleepEngineNameCStr(int idx) const;
 
-    // CPU Frequency Scaling
+    // CPU Frequency Scaling (App-Aware DVFS)
     uint32_t getTargetCpuFreqMhz() const;
     void applyCpuFrequency();
+    void boostCpuFrequency(uint32_t mhz);
+    void releaseCpuBoost();
+    uint32_t getBoostCpuFreqMhz() const { return boost_mhz; }
 
     // Runtime Estimation & Consumption Model (Nominal 300mAh LiPo)
     float calculateEstimatedRuntimeHours(float voltage, int percentage) const;
@@ -89,6 +92,7 @@ private:
     // ULP Diagnostic State
     uint32_t ulp_test_wake_count;
     bool ulp_sentry_active;
+    uint32_t boost_mhz;
 };
 
 extern PowerManager powerManager;
