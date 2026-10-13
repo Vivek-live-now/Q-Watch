@@ -893,7 +893,7 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
                 uint8_t h = hdr[7];
                 uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
                 size_t exp_len = 16 + (size_t)frames * 1024;
-                if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() == exp_len) {
+                if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() >= exp_len) {
                     valid = true;
                 }
             }
@@ -954,7 +954,7 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
                     uint8_t h = hdr[7];
                     uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
                     size_t exp_len = 16 + (size_t)frames * 1024;
-                    if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && (size_t)sz == exp_len) {
+                    if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && (size_t)sz >= exp_len) {
                         valid = true;
                     }
                 }
@@ -1521,6 +1521,7 @@ static File s_wifi_upload_file;
 static String s_wifi_upload_path;
 static bool s_wifi_upload_success = false;
 static String s_wifi_upload_err = "";
+static size_t s_wifi_upload_size = 0;
 
 void QLinkEngine::registerHttpRoutes(WebServer& server) {
     // 1. Device Info
@@ -1784,9 +1785,8 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
         }
         // Multipart upload completion response
-        HTTPUpload& upload = server.upload();
-        if (s_wifi_upload_success && upload.status == UPLOAD_FILE_END) {
-            server.send(200, "application/json", "{\"status\":\"uploaded\",\"size\":" + String((unsigned long)upload.totalSize) + ",\"path\":\"" + s_wifi_upload_path + "\"}");
+        if (s_wifi_upload_success) {
+            server.send(200, "application/json", "{\"status\":\"uploaded\",\"size\":" + String((unsigned long)s_wifi_upload_size) + ",\"path\":\"" + s_wifi_upload_path + "\"}");
         } else {
             String err = s_wifi_upload_err.length() > 0 ? s_wifi_upload_err : "upload_failed";
             server.send(400, "application/json", "{\"error\":\"" + err + "\"}");
@@ -1797,12 +1797,19 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
         if (upload.status == UPLOAD_FILE_START) {
             s_wifi_upload_success = false;
             s_wifi_upload_err = "";
+            s_wifi_upload_size = 0;
             if (animEngine.isOpen()) {
                 animEngine.stop();
                 animEngine.close();
             }
-            s_wifi_upload_path = FileManager::normalizePath(server.hasArg("path") ? server.arg("path") : ("/" + upload.filename));
-            if (!FileManager::isPathSafe(s_wifi_upload_path)) {
+            String raw_path = "";
+            if (server.hasArg("path") && server.arg("path").length() > 0) {
+                raw_path = server.arg("path");
+            } else if (upload.filename.length() > 0) {
+                raw_path = upload.filename;
+            }
+            s_wifi_upload_path = FileManager::normalizePath(raw_path);
+            if (s_wifi_upload_path.length() <= 1 || !FileManager::isPathSafe(s_wifi_upload_path)) {
                 s_wifi_upload_err = "invalid_path";
                 return;
             }
@@ -1824,6 +1831,8 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                     s_wifi_upload_err = "write_failed";
                     s_wifi_upload_file.close();
                     LittleFS.remove(s_wifi_upload_path);
+                } else {
+                    s_wifi_upload_size += written;
                 }
             }
         } else if (upload.status == UPLOAD_FILE_END) {
@@ -1842,6 +1851,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 File check = LittleFS.open(s_wifi_upload_path, FILE_READ);
                 bool valid = false;
                 if (check && check.size() >= 16) {
+                    s_wifi_upload_size = check.size();
                     uint8_t hdr[16];
                     if (check.read(hdr, 16) == 16) {
                         uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
@@ -1849,7 +1859,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                         uint8_t h = hdr[7];
                         uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
                         size_t exp_len = 16 + (size_t)frames * 1024;
-                        if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() == exp_len) {
+                        if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() >= exp_len) {
                             valid = true;
                         }
                     }
@@ -1866,6 +1876,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 File check = LittleFS.open(s_wifi_upload_path, FILE_READ);
                 bool valid = false;
                 if (check && check.size() >= 54) {
+                    s_wifi_upload_size = check.size();
                     uint8_t hdr[54];
                     if (check.read(hdr, 54) == 54) {
                         if (hdr[0] == 'B' && hdr[1] == 'M') {
@@ -1890,6 +1901,13 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                     notifyFileReceived(s_wifi_upload_path);
                 }
             } else {
+                if (LittleFS.exists(s_wifi_upload_path)) {
+                    File check = LittleFS.open(s_wifi_upload_path, FILE_READ);
+                    if (check) {
+                        s_wifi_upload_size = check.size();
+                        check.close();
+                    }
+                }
                 notifyFileReceived(s_wifi_upload_path);
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {

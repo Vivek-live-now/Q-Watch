@@ -375,9 +375,25 @@ class QLinkWifiTransport(
                 if (res.isSuccessful) {
                     Result.success(true)
                 } else {
+                    val rawBody = try { res.body?.string() } catch (_: Exception) { null }
+                    val detail = if (!rawBody.isNullOrBlank()) {
+                        try {
+                            val json = org.json.JSONObject(rawBody)
+                            json.optString("error", json.optString("detail", rawBody))
+                        } catch (_: Exception) {
+                            rawBody.trim()
+                        }
+                    } else {
+                        null
+                    }
+                    val errMsg = if (!detail.isNullOrBlank()) {
+                        "Upload failed with HTTP ${res.code} ($detail)"
+                    } else {
+                        "Upload failed with HTTP ${res.code}"
+                    }
                     // Failed-transfer recovery: Purge corrupt/truncated file from watch
                     deleteFile(path)
-                    Result.failure(IOException("Upload failed with HTTP ${res.code}"))
+                    Result.failure(IOException(errMsg))
                 }
             }
         } catch (e: Exception) {

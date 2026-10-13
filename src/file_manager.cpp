@@ -124,6 +124,8 @@ bool FileManager::isPathSafe(const String& path) {
 String FileManager::normalizePath(const String& path) {
     if (path.length() == 0) return "/";
     String p = path;
+    p.trim();
+    if (p.length() == 0) return "/";
     p.replace("\\", "/");
     while (p.indexOf("//") != -1) {
         p.replace("//", "/");
