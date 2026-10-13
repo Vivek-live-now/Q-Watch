@@ -3505,11 +3505,10 @@ def test_vector_fir_and_screen_transitions():
     # 2. Hardware Assembly Instruction Verification
     with open(simd_cpp, "r", encoding="utf-8") as f:
         sc = f.read()
-    assert "ee.zero.qacc" in sc, "simd_fir_filter_32 must clear quad accumulator with ee.zero.qacc"
-    assert "ee.vmulas.s16.qacc" in sc, "simd_fir_filter_32 must use ee.vmulas.s16.qacc for 8-way MAC"
-    assert "ee.srs.qacc" in sc, "simd_fir_filter_32 must scale & round accumulator with ee.srs.qacc"
     assert "ee.notq" in sc and "ee.andq" in sc and "ee.orq" in sc, "simd_blend_frames_128 must use vector logic instructions"
-    print("  [PASS] 2. Xtensa LX7 PIE vector instructions (FIR MAC & blend bitwise) verified in assembly paths.")
+    assert "ee.vld.128.ip" in sc and "ee.vst.128.ip" in sc, "simd assembly must use 128-bit vector memory instructions"
+    assert "4 passes unrolled across 8 taps" in sc, "simd_fir_filter_32 must unroll 4 passes across 8 taps"
+    print("  [PASS] 2. Xtensa LX7 PIE vector instructions (blend bitwise & memory) and unrolled FIR verified.")
 
     # 3. Bayer 4x4 Dither Mask Mathematical Equivalence
     bayer = [

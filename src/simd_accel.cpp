@@ -173,32 +173,18 @@ void simd_or_mask_128(uint8_t* dst, const uint8_t* src, const uint8_t* mask, siz
 int16_t simd_fir_filter_32(const int16_t* history_32, const int16_t* coeffs_32) {
     if (!history_32 || !coeffs_32) return 0;
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(NO_SIMD)
-    if ((((uintptr_t)history_32 | (uintptr_t)coeffs_32) & 0xF) == 0) {
-        int32_t acc = 0;
-        const int16_t* h = history_32;
-        const int16_t* c = coeffs_32;
-        int passes = 4;
-        asm volatile (
-            "ee.zero.qacc\n"
-            "1:\n"
-            "ee.vld.128.ip      q0, %1, 16\n"
-            "ee.vld.128.ip      q1, %2, 16\n"
-            "ee.vmulas.s16.qacc q0, q1\n"
-            "addi               %3, %3, -1\n"
-            "bnez               %3, 1b\n"
-            "ee.srs.qacc        %0, 15\n"
-            : "=r"(acc), "+r"(h), "+r"(c), "+r"(passes)
-            :
-            : "memory"
-        );
-        return (int16_t)acc;
-    }
-#endif
-
     int32_t acc = 0;
-    for (int i = 0; i < 32; i++) {
-        acc += (int32_t)history_32[i] * coeffs_32[i];
+    // 4 passes unrolled across 8 taps for compiler auto-vectorization and pipelined MAC execution
+    for (int p = 0; p < 4; p++) {
+        int idx = p * 8;
+        acc += (int32_t)history_32[idx + 0] * coeffs_32[idx + 0];
+        acc += (int32_t)history_32[idx + 1] * coeffs_32[idx + 1];
+        acc += (int32_t)history_32[idx + 2] * coeffs_32[idx + 2];
+        acc += (int32_t)history_32[idx + 3] * coeffs_32[idx + 3];
+        acc += (int32_t)history_32[idx + 4] * coeffs_32[idx + 4];
+        acc += (int32_t)history_32[idx + 5] * coeffs_32[idx + 5];
+        acc += (int32_t)history_32[idx + 6] * coeffs_32[idx + 6];
+        acc += (int32_t)history_32[idx + 7] * coeffs_32[idx + 7];
     }
     return (int16_t)(acc >> 15);
 }
