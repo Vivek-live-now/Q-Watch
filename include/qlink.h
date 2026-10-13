@@ -201,6 +201,8 @@ private:
     size_t upload_expected_size;
     size_t upload_received_size;
     uint32_t upload_last_chunk_time;
+    bool upload_use_ram;
+    uint8_t* upload_ram_buf;
 #ifdef ARDUINO
     File upload_file;
 #endif

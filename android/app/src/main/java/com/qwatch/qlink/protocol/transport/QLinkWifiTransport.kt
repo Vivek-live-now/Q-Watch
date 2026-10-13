@@ -289,7 +289,7 @@ class QLinkWifiTransport(
     }
 
     private fun urlEncode(value: String): String = try {
-        URLEncoder.encode(value, "UTF-8")
+        URLEncoder.encode(value, "UTF-8").replace("%2F", "/")
     } catch (_: Exception) {
         value
     }

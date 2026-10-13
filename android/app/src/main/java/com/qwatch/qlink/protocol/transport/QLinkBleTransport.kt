@@ -519,10 +519,10 @@ class QLinkBleTransport(
 
         try {
             val finishResp = withTimeout(2000) {
-                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"code\":500") || it.contains("\"status\":\"OK\"") }.first()
+                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"code\":500") || it.contains("\"code\":400") || it.contains("\"status\":\"OK\"") }.first()
             }
-            if (finishResp.contains("\"code\":500")) {
-                return@withContext Result.failure(IOException("Watch reported error finishing upload for $path"))
+            if (finishResp.contains("\"code\":500") || finishResp.contains("\"code\":400")) {
+                return@withContext Result.failure(IOException("Watch reported error finishing upload for $path: $finishResp"))
             }
         } catch (_: Exception) {
             // Succeeded on chunk stream completion

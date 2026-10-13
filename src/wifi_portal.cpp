@@ -779,6 +779,7 @@ void WifiPortal::handleFileCopy() {
 }
 
 static File uploadFile;
+static String s_portal_upload_path;
 
 void WifiPortal::handleFileUpload() {
     if (!settingsManager.get().fileserver_enabled) {
@@ -792,16 +793,32 @@ void WifiPortal::handleFileUpload() {
         if (!FileManager::isPathSafe(filename)) {
             return; // Reject unsafe upload filename
         }
-        String p = fileManager.normalizePath(filename);
-        FileManager::ensureParentDir(p);
-        uploadFile = LittleFS.open(p, FILE_WRITE);
+        s_portal_upload_path = fileManager.normalizePath(filename);
+        FileManager::ensureParentDir(s_portal_upload_path);
+        if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), s_portal_upload_path.c_str()) == 0) {
+            animEngine.stop();
+            animEngine.close();
+        }
+        if (LittleFS.exists(s_portal_upload_path)) {
+            LittleFS.remove(s_portal_upload_path);
+        }
+        uploadFile = LittleFS.open(s_portal_upload_path, FILE_WRITE);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (uploadFile) {
             uploadFile.write(upload.buf, upload.currentSize);
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         if (uploadFile) {
+            uploadFile.flush();
             uploadFile.close();
+        }
+        qlink.notifyFileReceived(s_portal_upload_path);
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        if (uploadFile) {
+            uploadFile.close();
+        }
+        if (s_portal_upload_path.length() > 0 && LittleFS.exists(s_portal_upload_path)) {
+            LittleFS.remove(s_portal_upload_path);
         }
     }
 }

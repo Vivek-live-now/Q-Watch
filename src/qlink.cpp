@@ -103,6 +103,8 @@ QLinkEngine::QLinkEngine() :
     upload_expected_size(0),
     upload_received_size(0),
     upload_last_chunk_time(0),
+    upload_use_ram(false),
+    upload_ram_buf(nullptr),
     raw_ir_in_progress(false),
     raw_ir_frequency(38000),
     raw_ir_duty_cycle(0.33f),
@@ -451,8 +453,8 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
         }
     }
 
-    // Raw chunk when upload is active and payload not starting with JSON '{'
-    if (upload_in_progress && data[0] != '{') {
+    // Raw chunk when upload is active and payload not starting with JSON '{' and not framing 0xFE
+    if (upload_in_progress && data[0] != '{' && data[0] != 0xFE) {
         processFileChunk(data, len);
         if (upload_expected_size > 0 && upload_received_size >= upload_expected_size) {
             finishFileUpload(upload_expected_size);
@@ -485,10 +487,18 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
             }
         } else if (strcmp(cmd, "FINISH") == 0) {
             size_t size = doc["size"] | upload_received_size;
-            bool ok = upload_in_progress ? finishFileUpload(size) : true;
+            bool ok = true;
+            if (upload_in_progress) {
+                if (upload_expected_size > 0 && upload_received_size < upload_expected_size) {
+                    cancelFileUpload();
+                    ok = false;
+                } else {
+                    ok = finishFileUpload(size);
+                }
+            }
             if (s_char_file) {
                 String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"size\":" + String((unsigned long)size) + "}")
-                                 : "{\"status\":\"ERROR\",\"code\":500}";
+                                 : "{\"status\":\"ERROR\",\"code\":400,\"error\":\"incomplete_upload\"}";
                 s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
                 s_char_file->notify();
             }
@@ -696,34 +706,64 @@ bool QLinkEngine::startFileUpload(const String& path, size_t total_size) {
 #ifdef ARDUINO
     String clean_path = FileManager::normalizePath(path);
     if (!FileManager::isPathSafe(clean_path)) return false;
-    FileManager::ensureParentDir(clean_path);
-    if (animEngine.isOpen()) {
-        animEngine.stop();
-        animEngine.close();
-    }
-    if (LittleFS.exists(clean_path)) {
-        LittleFS.remove(clean_path);
-    }
-    upload_file = LittleFS.open(clean_path, FILE_WRITE);
-    if (!upload_file) return false;
-    upload_last_chunk_time = millis();
-#else
-    String clean_path = path;
-    upload_last_chunk_time = 0;
-#endif
-    upload_in_progress = true;
+
     upload_file_path = clean_path;
     upload_expected_size = total_size;
     upload_received_size = 0;
+    upload_last_chunk_time = millis();
+    upload_use_ram = false;
+    upload_ram_buf = nullptr;
+
+    // Buffer in RAM if total_size <= 128KB and sufficient free heap is available (> 35KB headroom).
+    // Eliminates SPI flash write latency during BLE transfers to completely prevent packet dropping.
+    if (total_size > 0 && total_size <= (128 * 1024)) {
+        if (ESP.getFreeHeap() > (total_size + 35000)) {
+            upload_ram_buf = (uint8_t*)malloc(total_size);
+            if (upload_ram_buf != nullptr) {
+                upload_use_ram = true;
+            }
+        }
+    }
+
+    if (!upload_use_ram) {
+        FileManager::ensureParentDir(clean_path);
+        if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), clean_path.c_str()) == 0) {
+            animEngine.stop();
+            animEngine.close();
+        }
+        if (LittleFS.exists(clean_path)) {
+            LittleFS.remove(clean_path);
+        }
+        upload_file = LittleFS.open(clean_path, FILE_WRITE);
+        if (!upload_file) return false;
+    }
+#else
+    String clean_path = FileManager::normalizePath(path);
+    upload_file_path = clean_path;
+    upload_expected_size = total_size;
+    upload_received_size = 0;
+    upload_last_chunk_time = 0;
+    upload_use_ram = false;
+    upload_ram_buf = nullptr;
+#endif
+    upload_in_progress = true;
     return true;
 }
 
 bool QLinkEngine::processFileChunk(const uint8_t* chunk, size_t chunk_len) {
     if (!upload_in_progress || !chunk || chunk_len == 0) return false;
 #ifdef ARDUINO
-    if (!upload_file) return false;
-    size_t written = upload_file.write(chunk, chunk_len);
-    if (written != chunk_len) return false;
+    if (upload_use_ram) {
+        if (!upload_ram_buf) return false;
+        if (upload_expected_size > 0 && (upload_received_size + chunk_len > upload_expected_size)) {
+            return false;
+        }
+        memcpy(upload_ram_buf + upload_received_size, chunk, chunk_len);
+    } else {
+        if (!upload_file) return false;
+        size_t written = upload_file.write(chunk, chunk_len);
+        if (written != chunk_len) return false;
+    }
     upload_last_chunk_time = millis();
 #endif
     upload_received_size += chunk_len;
@@ -733,10 +773,53 @@ bool QLinkEngine::processFileChunk(const uint8_t* chunk, size_t chunk_len) {
 bool QLinkEngine::finishFileUpload(size_t expected_size) {
     if (!upload_in_progress) return false;
 #ifdef ARDUINO
-    if (upload_file) {
-        upload_file.flush();
-        upload_file.close();
+    // Guard against corrupt/truncated uploads
+    if (upload_expected_size > 0 && upload_received_size < upload_expected_size) {
+        cancelFileUpload();
+        return false;
     }
+
+    if (upload_use_ram) {
+        if (!upload_ram_buf || upload_received_size == 0) {
+            cancelFileUpload();
+            return false;
+        }
+
+        FileManager::ensureParentDir(upload_file_path);
+        if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), upload_file_path.c_str()) == 0) {
+            animEngine.stop();
+            animEngine.close();
+        }
+        if (LittleFS.exists(upload_file_path)) {
+            LittleFS.remove(upload_file_path);
+        }
+
+        File f = LittleFS.open(upload_file_path, FILE_WRITE);
+        if (!f) {
+            cancelFileUpload();
+            return false;
+        }
+
+        size_t written = f.write(upload_ram_buf, upload_received_size);
+        f.flush();
+        f.close();
+
+        free(upload_ram_buf);
+        upload_ram_buf = nullptr;
+        upload_use_ram = false;
+
+        if (written != upload_received_size) {
+            LittleFS.remove(upload_file_path);
+            upload_in_progress = false;
+            return false;
+        }
+    } else {
+        if (upload_file) {
+            upload_file.flush();
+            upload_file.close();
+        }
+    }
+
     notifyFileReceived(upload_file_path);
 #endif
     upload_in_progress = false;
@@ -744,13 +827,19 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
 }
 
 void QLinkEngine::cancelFileUpload() {
-    if (!upload_in_progress) return;
+    if (!upload_in_progress && !upload_ram_buf) return;
 #ifdef ARDUINO
+    if (upload_ram_buf) {
+        free(upload_ram_buf);
+        upload_ram_buf = nullptr;
+    }
+    upload_use_ram = false;
+
     if (upload_file) {
         upload_file.close();
-        if (upload_file_path.length() > 0) {
-            LittleFS.remove(upload_file_path);
-        }
+    }
+    if (upload_file_path.length() > 0 && LittleFS.exists(upload_file_path)) {
+        LittleFS.remove(upload_file_path);
     }
 #endif
     upload_in_progress = false;
@@ -1415,7 +1504,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             server.send(400, "application/json", "{\"error\":\"missing_path\"}");
             return;
         }
-        String path = server.arg("path");
+        String path = FileManager::normalizePath(server.arg("path"));
         if (!FileManager::isPathSafe(path) || !fileManager.exists(path)) {
             server.send(404, "application/json", "{\"error\":\"not_found\"}");
             return;
@@ -1429,14 +1518,13 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
         f.close();
     });
 
-    // 11. Filesystem Delete
     // 11. Filesystem Delete (with safe active animation cleanup)
     auto handleDelete = [&server, this]() {
         if (!server.hasArg("path")) {
             server.send(400, "application/json", "{\"error\":\"missing_path\"}");
             return;
         }
-        String path = server.arg("path");
+        String path = FileManager::normalizePath(server.arg("path"));
         if (!FileManager::isPathSafe(path)) {
             server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
             return;

@@ -43,6 +43,30 @@ bool FileManager::begin() {
     LittleFS.mkdir("/sounds");
     LittleFS.mkdir("/photos");
     LittleFS.mkdir("/images");
+
+    // Automatically recover and relocate any files previously saved with URL-encoded names (e.g. /%2Fphotos%2Fphoto.bmp -> /photos/photo.bmp)
+    File rootDir = LittleFS.open("/");
+    if (rootDir && rootDir.isDirectory()) {
+        File f = rootDir.openNextFile();
+        while (f) {
+            String fname = f.name();
+            bool isDir = f.isDirectory();
+            f.close();
+            if (!isDir && (fname.indexOf("%2F") >= 0 || fname.indexOf("%2f") >= 0)) {
+                String fullOld = fname.startsWith("/") ? fname : ("/" + fname);
+                String fullNew = normalizePath(fullOld);
+                if (fullNew != fullOld && isPathSafe(fullNew)) {
+                    ensureParentDir(fullNew);
+                    if (LittleFS.exists(fullNew)) {
+                        LittleFS.remove(fullNew);
+                    }
+                    LittleFS.rename(fullOld, fullNew);
+                }
+            }
+            f = rootDir.openNextFile();
+        }
+        rootDir.close();
+    }
     return true;
 }
 
@@ -54,22 +78,52 @@ void FileManager::end() {
     LittleFS.end();
 }
 
+String FileManager::urlDecode(const String& str) {
+    if (str.indexOf('%') == -1 && str.indexOf('+') == -1) return str;
+    String decoded = "";
+    decoded.reserve(str.length());
+    for (size_t i = 0; i < str.length(); i++) {
+        char c = str.charAt(i);
+        if (c == '%' && i + 2 < str.length()) {
+            char h1 = str.charAt(i + 1);
+            char h2 = str.charAt(i + 2);
+            int v1 = (h1 >= '0' && h1 <= '9') ? (h1 - '0') :
+                     (h1 >= 'a' && h1 <= 'f') ? (h1 - 'a' + 10) :
+                     (h1 >= 'A' && h1 <= 'F') ? (h1 - 'A' + 10) : -1;
+            int v2 = (h2 >= '0' && h2 <= '9') ? (h2 - '0') :
+                     (h2 >= 'a' && h2 <= 'f') ? (h2 - 'a' + 10) :
+                     (h2 >= 'A' && h2 <= 'F') ? (h2 - 'A' + 10) : -1;
+            if (v1 >= 0 && v2 >= 0) {
+                decoded += (char)((v1 << 4) | v2);
+                i += 2;
+                continue;
+            }
+        } else if (c == '+') {
+            decoded += ' ';
+            continue;
+        }
+        decoded += c;
+    }
+    return decoded;
+}
+
 bool FileManager::isPathSafe(const String& path) {
     if (path.length() == 0) return false;
-    for (size_t i = 0; i < path.length(); i++) {
-        char c = path.charAt(i);
+    String p = urlDecode(path);
+    for (size_t i = 0; i < p.length(); i++) {
+        char c = p.charAt(i);
         if (c == '\0' || c == '\\' || (uint8_t)c < 32 || (uint8_t)c == 127) {
             return false;
         }
     }
     // Reject path traversal
-    if (path.indexOf("..") != -1) return false;
+    if (p.indexOf("..") != -1) return false;
     return true;
 }
 
 String FileManager::normalizePath(const String& path) {
     if (path.length() == 0) return "/";
-    String p = path;
+    String p = urlDecode(path);
     if (p.charAt(0) != '/') {
         p = "/" + p;
     }
