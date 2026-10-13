@@ -535,11 +535,8 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
             size_t size = doc["size"] | upload_received_size;
             bool ok = upload_in_progress && finishFileUpload(size);
             if (s_char_file) {
-                String resp = ok ? ("{"status":"OK","code":200,"size":" + String((unsigned long)size) + "}")
-                                 : "{"status":"ERROR","code":400,"error":"incomplete_upload"}";
-                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
-                s_char_file->notify();
-            }
+                String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"size\":" + String((unsigned long)size) + "}")
+                                 : "{\"status\":\"ERROR\",\"code\":400,\"error\":\"incomplete_upload\"}";
                 s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
                 s_char_file->notify();
             }

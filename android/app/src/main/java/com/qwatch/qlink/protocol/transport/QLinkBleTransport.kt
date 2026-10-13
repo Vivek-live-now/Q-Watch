@@ -527,14 +527,14 @@ class QLinkBleTransport(
         val finishResp = try {
             withTimeout(3500) {
                 _fileResponseFlow.filter { 
-                    it.contains(""code":200") || it.contains(""code":400") || it.contains(""code":500") || it.contains(""status":"OK"") || it.contains(""status":"ERROR"") 
+                    it.contains("\"code\":200") || it.contains("\"code\":400") || it.contains("\"code\":500") || it.contains("\"status\":\"OK\"") || it.contains("\"status\":\"ERROR\"") 
                 }.first()
             }
         } catch (e: Exception) {
             return@withContext Result.failure(IOException("Timeout waiting for watch confirmation of FINISH for $path"))
         }
 
-        if (finishResp.contains(""code":500") || finishResp.contains(""code":400") || finishResp.contains(""status":"ERROR"")) {
+        if (finishResp.contains("\"code\":500") || finishResp.contains("\"code\":400") || finishResp.contains("\"status\":\"ERROR\"")) {
             return@withContext Result.failure(IOException("Watch reported error finishing upload for $path: $finishResp"))
         }
 
