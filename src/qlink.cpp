@@ -1522,6 +1522,7 @@ static String s_wifi_upload_path;
 static bool s_wifi_upload_success = false;
 static String s_wifi_upload_err = "";
 static size_t s_wifi_upload_size = 0;
+static bool s_wifi_upload_first_chunk = true;
 
 void QLinkEngine::registerHttpRoutes(WebServer& server) {
     // 1. Device Info
@@ -1822,17 +1823,39 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 s_wifi_upload_err = "open_failed";
                 return;
             }
+            s_wifi_upload_first_chunk = true;
             s_wifi_upload_success = true;
         } else if (upload.status == UPLOAD_FILE_WRITE) {
             if (s_wifi_upload_success && s_wifi_upload_file) {
-                size_t written = s_wifi_upload_file.write(upload.buf, upload.currentSize);
-                if (written != upload.currentSize) {
-                    s_wifi_upload_success = false;
-                    s_wifi_upload_err = "write_failed";
-                    s_wifi_upload_file.close();
-                    LittleFS.remove(s_wifi_upload_path);
-                } else {
-                    s_wifi_upload_size += written;
+                const uint8_t* write_buf = upload.buf;
+                size_t write_size = upload.currentSize;
+                if (s_wifi_upload_first_chunk) {
+                    s_wifi_upload_first_chunk = false;
+                    // Detect leaked multipart boundary/header CRLF (\r\n) caused by
+                    // ESP32 WebServer's single-line skip after Content-Type when clients send
+                    // an individual Content-Length header for the part.
+                    if (write_size >= 4 && write_buf[0] == '\r' && write_buf[1] == '\n') {
+                        String lower = s_wifi_upload_path;
+                        lower.toLowerCase();
+                        if (lower.endsWith(".anim") && (write_buf[2] == 'Q' && write_buf[3] == 'A')) {
+                            write_buf += 2;
+                            write_size -= 2;
+                        } else if (lower.endsWith(".bmp") && (write_buf[2] == 'B' && write_buf[3] == 'M')) {
+                            write_buf += 2;
+                            write_size -= 2;
+                        }
+                    }
+                }
+                if (write_size > 0) {
+                    size_t written = s_wifi_upload_file.write(write_buf, write_size);
+                    if (written != write_size) {
+                        s_wifi_upload_success = false;
+                        s_wifi_upload_err = "write_failed";
+                        s_wifi_upload_file.close();
+                        LittleFS.remove(s_wifi_upload_path);
+                    } else {
+                        s_wifi_upload_size += written;
+                    }
                 }
             }
         } else if (upload.status == UPLOAD_FILE_END) {

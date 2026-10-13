@@ -3263,8 +3263,9 @@ def test_media_upload_integrity_and_export_suite():
     wifi_t_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkWifiTransport.kt")
     with open(wifi_t_kt, "r", encoding="utf-8") as f:
         wtc = f.read()
-    assert 'addFormDataPart("path", normalizedPath)' in wtc
-    assert 'addFormDataPart("file", normalizedPath, countedBody)' in wtc
+    assert 'name=\\"path\\"' in wtc or 'addFormDataPart("path"' in wtc
+    assert 'name=\\"file\\"' in wtc or 'addFormDataPart("file"' in wtc
+    assert 's_wifi_upload_first_chunk' in qc
     print("  [PASS] 5. Android BLE and Wi-Fi transports strict ACK validation and path delivery verified.")
 
     # 6. Android FilesScreen media discovery routing & Downloads export

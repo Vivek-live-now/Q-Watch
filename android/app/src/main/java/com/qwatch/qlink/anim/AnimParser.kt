@@ -73,11 +73,31 @@ object AnimParser {
     }
 
     /**
-     * Parses the 16-byte binary header from an animation file.
+     * Parses the 16-byte binary header from an animation file or header slice.
      */
     fun parseHeader(bytes: ByteArray): AnimHeader? {
-        val result = validateQanm(bytes)
-        return if (result.isValid) result.header else null
+        if (bytes.size < ANIM_HEADER_SIZE) return null
+        val buffer = ByteBuffer.wrap(bytes, 0, ANIM_HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+        val magic = buffer.int.toLong() and 0xFFFFFFFFL
+        if (magic != ANIM_MAGIC) return null
+        val version = buffer.short.toInt() and 0xFFFF
+        if (version != 1) return null
+        val width = buffer.get().toInt() and 0xFF
+        val height = buffer.get().toInt() and 0xFF
+        if (width != ANIM_WIDTH || height != ANIM_HEIGHT) return null
+        val frameCount = buffer.short.toInt() and 0xFFFF
+        if (frameCount == 0) return null
+        val frameDelayMs = buffer.short.toInt() and 0xFFFF
+        val flags = buffer.short.toInt() and 0xFFFF
+        return AnimHeader(
+            magic = magic,
+            version = version,
+            width = width,
+            height = height,
+            frameCount = frameCount,
+            frameDelayMs = if (frameDelayMs > 0) frameDelayMs else 50,
+            flags = flags
+        )
     }
 
     /**

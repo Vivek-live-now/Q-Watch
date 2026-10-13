@@ -332,11 +332,32 @@ class QLinkWifiTransport(
         onProgress: (com.qwatch.qlink.anim.TransferProgress) -> Unit
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val totalBytes = data.size.toLong()
-            val countedBody = object : RequestBody() {
-                override fun contentType(): MediaType? = "application/octet-stream".toMediaType()
+            val totalFileData = data.size.toLong()
+            val normalizedPath = if (path.startsWith("/")) path else "/$path"
+            val boundary = "---QWatchBoundary" + System.currentTimeMillis()
+
+            // Construct multipart framing explicitly to avoid OkHttp inserting a
+            // per-part 'Content-Length' header, which causes ESP32 WebServer's single-line skip
+            // to desync and leak a leading CRLF (0x0D 0x0A) into LittleFS.
+            val prefix = buildString {
+                append("--").append(boundary).append("\r\n")
+                append("Content-Disposition: form-data; name=\"path\"\r\n\r\n")
+                append(normalizedPath).append("\r\n")
+                append("--").append(boundary).append("\r\n")
+                append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(normalizedPath).append("\"\r\n")
+                append("Content-Type: application/octet-stream\r\n\r\n")
+            }.toByteArray(Charsets.UTF_8)
+            val suffix = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+            val totalBytes = prefix.size.toLong() + data.size.toLong() + suffix.size.toLong()
+
+            val customMultipartBody = object : RequestBody() {
+                override fun contentType(): MediaType = "multipart/form-data; boundary=$boundary".toMediaType()
                 override fun contentLength(): Long = totalBytes
+
                 override fun writeTo(sink: okio.BufferedSink) {
+                    sink.write(prefix)
+                    sink.flush()
+
                     val bufferSize = 2048
                     var written = 0L
                     var offset = 0
@@ -346,29 +367,25 @@ class QLinkWifiTransport(
                         sink.flush()
                         offset += count
                         written += count
-                        val pct = if (totalBytes > 0) ((written.toFloat() / totalBytes) * 100).toInt() else 100
+                        val pct = if (totalFileData > 0) ((written.toFloat() / totalFileData) * 100).toInt() else 100
                         onProgress(
                             com.qwatch.qlink.anim.TransferProgress(
-                                progress = if (totalBytes > 0) (written.toFloat() / totalBytes) else 1f,
+                                progress = if (totalFileData > 0) (written.toFloat() / totalFileData) else 1f,
                                 percent = pct,
                                 bytesTransferred = written,
-                                totalBytes = totalBytes
+                                totalBytes = totalFileData
                             )
                         )
                     }
+
+                    sink.write(suffix)
+                    sink.flush()
                 }
             }
 
-            val normalizedPath = if (path.startsWith("/")) path else "/$path"
-            val formBody = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("path", normalizedPath)
-                .addFormDataPart("file", normalizedPath, countedBody)
-                .build()
-
             val req = Request.Builder()
                 .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=${urlEncode(normalizedPath)}")
-                .post(formBody)
+                .post(customMultipartBody)
                 .build()
 
             client.newCall(req).execute().use { res ->
