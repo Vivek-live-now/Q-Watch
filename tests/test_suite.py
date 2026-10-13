@@ -428,7 +428,7 @@ def test_qlink_protocol():
 
     compile_cmd = [
         "g++", "-O2", "-Iinclude",
-        "tests/test_qlink.cpp", "src/qlink.cpp",
+        "tests/test_qlink.cpp", "src/qlink.cpp", "src/anim_engine.cpp",
         "-lm", "-o", bin_path
     ]
     res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
@@ -1485,7 +1485,7 @@ def test_app_store_qapps_and_installer():
     bin_path = os.path.join(os.path.dirname(__file__), "test_qlink_bin")
     compile_cmd = [
         "g++", "-O2", "-Iinclude",
-        "tests/test_qlink.cpp", "src/qlink.cpp",
+        "tests/test_qlink.cpp", "src/qlink.cpp", "src/anim_engine.cpp",
         "-lm", "-o", bin_path
     ]
     res = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
@@ -3207,6 +3207,122 @@ def test_online_irdb_transmission_suite():
     assert "testIrTransmitFeedbackAndHonestStates" in itk
     print("  [PASS] 7. Firmware raw/parsed IR C++ engine APIs and Android IrdbTransmissionTest.kt unit suite verified.")
 
+def test_media_upload_integrity_and_export_suite():
+    print("\n--- 48. Media Upload Integrity, Path Routing & Android Export Suite ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. FileManager path normalization (no double-decoding, handles slashes & leading slash)
+    fm_cpp = os.path.join(base_dir, "src", "file_manager.cpp")
+    with open(fm_cpp, "r", encoding="utf-8") as f:
+        fmc = f.read()
+    assert r'p.replace("\\", "/");' in fmc
+    assert 'p.indexOf("//") != -1' in fmc
+    assert 'urlDecode' not in fmc[fmc.find("normalizePath"):fmc.find("normalizePath") + 300], "normalizePath must not double-decode URLs"
+    print("  [PASS] 1. FileManager::normalizePath slash collapsing and double-decoding guard verified.")
+
+    # 2. AnimEngine specific error reporting & UI Toast
+    ae_cpp = os.path.join(base_dir, "src", "anim_engine.cpp")
+    with open(ae_cpp, "r", encoding="utf-8") as f:
+        aec = f.read()
+    assert 'setError("INVALID ANIM MAGIC")' in aec
+    assert 'setError("INVALID BMP SIGNATURE")' in aec
+    assert 'setError("UNSUPPORTED BMP BPP")' in aec
+    assert 'setError("INVALID ANIM DIMENSIONS")' in aec
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uic = f.read()
+    assert "animEngine.getLastError()" in uic, "UICore must display AnimEngine specific error in toast"
+    print("  [PASS] 2. AnimEngine descriptive error reporting and UICore error toast integration verified.")
+
+    # 3. BLE chunk sequencing, size validation, and finish verification
+    qlink_cpp = os.path.join(base_dir, "src", "qlink.cpp")
+    with open(qlink_cpp, "r", encoding="utf-8") as f:
+        qc = f.read()
+    assert "upload_expected_seq" in qc
+    assert "seq != upload_expected_seq" in qc
+    assert "upload_received_size != expected_size" in qc
+    assert 'endsWith(".anim")' in qc
+    assert 'endsWith(".bmp")' in qc
+    print("  [PASS] 3. BLE chunk sequence check, exact byte-count validation, and media validation verified.")
+
+    # 4. Wi-Fi upload route error handling & handle cleanup
+    assert "s_wifi_upload_success" in qc
+    assert "server.send(400" in qc
+    assert "animEngine.isOpen()" in qc
+    print("  [PASS] 4. Wi-Fi /api/v1/fs/upload error status, format validation, and handle closing verified.")
+
+    # 5. Android QLinkBleTransport & QLinkWifiTransport fixes
+    ble_t_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkBleTransport.kt")
+    with open(ble_t_kt, "r", encoding="utf-8") as f:
+        btc = f.read()
+    assert "cachedErr != null" in btc, "QLinkBleTransport must detect chunk rejection during upload stream"
+    assert "Watch reported error finishing upload" in btc, "QLinkBleTransport must reject error response on FINISH"
+    assert "Timeout waiting for watch confirmation of FINISH" in btc, "QLinkBleTransport must fail on FINISH timeout"
+
+    wifi_t_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkWifiTransport.kt")
+    with open(wifi_t_kt, "r", encoding="utf-8") as f:
+        wtc = f.read()
+    assert 'addFormDataPart("path", normalizedPath)' in wtc
+    assert 'addFormDataPart("file", normalizedPath, countedBody)' in wtc
+    print("  [PASS] 5. Android BLE and Wi-Fi transports strict ACK validation and path delivery verified.")
+
+    # 6. Android FilesScreen media discovery routing & Downloads export
+    files_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "FilesScreen.kt")
+    with open(files_kt, "r", encoding="utf-8") as f:
+        fsc = f.read()
+    assert 'fileName.endsWith(".anim", ignoreCase = true) -> "/anim/$fileName"' in fsc
+    assert 'fileName.endsWith(".bmp", ignoreCase = true) -> "/photos/$fileName"' in fsc
+    assert "Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)" in fsc
+    print("  [PASS] 6. Android FilesScreen root upload media routing and Downloads export verified.")
+
+    # 7. Android AnimStudioScreen & ImageViewerScreen export features
+    studio_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "AnimStudioScreen.kt")
+    with open(studio_kt, "r", encoding="utf-8") as f:
+        stc = f.read()
+    assert "Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)" in stc
+    assert "EXPORT FILES" in stc
+
+    viewer_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "ui", "screens", "ImageViewerScreen.kt")
+    with open(viewer_kt, "r", encoding="utf-8") as f:
+        ivc = f.read()
+    assert "Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)" in ivc
+    assert "EXPORT .BMP" in ivc
+    print("  [PASS] 7. Android AnimStudioScreen and ImageViewerScreen Downloads folder export verified.")
+
+    # 8. Compile and run host C++ verification binaries
+    test_qlink_bin = os.path.join(base_dir, "tests", "test_qlink_media_bin")
+    qlink_compile = [
+        "g++", "-std=c++17", "-O2", "-Iinclude", "-Itests", "-DHOST_TEST",
+        "tests/test_qlink.cpp", "src/qlink.cpp", "src/anim_engine.cpp",
+        "-lm", "-o", test_qlink_bin
+    ]
+    compile_res = subprocess.run(qlink_compile, cwd=base_dir, capture_output=True, text=True)
+    assert compile_res.returncode == 0, f"Failed to compile test_qlink_media_bin:\n{compile_res.stderr}"
+
+    qlink_res = subprocess.run([test_qlink_bin], cwd=base_dir, capture_output=True, text=True)
+    assert qlink_res.returncode == 0, f"test_qlink binary failed:\n{qlink_res.stdout}\n{qlink_res.stderr}"
+    assert "ALL Q-LINK PROTOCOL TESTS PASSED!" in qlink_res.stdout
+    assert "matches original byte-for-byte" in qlink_res.stdout
+    if os.path.exists(test_qlink_bin):
+        os.remove(test_qlink_bin)
+
+    test_anim_bin = os.path.join(base_dir, "tests", "test_anim_media_bin")
+    anim_compile = [
+        "g++", "-std=c++17", "-O2", "-Iinclude", "-Itests",
+        "tests/test_anim_system.cpp", "src/anim_engine.cpp",
+        "-lm", "-o", test_anim_bin
+    ]
+    compile_anim_res = subprocess.run(anim_compile, cwd=base_dir, capture_output=True, text=True)
+    assert compile_anim_res.returncode == 0, f"Failed to compile test_anim_media_bin:\n{compile_anim_res.stderr}"
+
+    anim_res = subprocess.run([test_anim_bin], cwd=base_dir, capture_output=True, text=True)
+    assert anim_res.returncode == 0, f"test_anim_system failed:\n{anim_res.stdout}\n{anim_res.stderr}"
+    assert "ALL ANIMATION ENGINE TESTS PASSED!" in anim_res.stdout
+    if os.path.exists(test_anim_bin):
+        os.remove(test_anim_bin)
+    print("  [PASS] 8. Host C++ unit test binaries (test_qlink & test_anim_system) executed and passed.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3246,6 +3362,7 @@ if __name__ == "__main__":
     test_littlefs_explorer_and_ble_transfer()
     test_photo_viewer_and_anim_packer_overhaul()
     test_online_irdb_transmission_suite()
+    test_media_upload_integrity_and_export_suite()
     print("\nAll self-test verifications PASSED!")
 
 

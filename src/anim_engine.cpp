@@ -57,6 +57,16 @@ AnimEngine::AnimEngine() :
     memset(current_filepath, 0, sizeof(current_filepath));
     memset(frame_buffer, 0, sizeof(frame_buffer));
     memset(bmp_palette, 0, sizeof(bmp_palette));
+    memset(last_error_msg, 0, sizeof(last_error_msg));
+}
+
+void AnimEngine::setError(const char* err) {
+    if (err) {
+        strncpy(last_error_msg, err, sizeof(last_error_msg) - 1);
+        last_error_msg[sizeof(last_error_msg) - 1] = '\0';
+    } else {
+        last_error_msg[0] = '\0';
+    }
 }
 
 AnimEngine::~AnimEngine() {
@@ -98,14 +108,23 @@ void AnimEngine::close() {
 #ifdef ARDUINO
 bool AnimEngine::parseBmpFile(File& f) {
     uint8_t file_hdr[14];
-    if (f.read(file_hdr, sizeof(file_hdr)) != sizeof(file_hdr)) return false;
-    if (file_hdr[0] != 'B' || file_hdr[1] != 'M') return false;
+    if (f.read(file_hdr, sizeof(file_hdr)) != sizeof(file_hdr)) {
+        setError("BMP HEADER TRUNCATED");
+        return false;
+    }
+    if (file_hdr[0] != 'B' || file_hdr[1] != 'M') {
+        setError("INVALID BMP SIGNATURE");
+        return false;
+    }
 
     bmp_pixel_offset = (uint32_t)file_hdr[10] | ((uint32_t)file_hdr[11] << 8) |
                        ((uint32_t)file_hdr[12] << 16) | ((uint32_t)file_hdr[13] << 24);
 
     uint8_t info_hdr[40];
-    if (f.read(info_hdr, sizeof(info_hdr)) != sizeof(info_hdr)) return false;
+    if (f.read(info_hdr, sizeof(info_hdr)) != sizeof(info_hdr)) {
+        setError("DIB HEADER TRUNCATED");
+        return false;
+    }
 
     uint32_t hdr_size = (uint32_t)info_hdr[0] | ((uint32_t)info_hdr[1] << 8) |
                         ((uint32_t)info_hdr[2] << 16) | ((uint32_t)info_hdr[3] << 24);
@@ -118,9 +137,18 @@ bool AnimEngine::parseBmpFile(File& f) {
     uint32_t comp = (uint32_t)info_hdr[16] | ((uint32_t)info_hdr[17] << 8) |
                     ((uint32_t)info_hdr[18] << 16) | ((uint32_t)info_hdr[19] << 24);
 
-    if (w <= 0 || h == 0 || planes != 1) return false;
-    if (comp != 0 && comp != 3) return false;
-    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) return false;
+    if (w <= 0 || h == 0 || planes != 1) {
+        setError("INVALID BMP DIMENSIONS");
+        return false;
+    }
+    if (comp != 0 && comp != 3) {
+        setError("UNSUPPORTED BMP COMPRESSION");
+        return false;
+    }
+    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) {
+        setError("UNSUPPORTED BMP BPP");
+        return false;
+    }
 
     bmp_width = w;
     bmp_height = (h < 0) ? -h : h;
@@ -158,14 +186,23 @@ bool AnimEngine::parseBmpFile(File& f) {
 #else
 bool AnimEngine::parseBmpFile(FILE* f) {
     uint8_t file_hdr[14];
-    if (fread(file_hdr, 1, sizeof(file_hdr), f) != sizeof(file_hdr)) return false;
-    if (file_hdr[0] != 'B' || file_hdr[1] != 'M') return false;
+    if (fread(file_hdr, 1, sizeof(file_hdr), f) != sizeof(file_hdr)) {
+        setError("BMP HEADER TRUNCATED");
+        return false;
+    }
+    if (file_hdr[0] != 'B' || file_hdr[1] != 'M') {
+        setError("INVALID BMP SIGNATURE");
+        return false;
+    }
 
     bmp_pixel_offset = (uint32_t)file_hdr[10] | ((uint32_t)file_hdr[11] << 8) |
                        ((uint32_t)file_hdr[12] << 16) | ((uint32_t)file_hdr[13] << 24);
 
     uint8_t info_hdr[40];
-    if (fread(info_hdr, 1, sizeof(info_hdr), f) != sizeof(info_hdr)) return false;
+    if (fread(info_hdr, 1, sizeof(info_hdr), f) != sizeof(info_hdr)) {
+        setError("DIB HEADER TRUNCATED");
+        return false;
+    }
 
     uint32_t hdr_size = (uint32_t)info_hdr[0] | ((uint32_t)info_hdr[1] << 8) |
                         ((uint32_t)info_hdr[2] << 16) | ((uint32_t)info_hdr[3] << 24);
@@ -178,9 +215,18 @@ bool AnimEngine::parseBmpFile(FILE* f) {
     uint32_t comp = (uint32_t)info_hdr[16] | ((uint32_t)info_hdr[17] << 8) |
                     ((uint32_t)info_hdr[18] << 16) | ((uint32_t)info_hdr[19] << 24);
 
-    if (w <= 0 || h == 0 || planes != 1) return false;
-    if (comp != 0 && comp != 3) return false;
-    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) return false;
+    if (w <= 0 || h == 0 || planes != 1) {
+        setError("INVALID BMP DIMENSIONS");
+        return false;
+    }
+    if (comp != 0 && comp != 3) {
+        setError("UNSUPPORTED BMP COMPRESSION");
+        return false;
+    }
+    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) {
+        setError("UNSUPPORTED BMP BPP");
+        return false;
+    }
 
     bmp_width = w;
     bmp_height = (h < 0) ? -h : h;
@@ -215,21 +261,37 @@ bool AnimEngine::parseBmpFile(FILE* f) {
     current_header.reserved = 0;
 
     is_bmp = true;
-    return readFrameData(0);
+    if (!readFrameData(0)) {
+        setError("CORRUPT BMP DATA");
+        return false;
+    }
+    return true;
 }
 #endif
 
 bool AnimEngine::open(const char* filepath) {
-    if (!filepath || strlen(filepath) == 0) return false;
+    if (!filepath || strlen(filepath) == 0) {
+        setError("INVALID PATH");
+        return false;
+    }
     close();
 
 #ifdef ARDUINO
-    if (!LittleFS.exists(filepath)) return false;
+    if (!LittleFS.exists(filepath)) {
+        setError("FILE NOT FOUND");
+        return false;
+    }
     anim_file = LittleFS.open(filepath, "r");
-    if (!anim_file) return false;
+    if (!anim_file) {
+        setError("OPEN FAILED");
+        return false;
+    }
 #else
     anim_file = fopen(filepath, "rb");
-    if (!anim_file) return false;
+    if (!anim_file) {
+        setError("FILE NOT FOUND");
+        return false;
+    }
 #endif
 
     strncpy(current_filepath, filepath, sizeof(current_filepath) - 1);
@@ -252,21 +314,35 @@ bool AnimEngine::open(const char* filepath) {
     } else {
 #ifdef ARDUINO
         if (anim_file.read((uint8_t*)&current_header, sizeof(AnimHeader)) != sizeof(AnimHeader)) {
+            setError("ANIM HEADER TRUNCATED");
             close();
             return false;
         }
 #else
         if (fread(&current_header, 1, sizeof(AnimHeader), anim_file) != sizeof(AnimHeader)) {
+            setError("ANIM HEADER TRUNCATED");
             close();
             return false;
         }
 #endif
 
-        if (current_header.magic != ANIM_MAGIC ||
-            current_header.version != ANIM_VERSION ||
-            current_header.width != ANIM_WIDTH ||
-            current_header.height != ANIM_HEIGHT ||
-            current_header.frame_count == 0) {
+        if (current_header.magic != ANIM_MAGIC) {
+            setError("INVALID ANIM MAGIC");
+            close();
+            return false;
+        }
+        if (current_header.version != ANIM_VERSION) {
+            setError("INVALID ANIM VERSION");
+            close();
+            return false;
+        }
+        if (current_header.width != ANIM_WIDTH || current_header.height != ANIM_HEIGHT) {
+            setError("INVALID ANIM DIMENSIONS");
+            close();
+            return false;
+        }
+        if (current_header.frame_count == 0) {
+            setError("ZERO ANIM FRAMES");
             close();
             return false;
         }
@@ -275,6 +351,7 @@ bool AnimEngine::open(const char* filepath) {
         is_looping = (current_header.flags & ANIM_FLAG_LOOP) != 0;
 
         if (!readFrameData(0)) {
+            setError("CORRUPT FRAME DATA");
             close();
             return false;
         }
@@ -286,6 +363,7 @@ bool AnimEngine::open(const char* filepath) {
     current_frame_idx = 0;
     speed_multiplier = 1.0f;
     last_frame_time = millis();
+    setError("OK");
 
     return true;
 }

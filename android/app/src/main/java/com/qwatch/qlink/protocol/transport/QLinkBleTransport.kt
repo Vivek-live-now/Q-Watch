@@ -446,13 +446,13 @@ class QLinkBleTransport(
 
         try {
             val startResp = withTimeout(3000) {
-                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"status\":\"OK\"") || it.contains("\"code\":400") }.first()
+                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"status\":\"OK\"") || it.contains("\"code\":400") || it.contains("\"status\":\"ERROR\"") }.first()
             }
-            if (startResp.contains("\"code\":400")) {
-                return@withContext Result.failure(IOException("Watch rejected file upload START for $path"))
+            if (startResp.contains("\"code\":400") || startResp.contains("\"status\":\"ERROR\"")) {
+                return@withContext Result.failure(IOException("Watch rejected file upload START for $path: $startResp"))
             }
-        } catch (_: Exception) {
-            // Proceed if response delayed
+        } catch (e: Exception) {
+            return@withContext Result.failure(IOException("Timeout waiting for watch response to START: ${e.message}"))
         }
         delay(20) // Allow watch LittleFS to open file handle
 
@@ -466,6 +466,11 @@ class QLinkBleTransport(
         var seq = 0
 
         while (offset < data.size) {
+            val cachedErr = _fileResponseFlow.replayCache.firstOrNull { it.contains("\"status\":\"ERROR\"") || it.contains("\"code\":400") || it.contains("\"code\":500") }
+            if (cachedErr != null) {
+                return@withContext Result.failure(IOException("Watch rejected upload chunk: $cachedErr"))
+            }
+
             val chunkLen = minOf(maxChunk, data.size - offset)
             val packet = ByteArray(6 + chunkLen)
             packet[0] = 0xFE.toByte() // Magic Hi
@@ -515,17 +520,22 @@ class QLinkBleTransport(
             put("size", data.size)
         }
         _fileResponseFlow.resetReplayCache()
-        writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))
+        if (!writeData(char, finishJson.toString().toByteArray(Charsets.UTF_8))) {
+            return@withContext Result.failure(IOException("Failed to send BLE file FINISH"))
+        }
 
-        try {
-            val finishResp = withTimeout(2000) {
-                _fileResponseFlow.filter { it.contains("\"code\":200") || it.contains("\"code\":500") || it.contains("\"code\":400") || it.contains("\"status\":\"OK\"") }.first()
+        val finishResp = try {
+            withTimeout(3500) {
+                _fileResponseFlow.filter { 
+                    it.contains(""code":200") || it.contains(""code":400") || it.contains(""code":500") || it.contains(""status":"OK"") || it.contains(""status":"ERROR"") 
+                }.first()
             }
-            if (finishResp.contains("\"code\":500") || finishResp.contains("\"code\":400")) {
-                return@withContext Result.failure(IOException("Watch reported error finishing upload for $path: $finishResp"))
-            }
-        } catch (_: Exception) {
-            // Succeeded on chunk stream completion
+        } catch (e: Exception) {
+            return@withContext Result.failure(IOException("Timeout waiting for watch confirmation of FINISH for $path"))
+        }
+
+        if (finishResp.contains(""code":500") || finishResp.contains(""code":400") || finishResp.contains(""status":"ERROR"")) {
+            return@withContext Result.failure(IOException("Watch reported error finishing upload for $path: $finishResp"))
         }
 
         onProgress(

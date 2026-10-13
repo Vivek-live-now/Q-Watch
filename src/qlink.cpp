@@ -102,9 +102,13 @@ QLinkEngine::QLinkEngine() :
     upload_file_path(""),
     upload_expected_size(0),
     upload_received_size(0),
+    upload_expected_seq(0),
     upload_last_chunk_time(0),
     upload_use_ram(false),
     upload_ram_buf(nullptr),
+#ifndef ARDUINO
+    upload_file(nullptr),
+#endif
     raw_ir_in_progress(false),
     raw_ir_frequency(38000),
     raw_ir_duty_cycle(0.33f),
@@ -133,6 +137,7 @@ void QLinkEngine::begin() {
     upload_file_path = "";
     upload_expected_size = 0;
     upload_received_size = 0;
+    upload_expected_seq = 0;
     raw_ir_in_progress = false;
     raw_ir_expected_count = 0;
     raw_ir_received_count = 0;
@@ -404,21 +409,64 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
 
     // Binary file chunk packet: magic 0xFE, 0x01
     if (len >= 6 && data[0] == 0xFE && data[1] == 0x01) {
-        size_t chunk_len = ((size_t)data[4] << 8) | data[5];
-        if (chunk_len <= len - 6) {
-            processFileChunk(data + 6, chunk_len);
-            if (upload_expected_size > 0 && upload_received_size >= upload_expected_size) {
-                finishFileUpload(upload_expected_size);
+        if (!upload_in_progress) {
 #ifdef ARDUINO
-                if (s_char_file) {
-                    String resp = "{\"status\":\"OK\",\"code\":200,\"message\":\"Complete\",\"size\":" + String((unsigned long)upload_received_size) + "}";
-                    s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
-                    s_char_file->notify();
-                }
-#endif
+            if (s_char_file) {
+                String resp = "{\"status\":\"ERROR\",\"code\":400,\"error\":\"not_started\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
             }
+#endif
             return;
         }
+        uint16_t seq = ((uint16_t)data[2] << 8) | data[3];
+        size_t chunk_len = ((size_t)data[4] << 8) | data[5];
+        if (chunk_len == 0 || chunk_len > len - 6) {
+            cancelFileUpload();
+#ifdef ARDUINO
+            if (s_char_file) {
+                String resp = "{\"status\":\"ERROR\",\"code\":400,\"error\":\"invalid_chunk_length\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+#endif
+            return;
+        }
+        if (seq != upload_expected_seq) {
+            cancelFileUpload();
+#ifdef ARDUINO
+            if (s_char_file) {
+                String resp = "{\"status\":\"ERROR\",\"code\":400,\"error\":\"sequence_mismatch\",\"expected\":" + String((unsigned long)upload_expected_seq) + ",\"received\":" + String((unsigned long)seq) + "}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+#endif
+            return;
+        }
+        if (upload_expected_size > 0 && upload_received_size + chunk_len > upload_expected_size) {
+            cancelFileUpload();
+#ifdef ARDUINO
+            if (s_char_file) {
+                String resp = "{\"status\":\"ERROR\",\"code\":400,\"error\":\"oversized_file\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+#endif
+            return;
+        }
+        bool ok = processFileChunk(data + 6, chunk_len);
+        if (!ok) {
+            cancelFileUpload();
+#ifdef ARDUINO
+            if (s_char_file) {
+                String resp = "{\"status\":\"ERROR\",\"code\":500,\"error\":\"write_failed\"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
+#endif
+            return;
+        }
+        return;
     }
 
     // Binary raw IR chunk packet: magic 0xFE, 0x03
@@ -453,18 +501,16 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
         }
     }
 
-    // Raw chunk when upload is active and payload not starting with JSON '{' and not framing 0xFE
-    if (upload_in_progress && data[0] != '{' && data[0] != 0xFE) {
-        processFileChunk(data, len);
-        if (upload_expected_size > 0 && upload_received_size >= upload_expected_size) {
-            finishFileUpload(upload_expected_size);
-#ifdef ARDUINO
-            if (s_char_file) {
-                String resp = "{\"status\":\"OK\",\"code\":200,\"message\":\"Complete\",\"size\":" + String((unsigned long)upload_received_size) + "}";
-                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
-                s_char_file->notify();
-            }
-#endif
+    // Raw chunk when upload is active and payload not starting with JSON '{'
+    if (upload_in_progress && data[0] != '{') {
+        if (upload_expected_size > 0 && upload_received_size + len > upload_expected_size) {
+            cancelFileUpload();
+            return;
+        }
+        bool ok = processFileChunk(data, len);
+        if (!ok) {
+            cancelFileUpload();
+            return;
         }
         return;
     }
@@ -487,18 +533,13 @@ void QLinkEngine::handleBleFilePacket(const uint8_t* data, size_t len) {
             }
         } else if (strcmp(cmd, "FINISH") == 0) {
             size_t size = doc["size"] | upload_received_size;
-            bool ok = true;
-            if (upload_in_progress) {
-                if (upload_expected_size > 0 && upload_received_size < upload_expected_size) {
-                    cancelFileUpload();
-                    ok = false;
-                } else {
-                    ok = finishFileUpload(size);
-                }
-            }
+            bool ok = upload_in_progress && finishFileUpload(size);
             if (s_char_file) {
-                String resp = ok ? ("{\"status\":\"OK\",\"code\":200,\"size\":" + String((unsigned long)size) + "}")
-                                 : "{\"status\":\"ERROR\",\"code\":400,\"error\":\"incomplete_upload\"}";
+                String resp = ok ? ("{"status":"OK","code":200,"size":" + String((unsigned long)size) + "}")
+                                 : "{"status":"ERROR","code":400,"error":"incomplete_upload"}";
+                s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
+                s_char_file->notify();
+            }
                 s_char_file->setValue((uint8_t*)resp.c_str(), resp.length());
                 s_char_file->notify();
             }
@@ -710,6 +751,7 @@ bool QLinkEngine::startFileUpload(const String& path, size_t total_size) {
     upload_file_path = clean_path;
     upload_expected_size = total_size;
     upload_received_size = 0;
+    upload_expected_seq = 0;
     upload_last_chunk_time = millis();
     upload_use_ram = false;
     upload_ram_buf = nullptr;
@@ -738,13 +780,19 @@ bool QLinkEngine::startFileUpload(const String& path, size_t total_size) {
         if (!upload_file) return false;
     }
 #else
-    String clean_path = FileManager::normalizePath(path);
+    String clean_path = path;
     upload_file_path = clean_path;
     upload_expected_size = total_size;
     upload_received_size = 0;
+    upload_expected_seq = 0;
     upload_last_chunk_time = 0;
     upload_use_ram = false;
     upload_ram_buf = nullptr;
+    if (upload_file) {
+        fclose(upload_file);
+        upload_file = nullptr;
+    }
+    upload_file = fopen(clean_path.c_str(), "wb");
 #endif
     upload_in_progress = true;
     return true;
@@ -765,16 +813,30 @@ bool QLinkEngine::processFileChunk(const uint8_t* chunk, size_t chunk_len) {
         if (written != chunk_len) return false;
     }
     upload_last_chunk_time = millis();
+#else
+    if (upload_file) {
+        size_t written = fwrite(chunk, 1, chunk_len, upload_file);
+        if (written != chunk_len) return false;
+    }
 #endif
     upload_received_size += chunk_len;
+    upload_expected_seq++;
     return true;
 }
 
 bool QLinkEngine::finishFileUpload(size_t expected_size) {
     if (!upload_in_progress) return false;
+    if (expected_size > 0 && upload_received_size != expected_size) {
+        cancelFileUpload();
+        return false;
+    }
+    if (upload_expected_size > 0 && upload_received_size != upload_expected_size) {
+        cancelFileUpload();
+        return false;
+    }
 #ifdef ARDUINO
     // Guard against corrupt/truncated uploads
-    if (upload_expected_size > 0 && upload_received_size < upload_expected_size) {
+    if (upload_expected_size > 0 && upload_received_size != upload_expected_size) {
         cancelFileUpload();
         return false;
     }
@@ -820,7 +882,123 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
         }
     }
 
+    String lower_path = upload_file_path;
+    lower_path.toLowerCase();
+    bool valid = true;
+    if (lower_path.endsWith(".anim")) {
+        File check = LittleFS.open(upload_file_path, "r");
+        valid = false;
+        if (check && check.size() >= 16) {
+            uint8_t hdr[16];
+            if (check.read(hdr, 16) == 16) {
+                uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+                uint8_t w = hdr[6];
+                uint8_t h = hdr[7];
+                uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
+                size_t exp_len = 16 + (size_t)frames * 1024;
+                if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() == exp_len) {
+                    valid = true;
+                }
+            }
+        }
+        if (check) check.close();
+    } else if (lower_path.endsWith(".bmp")) {
+        File check = LittleFS.open(upload_file_path, "r");
+        valid = false;
+        if (check && check.size() >= 54) {
+            uint8_t hdr[54];
+            if (check.read(hdr, 54) == 54) {
+                if (hdr[0] == 'B' && hdr[1] == 'M') {
+                    uint32_t offset = (uint32_t)hdr[10] | ((uint32_t)hdr[11] << 8) | ((uint32_t)hdr[12] << 16) | ((uint32_t)hdr[13] << 24);
+                    int32_t w = (int32_t)((uint32_t)hdr[18] | ((uint32_t)hdr[19] << 8) | ((uint32_t)hdr[20] << 16) | ((uint32_t)hdr[21] << 24));
+                    int32_t h = (int32_t)((uint32_t)hdr[22] | ((uint32_t)hdr[23] << 8) | ((uint32_t)hdr[24] << 16) | ((uint32_t)hdr[25] << 24));
+                    uint16_t planes = (uint16_t)hdr[26] | ((uint16_t)hdr[27] << 8);
+                    uint16_t bpp = (uint16_t)hdr[28] | ((uint16_t)hdr[29] << 8);
+                    uint32_t comp = (uint32_t)hdr[30] | ((uint32_t)hdr[31] << 8) | ((uint32_t)hdr[32] << 16) | ((uint32_t)hdr[33] << 24);
+                    if (offset >= 54 && w > 0 && h != 0 && planes == 1 && (comp == 0 || comp == 3) && (bpp == 1 || bpp == 8 || bpp == 24 || bpp == 32)) {
+                        valid = true;
+                    }
+                }
+            }
+        }
+        if (check) check.close();
+    }
+    if (!valid) {
+        LittleFS.remove(upload_file_path);
+        upload_in_progress = false;
+        upload_file_path = "";
+        upload_expected_size = 0;
+        upload_received_size = 0;
+        upload_expected_seq = 0;
+        return false;
+    }
     notifyFileReceived(upload_file_path);
+#else
+    if (upload_file) {
+        fflush(upload_file);
+        fclose(upload_file);
+        upload_file = nullptr;
+    }
+    String lower_path = upload_file_path;
+    lower_path.toLowerCase();
+    bool valid = true;
+    if (lower_path.endsWith(".anim")) {
+        FILE* check = fopen(upload_file_path.c_str(), "rb");
+        valid = false;
+        if (check) {
+            fseek(check, 0, SEEK_END);
+            long sz = ftell(check);
+            fseek(check, 0, SEEK_SET);
+            if (sz >= 16) {
+                uint8_t hdr[16];
+                if (fread(hdr, 1, 16, check) == 16) {
+                    uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+                    uint8_t w = hdr[6];
+                    uint8_t h = hdr[7];
+                    uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
+                    size_t exp_len = 16 + (size_t)frames * 1024;
+                    if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && (size_t)sz == exp_len) {
+                        valid = true;
+                    }
+                }
+            }
+            fclose(check);
+        }
+    } else if (lower_path.endsWith(".bmp")) {
+        FILE* check = fopen(upload_file_path.c_str(), "rb");
+        valid = false;
+        if (check) {
+            fseek(check, 0, SEEK_END);
+            long sz = ftell(check);
+            fseek(check, 0, SEEK_SET);
+            if (sz >= 54) {
+                uint8_t hdr[54];
+                if (fread(hdr, 1, 54, check) == 54) {
+                    if (hdr[0] == 'B' && hdr[1] == 'M') {
+                        uint32_t offset = (uint32_t)hdr[10] | ((uint32_t)hdr[11] << 8) | ((uint32_t)hdr[12] << 16) | ((uint32_t)hdr[13] << 24);
+                        int32_t w = (int32_t)((uint32_t)hdr[18] | ((uint32_t)hdr[19] << 8) | ((uint32_t)hdr[20] << 16) | ((uint32_t)hdr[21] << 24));
+                        int32_t h = (int32_t)((uint32_t)hdr[22] | ((uint32_t)hdr[23] << 8) | ((uint32_t)hdr[24] << 16) | ((uint32_t)hdr[25] << 24));
+                        uint16_t planes = (uint16_t)hdr[26] | ((uint16_t)hdr[27] << 8);
+                        uint16_t bpp = (uint16_t)hdr[28] | ((uint16_t)hdr[29] << 8);
+                        uint32_t comp = (uint32_t)hdr[30] | ((uint32_t)hdr[31] << 8) | ((uint32_t)hdr[32] << 16) | ((uint32_t)hdr[33] << 24);
+                        if (offset >= 54 && w > 0 && h != 0 && planes == 1 && (comp == 0 || comp == 3) && (bpp == 1 || bpp == 8 || bpp == 24 || bpp == 32)) {
+                            valid = true;
+                        }
+                    }
+                }
+            }
+            fclose(check);
+        }
+    }
+    if (!valid) {
+        remove(upload_file_path.c_str());
+        upload_in_progress = false;
+        upload_file_path = "";
+        upload_expected_size = 0;
+        upload_received_size = 0;
+        upload_expected_seq = 0;
+        return false;
+    }
 #endif
     upload_in_progress = false;
     return true;
@@ -841,11 +1019,20 @@ void QLinkEngine::cancelFileUpload() {
     if (upload_file_path.length() > 0 && LittleFS.exists(upload_file_path)) {
         LittleFS.remove(upload_file_path);
     }
+#else
+    if (upload_file) {
+        fclose(upload_file);
+        upload_file = nullptr;
+        if (upload_file_path.length() > 0) {
+            remove(upload_file_path.c_str());
+        }
+    }
 #endif
     upload_in_progress = false;
     upload_file_path = "";
     upload_expected_size = 0;
     upload_received_size = 0;
+    upload_expected_seq = 0;
 }
 
 bool QLinkEngine::transmitParsedIr(const String& proto, uint32_t addr, uint32_t cmd, uint16_t nbits) {
@@ -1333,6 +1520,11 @@ String QLinkEngine::generateStorageJson() {
 }
 
 #ifdef ARDUINO
+static File s_wifi_upload_file;
+static String s_wifi_upload_path;
+static bool s_wifi_upload_success = false;
+static String s_wifi_upload_err = "";
+
 void QLinkEngine::registerHttpRoutes(WebServer& server) {
     // 1. Device Info
     server.on("/api/v1/info", HTTP_GET, [&server, this]() {
@@ -1542,19 +1734,45 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
     server.on("/api/v1/fs/upload", HTTP_POST, [&server, this]() {
         // Plain body upload: POST /api/v1/fs/upload?path=/mochi/xyz.anim with body
         if (server.hasArg("path") && server.hasArg("plain")) {
-            String path = server.arg("path");
+            String path = FileManager::normalizePath(server.arg("path"));
             if (!FileManager::isPathSafe(path)) {
                 server.send(400, "application/json", "{\"error\":\"invalid_path\"}");
                 return;
             }
+            if (animEngine.isOpen()) {
+                animEngine.stop();
+                animEngine.close();
+            }
             const String& body = server.arg("plain");
+            String lower = path;
+            lower.toLowerCase();
 
             // Animation validation using QANM header
-            if (path.endsWith(".anim")) {
+            if (lower.endsWith(".anim")) {
                 uint16_t f = 0, d = 0;
                 String err;
                 if (!validateAnimHeader((const uint8_t*)body.c_str(), body.length(), f, d, &err)) {
                     server.send(400, "application/json", "{\"error\":\"invalid_qanm_header\",\"detail\":\"" + err + "\"}");
+                    return;
+                }
+            } else if (lower.endsWith(".bmp")) {
+                bool valid = false;
+                if (body.length() >= 54) {
+                    const uint8_t* hdr = (const uint8_t*)body.c_str();
+                    if (hdr[0] == 'B' && hdr[1] == 'M') {
+                        uint32_t offset = (uint32_t)hdr[10] | ((uint32_t)hdr[11] << 8) | ((uint32_t)hdr[12] << 16) | ((uint32_t)hdr[13] << 24);
+                        int32_t w = (int32_t)((uint32_t)hdr[18] | ((uint32_t)hdr[19] << 8) | ((uint32_t)hdr[20] << 16) | ((uint32_t)hdr[21] << 24));
+                        int32_t h = (int32_t)((uint32_t)hdr[22] | ((uint32_t)hdr[23] << 8) | ((uint32_t)hdr[24] << 16) | ((uint32_t)hdr[25] << 24));
+                        uint16_t planes = (uint16_t)hdr[26] | ((uint16_t)hdr[27] << 8);
+                        uint16_t bpp = (uint16_t)hdr[28] | ((uint16_t)hdr[29] << 8);
+                        uint32_t comp = (uint32_t)hdr[30] | ((uint32_t)hdr[31] << 8) | ((uint32_t)hdr[32] << 16) | ((uint32_t)hdr[33] << 24);
+                        if (offset >= 54 && w > 0 && h != 0 && planes == 1 && (comp == 0 || comp == 3) && (bpp == 1 || bpp == 8 || bpp == 24 || bpp == 32)) {
+                            valid = true;
+                        }
+                    }
+                }
+                if (!valid) {
+                    server.send(400, "application/json", "{\"error\":\"invalid_bmp_format\"}");
                     return;
                 }
             }
@@ -1570,47 +1788,121 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
         }
         // Multipart upload completion response
         HTTPUpload& upload = server.upload();
-        if (upload.status == UPLOAD_FILE_END) {
-            server.send(200, "application/json", "{\"status\":\"uploaded\",\"size\":" + String((unsigned long)upload.totalSize) + "}");
+        if (s_wifi_upload_success && upload.status == UPLOAD_FILE_END) {
+            server.send(200, "application/json", "{\"status\":\"uploaded\",\"size\":" + String((unsigned long)upload.totalSize) + ",\"path\":\"" + s_wifi_upload_path + "\"}");
         } else {
-            server.send(200, "application/json", "{\"status\":\"ok\"}");
+            String err = s_wifi_upload_err.length() > 0 ? s_wifi_upload_err : "upload_failed";
+            server.send(400, "application/json", "{\"error\":\"" + err + "\"}");
         }
     }, [&server, this]() {
         // Multipart streaming chunk handler with abort recovery
-        static File s_upload_file;
-        static String s_upload_path;
         HTTPUpload& upload = server.upload();
         if (upload.status == UPLOAD_FILE_START) {
-            s_upload_path = server.hasArg("path") ? server.arg("path") : ("/" + upload.filename);
-            s_upload_path = FileManager::normalizePath(s_upload_path);
-            if (!FileManager::isPathSafe(s_upload_path)) {
-                return;
-            }
-            FileManager::ensureParentDir(s_upload_path);
-            if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), s_upload_path.c_str()) == 0) {
+            s_wifi_upload_success = false;
+            s_wifi_upload_err = "";
+            if (animEngine.isOpen()) {
                 animEngine.stop();
                 animEngine.close();
             }
-            if (LittleFS.exists(s_upload_path)) {
-                LittleFS.remove(s_upload_path);
+            s_wifi_upload_path = FileManager::normalizePath(server.hasArg("path") ? server.arg("path") : ("/" + upload.filename));
+            if (!FileManager::isPathSafe(s_wifi_upload_path)) {
+                s_wifi_upload_err = "invalid_path";
+                return;
             }
-            s_upload_file = LittleFS.open(s_upload_path, FILE_WRITE);
+            FileManager::ensureParentDir(s_wifi_upload_path);
+            if (LittleFS.exists(s_wifi_upload_path)) {
+                LittleFS.remove(s_wifi_upload_path);
+            }
+            s_wifi_upload_file = LittleFS.open(s_wifi_upload_path, FILE_WRITE);
+            if (!s_wifi_upload_file) {
+                s_wifi_upload_err = "open_failed";
+                return;
+            }
+            s_wifi_upload_success = true;
         } else if (upload.status == UPLOAD_FILE_WRITE) {
-            if (s_upload_file) {
-                s_upload_file.write(upload.buf, upload.currentSize);
+            if (s_wifi_upload_success && s_wifi_upload_file) {
+                size_t written = s_wifi_upload_file.write(upload.buf, upload.currentSize);
+                if (written != upload.currentSize) {
+                    s_wifi_upload_success = false;
+                    s_wifi_upload_err = "write_failed";
+                    s_wifi_upload_file.close();
+                    LittleFS.remove(s_wifi_upload_path);
+                }
             }
         } else if (upload.status == UPLOAD_FILE_END) {
-            if (s_upload_file) {
-                s_upload_file.flush();
-                s_upload_file.close();
+            if (s_wifi_upload_file) {
+                s_wifi_upload_file.flush();
+                s_wifi_upload_file.close();
             }
-            notifyFileReceived(s_upload_path);
+            if (!s_wifi_upload_success) {
+                LittleFS.remove(s_wifi_upload_path);
+                return;
+            }
+            String lower = s_wifi_upload_path;
+            lower.toLowerCase();
+            // QANM validation on completed upload: purge if corrupted
+            if (lower.endsWith(".anim")) {
+                File check = LittleFS.open(s_wifi_upload_path, FILE_READ);
+                bool valid = false;
+                if (check && check.size() >= 16) {
+                    uint8_t hdr[16];
+                    if (check.read(hdr, 16) == 16) {
+                        uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+                        uint8_t w = hdr[6];
+                        uint8_t h = hdr[7];
+                        uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
+                        size_t exp_len = 16 + (size_t)frames * 1024;
+                        if (magic == 0x4D4E4151 && w == 128 && h == 64 && frames > 0 && check.size() == exp_len) {
+                            valid = true;
+                        }
+                    }
+                }
+                if (check) check.close();
+                if (!valid) {
+                    LittleFS.remove(s_wifi_upload_path); // Recover from bad upload
+                    s_wifi_upload_success = false;
+                    s_wifi_upload_err = "invalid_anim";
+                } else {
+                    notifyFileReceived(s_wifi_upload_path);
+                }
+            } else if (lower.endsWith(".bmp")) {
+                File check = LittleFS.open(s_wifi_upload_path, FILE_READ);
+                bool valid = false;
+                if (check && check.size() >= 54) {
+                    uint8_t hdr[54];
+                    if (check.read(hdr, 54) == 54) {
+                        if (hdr[0] == 'B' && hdr[1] == 'M') {
+                            uint32_t offset = (uint32_t)hdr[10] | ((uint32_t)hdr[11] << 8) | ((uint32_t)hdr[12] << 16) | ((uint32_t)hdr[13] << 24);
+                            int32_t w = (int32_t)((uint32_t)hdr[18] | ((uint32_t)hdr[19] << 8) | ((uint32_t)hdr[20] << 16) | ((uint32_t)hdr[21] << 24));
+                            int32_t h = (int32_t)((uint32_t)hdr[22] | ((uint32_t)hdr[23] << 8) | ((uint32_t)hdr[24] << 16) | ((uint32_t)hdr[25] << 24));
+                            uint16_t planes = (uint16_t)hdr[26] | ((uint16_t)hdr[27] << 8);
+                            uint16_t bpp = (uint16_t)hdr[28] | ((uint16_t)hdr[29] << 8);
+                            uint32_t comp = (uint32_t)hdr[30] | ((uint32_t)hdr[31] << 8) | ((uint32_t)hdr[32] << 16) | ((uint32_t)hdr[33] << 24);
+                            if (offset >= 54 && w > 0 && h != 0 && planes == 1 && (comp == 0 || comp == 3) && (bpp == 1 || bpp == 8 || bpp == 24 || bpp == 32)) {
+                                valid = true;
+                            }
+                        }
+                    }
+                }
+                if (check) check.close();
+                if (!valid) {
+                    LittleFS.remove(s_wifi_upload_path);
+                    s_wifi_upload_success = false;
+                    s_wifi_upload_err = "invalid_bmp";
+                } else {
+                    notifyFileReceived(s_wifi_upload_path);
+                }
+            } else {
+                notifyFileReceived(s_wifi_upload_path);
+            }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {
             // Failed transfer recovery: immediately delete partial truncated file
-            if (s_upload_file) {
-                s_upload_file.close();
+            if (s_wifi_upload_file) {
+                s_wifi_upload_file.close();
             }
-            LittleFS.remove(s_upload_path);
+            LittleFS.remove(s_wifi_upload_path);
+            s_wifi_upload_success = false;
+            s_wifi_upload_err = "upload_aborted";
         }
     });
 

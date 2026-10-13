@@ -172,7 +172,11 @@ void WifiPortal::setupRoutes() {
     server.on("/file_rename", HTTP_POST, std::bind(&WifiPortal::handleFileRename, this));
     server.on("/file_copy", HTTP_POST, std::bind(&WifiPortal::handleFileCopy, this));
     server.on("/file_upload", HTTP_POST, [this]() {
-        server.send(200, "text/plain", "Upload Successful");
+        if (s_portal_upload_ok) {
+            server.send(200, "text/plain", "Upload Successful");
+        } else {
+            server.send(400, "text/plain", "Upload Failed");
+        }
     }, std::bind(&WifiPortal::handleFileUpload, this));
 
     // Register Q-Link Protocol API Routes
@@ -780,6 +784,7 @@ void WifiPortal::handleFileCopy() {
 
 static File uploadFile;
 static String s_portal_upload_path;
+static bool s_portal_upload_ok = true;
 
 void WifiPortal::handleFileUpload() {
     if (!settingsManager.get().fileserver_enabled) {
@@ -789,30 +794,42 @@ void WifiPortal::handleFileUpload() {
 
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
+        s_portal_upload_ok = false;
         String filename = upload.filename;
         if (!FileManager::isPathSafe(filename)) {
             return; // Reject unsafe upload filename
         }
-        s_portal_upload_path = fileManager.normalizePath(filename);
-        FileManager::ensureParentDir(s_portal_upload_path);
-        if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), s_portal_upload_path.c_str()) == 0) {
+        if (animEngine.isOpen()) {
             animEngine.stop();
             animEngine.close();
         }
+        s_portal_upload_path = fileManager.normalizePath(filename);
+        FileManager::ensureParentDir(s_portal_upload_path);
         if (LittleFS.exists(s_portal_upload_path)) {
             LittleFS.remove(s_portal_upload_path);
         }
         uploadFile = LittleFS.open(s_portal_upload_path, FILE_WRITE);
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (uploadFile) {
-            uploadFile.write(upload.buf, upload.currentSize);
+            s_portal_upload_ok = true;
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (uploadFile && s_portal_upload_ok) {
+            size_t written = uploadFile.write(upload.buf, upload.currentSize);
+            if (written != upload.currentSize) {
+                s_portal_upload_ok = false;
+                uploadFile.close();
+                String p = fileManager.normalizePath(upload.filename);
+                LittleFS.remove(p);
+            }
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         if (uploadFile) {
             uploadFile.flush();
             uploadFile.close();
         }
-        qlink.notifyFileReceived(s_portal_upload_path);
+        if (s_portal_upload_ok) {
+            qlink.notifyFileReceived(s_portal_upload_path);
+        }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         if (uploadFile) {
             uploadFile.close();
@@ -820,6 +837,7 @@ void WifiPortal::handleFileUpload() {
         if (s_portal_upload_path.length() > 0 && LittleFS.exists(s_portal_upload_path)) {
             LittleFS.remove(s_portal_upload_path);
         }
+        s_portal_upload_ok = false;
     }
 }
 

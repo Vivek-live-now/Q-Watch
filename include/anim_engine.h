@@ -86,8 +86,11 @@ public:
     const AnimHeader& getHeader() const { return current_header; }
     const uint8_t* getFrameBuffer() const { return frame_buffer; }
     bool isBmpFormat() const { return is_bmp; }
+    const char* getLastError() const { return last_error_msg; }
 
 private:
+    void setError(const char* err);
+    char last_error_msg[32];
     bool readFrameData(uint16_t frame_idx);
 #ifdef ARDUINO
     bool parseBmpFile(File& f);

@@ -49,6 +49,12 @@ public:
     bool startsWith(const char* prefix) const {
         return rfind(prefix, 0) == 0;
     }
+    bool endsWith(const char* suffix) const {
+        if (!suffix) return false;
+        size_t s_len = strlen(suffix);
+        if (size() < s_len) return false;
+        return compare(size() - s_len, s_len, suffix) == 0;
+    }
     int indexOf(const char* str) const {
         auto pos = find(str);
         return (pos == std::string::npos) ? -1 : (int)pos;
@@ -200,11 +206,14 @@ private:
     String upload_file_path;
     size_t upload_expected_size;
     size_t upload_received_size;
+    uint16_t upload_expected_seq;
     uint32_t upload_last_chunk_time;
     bool upload_use_ram;
     uint8_t* upload_ram_buf;
 #ifdef ARDUINO
     File upload_file;
+#else
+    FILE* upload_file;
 #endif
 
     // Raw IR session state

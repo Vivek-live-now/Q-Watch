@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1322,20 +1323,24 @@ fun AnimStudioScreen(
                             Text("BOOT PHOTO", color = TacticalAmber, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                         }
 
-                        // Save File
+                        // Export to Downloads
                         Button(
                             onClick = {
                                 try {
+                                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).takeIf { it.exists() || it.mkdirs() }
+                                        ?: context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                                        ?: context.filesDir
                                     val cleanName = if (animName.endsWith(".anim")) animName else "$animName.anim"
-                                    val outFile = File(context.filesDir, cleanName)
+                                    val outFile = File(downloadsDir, cleanName)
                                     FileOutputStream(outFile).use { it.write(binaryBytes) }
 
                                     val bmpName = animName.removeSuffix(".anim") + ".bmp"
-                                    val bmpFile = File(context.filesDir, bmpName)
+                                    val bmpFile = File(downloadsDir, bmpName)
                                     val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
                                     FileOutputStream(bmpFile).use { it.write(bmpBytes) }
 
-                                    statusMessage = "Saved $cleanName & $bmpName to app storage!"
+                                    statusMessage = "Exported $cleanName & $bmpName to Downloads!"
+                                    Toast.makeText(context, "Exported to Downloads: $cleanName & $bmpName", Toast.LENGTH_LONG).show()
                                 } catch (e: Exception) {
                                     statusMessage = "Export failed: ${e.message}"
                                 }
@@ -1345,7 +1350,7 @@ fun AnimStudioScreen(
                             shape = RoundedCornerShape(4.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("SAVE FILES", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                            Text("EXPORT FILES", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }

@@ -1,7 +1,113 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <string>
+#include <vector>
 #include "qlink.h"
+#include "anim_engine.h"
+
+// Compact SHA-256 implementation
+struct SHA256_Simple {
+    uint32_t state[8];
+    uint64_t count;
+    uint8_t buffer[64];
+
+    static uint32_t rotr(uint32_t x, uint32_t n) { return (x >> n) | (x << (32 - n)); }
+    static uint32_t choose(uint32_t e, uint32_t f, uint32_t g) { return (e & f) ^ (~e & g); }
+    static uint32_t majority(uint32_t a, uint32_t b, uint32_t c) { return (a & b) ^ (a & c) ^ (b & c); }
+    static uint32_t sig0(uint32_t x) { return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22); }
+    static uint32_t sig1(uint32_t x) { return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25); }
+    static uint32_t theta0(uint32_t x) { return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3); }
+    static uint32_t theta1(uint32_t x) { return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10); }
+
+    void transform(const uint8_t data[64]) {
+        static const uint32_t K[64] = {
+            0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+            0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+            0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+            0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+            0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+            0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+            0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+            0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+        };
+        uint32_t W[64];
+        for (int i = 0; i < 16; i++) {
+            W[i] = ((uint32_t)data[i * 4] << 24) | ((uint32_t)data[i * 4 + 1] << 16) |
+                   ((uint32_t)data[i * 4 + 2] << 8) | ((uint32_t)data[i * 4 + 3]);
+        }
+        for (int i = 16; i < 64; i++) {
+            W[i] = theta1(W[i - 2]) + W[i - 7] + theta0(W[i - 15]) + W[i - 16];
+        }
+        uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+        uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
+        for (int i = 0; i < 64; i++) {
+            uint32_t T1 = h + sig1(e) + choose(e, f, g) + K[i] + W[i];
+            uint32_t T2 = sig0(a) + majority(a, b, c);
+            h = g; g = f; f = e; e = d + T1;
+            d = c; c = b; b = a; a = T1 + T2;
+        }
+        state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+        state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+    }
+
+    void init() {
+        state[0] = 0x6a09e667; state[1] = 0xbb67ae85; state[2] = 0x3c6ef372; state[3] = 0xa54ff53a;
+        state[4] = 0x510e527f; state[5] = 0x9b05688c; state[6] = 0x1f83d9ab; state[7] = 0x5be0cd19;
+        count = 0;
+    }
+
+    void update(const uint8_t* data, size_t len) {
+        for (size_t i = 0; i < len; i++) {
+            buffer[count % 64] = data[i];
+            count++;
+            if (count % 64 == 0) transform(buffer);
+        }
+    }
+
+    std::string final() {
+        uint64_t total_bits = count * 8;
+        buffer[count % 64] = 0x80;
+        count++;
+        if (count % 64 > 56) {
+            while (count % 64 != 0) { buffer[count % 64] = 0; count++; }
+            transform(buffer);
+        }
+        while (count % 64 != 56) { buffer[count % 64] = 0; count++; }
+        for (int i = 7; i >= 0; i--) {
+            buffer[count % 64] = (uint8_t)((total_bits >> (i * 8)) & 0xFF);
+            count++;
+        }
+        transform(buffer);
+        char hex[65];
+        for (int i = 0; i < 8; i++) {
+            snprintf(hex + i * 8, 9, "%08x", state[i]);
+        }
+        hex[64] = '\0';
+        return std::string(hex);
+    }
+};
+
+static std::string compute_sha256(const uint8_t* data, size_t len) {
+    SHA256_Simple s;
+    s.init();
+    s.update(data, len);
+    return s.final();
+}
+
+static std::string compute_file_sha256(const char* filepath) {
+    FILE* fp = fopen(filepath, "rb");
+    if (!fp) return "";
+    SHA256_Simple s;
+    s.init();
+    uint8_t buf[256];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        s.update(buf, n);
+    }
+    fclose(fp);
+    return s.final();
+}
 
 // Mock dependencies for host test
 class MockButtonManager {
@@ -224,7 +330,7 @@ void test_ble_file_upload_protocol() {
     // 1. Path safety and initialization
     assert(qlink.startFileUpload("../evil.ir", 500) == false);
     assert(qlink.startFileUpload("", 500) == false);
-    assert(qlink.startFileUpload("/ir/Samsung_BN59.ir", 1000) == true);
+    assert(qlink.startFileUpload("/ir/Samsung_BN59.ir", 200) == true);
     assert(qlink.isUploadInProgress() == true);
     assert(qlink.getUploadPath() == "/ir/Samsung_BN59.ir");
     assert(qlink.getUploadReceivedBytes() == 0);
@@ -256,6 +362,228 @@ void test_ble_file_upload_protocol() {
     qlink.cancelFileUpload();
     assert(qlink.isUploadInProgress() == false);
     printf("  [PASS] BLE chunked file transfer START, framed packets, received size, and FINISH verified.\n");
+}
+
+void test_ble_chunk_sequence_and_size_validation() {
+    printf("\n--- Test: Q-Link BLE Chunk Sequence & Size Validation ---\n");
+    // 1. Missing / out-of-order chunk rejection
+    assert(qlink.startFileUpload("/tests/seq_test.bin", 300) == true);
+    uint8_t pkt[106];
+    pkt[0] = 0xFE; pkt[1] = 0x01;
+    pkt[2] = 0x00; pkt[3] = 0x01; // Expected seq 0, but sending seq 1!
+    pkt[4] = 0x00; pkt[5] = 100;
+    memset(pkt + 6, 0x11, 100);
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.isUploadInProgress() == false); // Must abort on sequence mismatch!
+    printf("  [PASS] Out-of-order sequence packet aborted transfer.\n");
+
+    // 2. Duplicate chunk rejection
+    assert(qlink.startFileUpload("/tests/dup_test.bin", 300) == true);
+    pkt[2] = 0x00; pkt[3] = 0x00; // Seq 0
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.isUploadInProgress() == true);
+    assert(qlink.getUploadReceivedBytes() == 100);
+    // Send seq 0 again (duplicate chunk)
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.isUploadInProgress() == false); // Duplicate chunk must abort transfer!
+    printf("  [PASS] Duplicate sequence chunk rejected and transfer aborted.\n");
+
+    // 3. Oversized transfer rejection
+    assert(qlink.startFileUpload("/tests/size_test.bin", 50) == true);
+    pkt[2] = 0x00; pkt[3] = 0x00; // Seq 0, but 100 bytes into a 50 byte upload
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.isUploadInProgress() == false); // Oversized packet must abort!
+    printf("  [PASS] Oversized chunk rejected and transfer aborted.\n");
+
+    // 4. Invalid chunk length declared
+    assert(qlink.startFileUpload("/tests/len_test.bin", 100) == true);
+    pkt[2] = 0x00; pkt[3] = 0x00;
+    pkt[4] = 0x00; pkt[5] = 0x00; // 0 length
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.isUploadInProgress() == false); // 0-len must abort!
+    printf("  [PASS] Zero-length chunk rejected and transfer aborted.\n");
+
+    // 5. Incomplete transfer rejection (finishFileUpload requires exact count)
+    assert(qlink.startFileUpload("/tests/incomp_test.bin", 200) == true);
+    pkt[2] = 0x00; pkt[3] = 0x00;
+    pkt[4] = 0x00; pkt[5] = 100;
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.getUploadReceivedBytes() == 100);
+    // Client attempts to finish with expected 200 bytes, but only 100 received
+    assert(qlink.finishFileUpload(200) == false);
+    assert(qlink.isUploadInProgress() == false);
+    printf("  [PASS] finishFileUpload rejects incomplete byte count (100 received != 200 expected).\n");
+
+    // 6. FINISH with mismatched size argument
+    assert(qlink.startFileUpload("/tests/mismatch_test.bin", 100) == true);
+    pkt[2] = 0x00; pkt[3] = 0x00;
+    pkt[4] = 0x00; pkt[5] = 100;
+    qlink.handleBleFilePacket(pkt, sizeof(pkt));
+    assert(qlink.getUploadReceivedBytes() == 100);
+    // FINISH packet claims size is 50 when received is 100
+    assert(qlink.finishFileUpload(50) == false);
+    assert(qlink.isUploadInProgress() == false);
+    printf("  [PASS] finishFileUpload rejects mismatched expected size argument.\n");
+}
+
+void test_media_file_upload_integrity_and_decoding() {
+    printf("\n--- Test: Q-Link Media File Upload Integrity & Host Decoding ---\n");
+
+    // 1. Build a valid .anim file in memory: 16-byte header + 1 frame of 1024 bytes = 1040 bytes
+    std::vector<uint8_t> valid_anim(1040);
+    AnimHeader* a_hdr = (AnimHeader*)valid_anim.data();
+    a_hdr->magic = ANIM_MAGIC;       // 0x4D4E4151
+    a_hdr->version = ANIM_VERSION;   // 1
+    a_hdr->width = 128;
+    a_hdr->height = 64;
+    a_hdr->frame_count = 1;
+    a_hdr->frame_delay_ms = 60;
+    a_hdr->flags = 0;
+    a_hdr->reserved = 0;
+    for (size_t i = 16; i < 1040; i++) {
+        valid_anim[i] = (uint8_t)(i & 0xFF);
+    }
+    std::string anim_orig_sha = compute_sha256(valid_anim.data(), valid_anim.size());
+
+    // Upload via framed BLE packets in 5 chunks of 208 bytes
+    const char* anim_path = "tests/test_upload.anim";
+    remove(anim_path);
+    assert(qlink.startFileUpload(anim_path, valid_anim.size()) == true);
+    size_t chunk_sz = 208;
+    for (uint16_t s = 0; s < 5; s++) {
+        uint8_t chunk_pkt[6 + 208];
+        chunk_pkt[0] = 0xFE; chunk_pkt[1] = 0x01;
+        chunk_pkt[2] = (uint8_t)((s >> 8) & 0xFF);
+        chunk_pkt[3] = (uint8_t)(s & 0xFF);
+        chunk_pkt[4] = (uint8_t)((chunk_sz >> 8) & 0xFF);
+        chunk_pkt[5] = (uint8_t)(chunk_sz & 0xFF);
+        memcpy(chunk_pkt + 6, valid_anim.data() + s * chunk_sz, chunk_sz);
+        qlink.handleBleFilePacket(chunk_pkt, sizeof(chunk_pkt));
+        assert(qlink.isUploadInProgress() == true);
+    }
+    assert(qlink.getUploadReceivedBytes() == valid_anim.size());
+    assert(qlink.finishFileUpload(valid_anim.size()) == true);
+
+    // Verify watch-side file size and SHA-256 equality
+    FILE* af = fopen(anim_path, "rb");
+    assert(af != NULL);
+    fseek(af, 0, SEEK_END);
+    long af_size = ftell(af);
+    fclose(af);
+    assert(af_size == 1040);
+    std::string anim_disk_sha = compute_file_sha256(anim_path);
+    assert(anim_disk_sha == anim_orig_sha);
+    printf("  [PASS] .anim BLE upload: size=1040 B, SHA256=%s matches original byte-for-byte.\n", anim_orig_sha.c_str());
+
+    // Verify decoded with real firmware AnimEngine
+    assert(animEngine.open(anim_path) == true);
+    assert(animEngine.isOpen() == true);
+    assert(animEngine.getTotalFrames() == 1);
+    assert(animEngine.getHeader().frame_delay_ms == 60);
+    assert(strcmp(animEngine.getLastError(), "OK") == 0);
+    animEngine.close();
+    remove(anim_path);
+    printf("  [PASS] .anim opens and parses successfully with AnimEngine.\n");
+
+    // 2. Corrupt .anim rejection (bad magic)
+    std::vector<uint8_t> corrupt_anim = valid_anim;
+    corrupt_anim[0] = 'B'; corrupt_anim[1] = 'A'; corrupt_anim[2] = 'D'; corrupt_anim[3] = '!';
+    assert(qlink.startFileUpload(anim_path, corrupt_anim.size()) == true);
+    for (uint16_t s = 0; s < 5; s++) {
+        uint8_t chunk_pkt[6 + 208];
+        chunk_pkt[0] = 0xFE; chunk_pkt[1] = 0x01;
+        chunk_pkt[2] = (uint8_t)((s >> 8) & 0xFF);
+        chunk_pkt[3] = (uint8_t)(s & 0xFF);
+        chunk_pkt[4] = (uint8_t)((chunk_sz >> 8) & 0xFF);
+        chunk_pkt[5] = (uint8_t)(chunk_sz & 0xFF);
+        memcpy(chunk_pkt + 6, corrupt_anim.data() + s * chunk_sz, chunk_sz);
+        qlink.handleBleFilePacket(chunk_pkt, sizeof(chunk_pkt));
+    }
+    // finishFileUpload MUST detect invalid header, delete corrupt file, and return false
+    assert(qlink.finishFileUpload(corrupt_anim.size()) == false);
+    FILE* check_anim = fopen(anim_path, "rb");
+    assert(check_anim == NULL); // File must be deleted!
+    printf("  [PASS] Corrupt .anim rejected by finishFileUpload and purged from disk.\n");
+
+    // 3. Build a valid 1-bit BMP file in memory: 14B file hdr + 40B DIB + 8B palette + 1024B raster = 1086 bytes
+    std::vector<uint8_t> valid_bmp(1086, 0);
+    valid_bmp[0] = 'B'; valid_bmp[1] = 'M';
+    uint32_t bmp_size = 1086;
+    valid_bmp[2] = (uint8_t)(bmp_size & 0xFF); valid_bmp[3] = (uint8_t)((bmp_size >> 8) & 0xFF);
+    valid_bmp[10] = 0x3E; // pixel offset = 62
+    // DIB Header (40 bytes)
+    valid_bmp[14] = 40; // hdr size
+    valid_bmp[18] = 128; // width
+    valid_bmp[22] = 64;  // height
+    valid_bmp[26] = 1;   // planes
+    valid_bmp[28] = 1;   // bpp = 1
+    valid_bmp[30] = 0;   // BI_RGB
+    valid_bmp[34] = 0; valid_bmp[35] = 4; // image size = 1024
+    valid_bmp[46] = 2;   // colors used = 2
+    // Palette (2 colors * 4B = 8B)
+    valid_bmp[54 + 4] = 0xFF; valid_bmp[54 + 5] = 0xFF; valid_bmp[54 + 6] = 0xFF;
+    // Pixel raster
+    for (size_t i = 62; i < 1086; i++) {
+        valid_bmp[i] = (uint8_t)(i * 7);
+    }
+    std::string bmp_orig_sha = compute_sha256(valid_bmp.data(), valid_bmp.size());
+
+    // Upload via framed BLE packets
+    const char* bmp_path = "tests/test_upload.bmp";
+    remove(bmp_path);
+    assert(qlink.startFileUpload(bmp_path, valid_bmp.size()) == true);
+    size_t bmp_chunk_sz = 181; // 6 chunks of 181 = 1086
+    for (uint16_t s = 0; s < 6; s++) {
+        uint8_t chunk_pkt[6 + 181];
+        chunk_pkt[0] = 0xFE; chunk_pkt[1] = 0x01;
+        chunk_pkt[2] = (uint8_t)((s >> 8) & 0xFF);
+        chunk_pkt[3] = (uint8_t)(s & 0xFF);
+        chunk_pkt[4] = (uint8_t)((bmp_chunk_sz >> 8) & 0xFF);
+        chunk_pkt[5] = (uint8_t)(bmp_chunk_sz & 0xFF);
+        memcpy(chunk_pkt + 6, valid_bmp.data() + s * bmp_chunk_sz, bmp_chunk_sz);
+        qlink.handleBleFilePacket(chunk_pkt, sizeof(chunk_pkt));
+        assert(qlink.isUploadInProgress() == true);
+    }
+    assert(qlink.getUploadReceivedBytes() == valid_bmp.size());
+    assert(qlink.finishFileUpload(valid_bmp.size()) == true);
+
+    FILE* bf = fopen(bmp_path, "rb");
+    assert(bf != NULL);
+    fseek(bf, 0, SEEK_END);
+    long bf_size = ftell(bf);
+    fclose(bf);
+    assert(bf_size == 1086);
+    std::string bmp_disk_sha = compute_file_sha256(bmp_path);
+    assert(bmp_disk_sha == bmp_orig_sha);
+    printf("  [PASS] .bmp BLE upload: size=1086 B, SHA256=%s matches original byte-for-byte.\n", bmp_orig_sha.c_str());
+
+    // Verify decoded with real firmware AnimEngine
+    assert(animEngine.open(bmp_path) == true);
+    assert(animEngine.isOpen() == true);
+    assert(animEngine.isBmpFormat() == true);
+    assert(strcmp(animEngine.getLastError(), "OK") == 0);
+    animEngine.close();
+    remove(bmp_path);
+    printf("  [PASS] .bmp opens and parses successfully with AnimEngine.\n");
+
+    // 4. Corrupt .bmp rejection (unsupported bpp = 16)
+    std::vector<uint8_t> corrupt_bmp = valid_bmp;
+    corrupt_bmp[28] = 16; // bpp = 16 (unsupported)
+    assert(qlink.startFileUpload(bmp_path, corrupt_bmp.size()) == true);
+    for (uint16_t s = 0; s < 6; s++) {
+        uint8_t chunk_pkt[6 + 181];
+        chunk_pkt[0] = 0xFE; chunk_pkt[1] = 0x01;
+        chunk_pkt[2] = (uint8_t)((s >> 8) & 0xFF);
+        chunk_pkt[3] = (uint8_t)(s & 0xFF);
+        chunk_pkt[4] = (uint8_t)((bmp_chunk_sz >> 8) & 0xFF);
+        chunk_pkt[5] = (uint8_t)(bmp_chunk_sz & 0xFF);
+        memcpy(chunk_pkt + 6, corrupt_bmp.data() + s * bmp_chunk_sz, bmp_chunk_sz);
+        qlink.handleBleFilePacket(chunk_pkt, sizeof(chunk_pkt));
+    }
+    assert(qlink.finishFileUpload(corrupt_bmp.size()) == false);
+    FILE* check_bmp = fopen(bmp_path, "rb");
+    assert(check_bmp == NULL); // File must be deleted!
+    printf("  [PASS] Corrupt .bmp (unsupported bpp) rejected by finishFileUpload and purged from disk.\n");
 }
 
 void test_ir_parsed_protocol_transmission() {
@@ -420,6 +748,8 @@ int main() {
     test_mochi_anim_validation();
     test_safe_delete_and_storage();
     test_ble_file_upload_protocol();
+    test_ble_chunk_sequence_and_size_validation();
+    test_media_file_upload_integrity_and_decoding();
     test_ir_parsed_protocol_transmission();
     test_ir_raw_timing_transfer_and_chunking();
     printf("\nALL Q-LINK PROTOCOL TESTS PASSED!\n");

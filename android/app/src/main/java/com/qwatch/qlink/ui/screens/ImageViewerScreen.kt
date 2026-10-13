@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -586,18 +587,22 @@ fun ImageViewerScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // Save to Phone
+                            // Export to Downloads
                             Button(
                                 onClick = {
                                     val bytes = currentBmpBytes
                                     if (bytes != null) {
                                         try {
+                                            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).takeIf { it.exists() || it.mkdirs() }
+                                                ?: context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                                                ?: context.filesDir
                                             val cleanName = if (photoName.endsWith(".bmp")) photoName else "$photoName.bmp"
-                                            val outFile = File(context.filesDir, cleanName)
+                                            val outFile = File(downloadsDir, cleanName)
                                             FileOutputStream(outFile).use { it.write(bytes) }
-                                            statusMessage = "Saved to ${outFile.name} (${outFile.length()} B)"
+                                            statusMessage = "Exported to Downloads: ${outFile.name} (${outFile.length()} B)"
+                                            Toast.makeText(context, "Exported to Downloads: ${outFile.name}", Toast.LENGTH_LONG).show()
                                         } catch (e: Exception) {
-                                            statusMessage = "Save failed: ${e.message}"
+                                            statusMessage = "Export failed: ${e.message}"
                                         }
                                     }
                                 },
@@ -607,7 +612,7 @@ fun ImageViewerScreen(
                                 shape = RoundedCornerShape(4.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("SAVE .BMP FILE", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                Text("EXPORT .BMP", color = TextPrimary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                             }
 
                             // Edit in Anim Studio

@@ -123,26 +123,15 @@ bool FileManager::isPathSafe(const String& path) {
 
 String FileManager::normalizePath(const String& path) {
     if (path.length() == 0) return "/";
-    String p = urlDecode(path);
+    String p = path;
+    p.replace("\\", "/");
+    while (p.indexOf("//") != -1) {
+        p.replace("//", "/");
+    }
     if (p.charAt(0) != '/') {
         p = "/" + p;
     }
-    String clean = "";
-    clean.reserve(p.length());
-    bool lastWasSlash = false;
-    for (size_t i = 0; i < p.length(); i++) {
-        char c = p.charAt(i);
-        if (c == '/') {
-            if (!lastWasSlash) {
-                clean += c;
-                lastWasSlash = true;
-            }
-        } else {
-            clean += c;
-            lastWasSlash = false;
-        }
-    }
-    return clean;
+    return p;
 }
 
 bool FileManager::exists(const String& path) {

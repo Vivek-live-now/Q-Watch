@@ -2783,7 +2783,8 @@ void UICore::openAnimationPlayer(const char* filepath, UIState return_state) {
         needs_redraw = true;
     } else {
         soundManager.playAlert();
-        showToast("OPEN FAILED", 1500);
+        const char* err = animEngine.getLastError();
+        showToast((err && err[0] && strcmp(err, "OK") != 0) ? err : "OPEN FAILED", 1500);
         needs_redraw = true;
     }
 }

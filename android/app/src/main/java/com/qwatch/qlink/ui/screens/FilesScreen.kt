@@ -118,7 +118,17 @@ fun FilesScreen() {
                 isUploading = true
                 uploadProgressPct = 0
                 val fileName = getFileName(uri)
-                val targetPath = if (currentPath == "/") "/$fileName" else "$currentPath/$fileName"
+                val targetPath = if (currentPath == "/") {
+                    when {
+                        fileName.endsWith(".anim", ignoreCase = true) -> "/anim/$fileName"
+                        fileName.endsWith(".bmp", ignoreCase = true) -> "/photos/$fileName"
+                        fileName.endsWith(".ir", ignoreCase = true) -> "/ir/$fileName"
+                        fileName.endsWith(".qapp", ignoreCase = true) -> "/apps/$fileName"
+                        else -> "/$fileName"
+                    }
+                } else {
+                    "$currentPath/$fileName"
+                }.replace("//", "/")
                 uploadStatusText = "Uploading $fileName..."
                 try {
                     val bytes = withContext(Dispatchers.IO) {
@@ -155,14 +165,16 @@ fun FilesScreen() {
             if (res.isSuccess) {
                 val bytes = res.getOrDefault(ByteArray(0))
                 try {
-                    val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).takeIf { it.exists() || it.mkdirs() }
+                        ?: context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                        ?: context.filesDir
                     val outFile = File(downloadsDir, file.name)
                     withContext(Dispatchers.IO) {
                         FileOutputStream(outFile).use { fos ->
                             fos.write(bytes)
                         }
                     }
-                    Toast.makeText(context, "Saved to ${outFile.name} (${bytes.size} B)", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Exported to Downloads: ${outFile.name} (${bytes.size} B)", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Downloaded (${bytes.size} B) but save failed: ${e.message}", Toast.LENGTH_LONG).show()
                 }

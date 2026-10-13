@@ -359,13 +359,15 @@ class QLinkWifiTransport(
                 }
             }
 
+            val normalizedPath = if (path.startsWith("/")) path else "/$path"
             val formBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("file", path.substringAfterLast('/'), countedBody)
+                .addFormDataPart("path", normalizedPath)
+                .addFormDataPart("file", normalizedPath, countedBody)
                 .build()
 
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=${urlEncode(path)}")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=${urlEncode(normalizedPath)}")
                 .post(formBody)
                 .build()
 
