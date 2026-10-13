@@ -97,8 +97,9 @@ class AnimMarketViewModel : ViewModel() {
                     val res = client.listFiles("/mochi")
                     if (res.isSuccess) {
                         res.getOrNull()?.forEach { file ->
-                            if (file.name.endsWith(".anim")) {
-                                installedFilenames.add(file.name.lowercase())
+                            val cleanName = if (file.name.contains("/")) file.name.substringAfterLast('/') else file.name
+                            if (cleanName.endsWith(".anim", ignoreCase = true)) {
+                                installedFilenames.add(cleanName.lowercase())
                             }
                         }
                     }

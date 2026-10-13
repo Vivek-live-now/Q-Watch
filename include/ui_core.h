@@ -606,7 +606,7 @@ public:
         uint16_t delayMs;
         bool isBmp;
     };
-    static const int MAX_ANIM_ENTRIES = 16;
+    static const int MAX_ANIM_ENTRIES = 64;
     AnimEntry anim_entries[MAX_ANIM_ENTRIES];
     int anim_count;
     int anim_selection;

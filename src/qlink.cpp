@@ -1466,10 +1466,18 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
         HTTPUpload& upload = server.upload();
         if (upload.status == UPLOAD_FILE_START) {
             s_upload_path = server.hasArg("path") ? server.arg("path") : ("/" + upload.filename);
+            s_upload_path = FileManager::normalizePath(s_upload_path);
             if (!FileManager::isPathSafe(s_upload_path)) {
                 return;
             }
             FileManager::ensureParentDir(s_upload_path);
+            if (animEngine.isOpen() && strcmp(animEngine.getFilePath(), s_upload_path.c_str()) == 0) {
+                animEngine.stop();
+                animEngine.close();
+            }
+            if (LittleFS.exists(s_upload_path)) {
+                LittleFS.remove(s_upload_path);
+            }
             s_upload_file = LittleFS.open(s_upload_path, FILE_WRITE);
         } else if (upload.status == UPLOAD_FILE_WRITE) {
             if (s_upload_file) {
@@ -1477,6 +1485,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
         } else if (upload.status == UPLOAD_FILE_END) {
             if (s_upload_file) {
+                s_upload_file.flush();
                 s_upload_file.close();
             }
             // QANM validation on completed upload: purge if corrupted
@@ -1486,8 +1495,10 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 if (check && check.size() >= 16) {
                     uint8_t hdr[16];
                     check.read(hdr, 16);
-                    uint16_t f = 0, d = 0;
-                    valid = validateAnimHeader(hdr, 16, f, d) || (check.size() == 16 + (size_t)(((uint16_t)hdr[8]) | (((uint16_t)hdr[9]) << 8)) * 1024);
+                    uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+                    uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
+                    size_t expected_size = 16 + (size_t)frames * 1024;
+                    valid = (magic == ANIM_MAGIC && frames > 0 && check.size() == expected_size);
                     check.close();
                 } else if (check) {
                     check.close();
@@ -1502,10 +1513,24 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                     }
                 }
             } else if (s_upload_path.endsWith(".bmp")) {
-                ui.showToast("Photo Saved!", 2000);
-                soundManager.playTone(2400, 80);
-                if (ui.getState() == UIState::APP_ANIM_LIST) {
-                    ui.loadAnimList();
+                File check = LittleFS.open(s_upload_path, FILE_READ);
+                bool valid = false;
+                if (check && check.size() >= 54) {
+                    uint8_t bmp_magic[2];
+                    check.read(bmp_magic, 2);
+                    valid = (bmp_magic[0] == 'B' && bmp_magic[1] == 'M');
+                    check.close();
+                } else if (check) {
+                    check.close();
+                }
+                if (!valid) {
+                    LittleFS.remove(s_upload_path);
+                } else {
+                    ui.showToast("Photo Saved!", 2000);
+                    soundManager.playTone(2400, 80);
+                    if (ui.getState() == UIState::APP_ANIM_LIST) {
+                        ui.loadAnimList();
+                    }
                 }
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {

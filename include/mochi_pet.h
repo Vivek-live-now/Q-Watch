@@ -67,6 +67,7 @@ enum class MochiSubmode : uint8_t {
     STATS_HUD,       // Stats overlay (Pet Name "MOCHI", Friendship, Hunger, Energy, Mood)
     EMOTE_PICKER,    // Interactive on-screen list to manually pick/preview any emote
     HELMET_PICKER,   // Visual preview and selector for helmets
+    ANIM_PICKER,     // Installed market/custom animations from /mochi/
     COUNT
 };
 
@@ -162,6 +163,11 @@ public:
     bool playAnimFile(const char* filepath, bool loop = false);
     void stopAnim();
     bool isPlayingAnim() const { return is_playing_anim; }
+
+    // Installed Market Animations in /mochi/
+    void loadMochiAnims();
+    int getMochiAnimCount() const;
+    const char* getMochiAnimName(int idx) const;
 
     // Rendering Interface
 #ifdef ARDUINO

@@ -69,10 +69,26 @@ bool FileManager::isPathSafe(const String& path) {
 
 String FileManager::normalizePath(const String& path) {
     if (path.length() == 0) return "/";
-    if (path.charAt(0) != '/') {
-        return "/" + path;
+    String p = path;
+    if (p.charAt(0) != '/') {
+        p = "/" + p;
     }
-    return path;
+    String clean = "";
+    clean.reserve(p.length());
+    bool lastWasSlash = false;
+    for (size_t i = 0; i < p.length(); i++) {
+        char c = p.charAt(i);
+        if (c == '/') {
+            if (!lastWasSlash) {
+                clean += c;
+                lastWasSlash = true;
+            }
+        } else {
+            clean += c;
+            lastWasSlash = false;
+        }
+    }
+    return clean;
 }
 
 bool FileManager::exists(const String& path) {
@@ -209,7 +225,12 @@ size_t FileManager::listDir(const String& path, FileInfo* results, size_t maxRes
     File file = root.openNextFile();
 
     while (file && count < maxResults) {
-        results[count].name = String(file.name());
+        String fname = String(file.name());
+        int lastSlash = fname.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fname = fname.substring(lastSlash + 1);
+        }
+        results[count].name = fname;
         results[count].size = file.size();
         results[count].isDir = file.isDirectory();
 

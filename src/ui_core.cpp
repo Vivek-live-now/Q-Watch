@@ -2367,27 +2367,28 @@ void UICore::handleFileManagerInput() {
             current_state = UIState::APP_STORAGE_INFO;
         } else if (fm_selection < fm_entry_count) {
             if (fm_entries[fm_selection].isDir) {
+                String dirName = fm_entries[fm_selection].name;
+                int lastSlash = dirName.lastIndexOf('/');
+                if (lastSlash >= 0) dirName = dirName.substring(lastSlash + 1);
                 String next_path = fm_current_path;
                 if (!next_path.endsWith("/")) next_path += "/";
-                next_path += fm_entries[fm_selection].name;
-                fm_current_path = next_path;
+                next_path += dirName;
+                fm_current_path = FileManager::normalizePath(next_path);
                 loadDirectory(fm_current_path);
             } else {
                 String filename = fm_entries[fm_selection].name;
+                int lastSlash = filename.lastIndexOf('/');
+                if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
                 String lower = filename;
                 lower.toLowerCase();
+                String fullPath = fm_current_path;
+                if (!fullPath.endsWith("/")) fullPath += "/";
+                fullPath += filename;
+                fullPath = FileManager::normalizePath(fullPath);
                 if (lower.endsWith(".ir")) {
-                    String fullPath = fm_current_path;
-                    if (!fullPath.endsWith("/")) fullPath += "/";
-                    fullPath += filename;
                     current_state = UIState::APP_IR;
                     setIrActiveRemotePath(fullPath);
                 } else if (lower.endsWith(".qapp")) {
-                    String fullPath = fm_current_path;
-                    if (!fullPath.endsWith("/")) fullPath += "/";
-                    int lastSlash = filename.lastIndexOf('/');
-                    if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
-                    fullPath += filename;
                     soundManager.playAppLaunch();
                     delay(150);
                     QAppErrorCode err = qappLoader.loadApp(fullPath.c_str());
@@ -2398,9 +2399,6 @@ void UICore::handleFileManagerInput() {
                         showToast("LOAD FAILED", 1500);
                     }
                 } else if (lower.endsWith(".anim") || lower.endsWith(".bmp")) {
-                    String fullPath = fm_current_path;
-                    if (!fullPath.endsWith("/")) fullPath += "/";
-                    fullPath += filename;
                     soundManager.playAppLaunch();
                     delay(150);
                     openAnimationPlayer(fullPath.c_str(), UIState::APP_FILE_MANAGER);
@@ -2665,6 +2663,9 @@ void UICore::loadAnimList() {
     if (!LittleFS.exists("/anim")) {
         LittleFS.mkdir("/anim");
     }
+    if (!LittleFS.exists("/mochi")) {
+        LittleFS.mkdir("/mochi");
+    }
     if (!LittleFS.exists("/photos")) {
         LittleFS.mkdir("/photos");
     }
@@ -2683,11 +2684,9 @@ void UICore::loadAnimList() {
         File file = dir.openNextFile();
         while (file && anim_count < MAX_ANIM_ENTRIES) {
             String fname = file.name();
-            if (fname.startsWith(dirpath)) {
-                fname = fname.substring(strlen(dirpath));
-                if (fname.startsWith("/")) fname = fname.substring(1);
-            } else if (fname.startsWith("/")) {
-                fname = fname.substring(1);
+            int lastSlash = fname.lastIndexOf('/');
+            if (lastSlash >= 0) {
+                fname = fname.substring(lastSlash + 1);
             }
 
             String lower = fname;
@@ -2698,7 +2697,7 @@ void UICore::loadAnimList() {
                 String fp = String(dirpath);
                 if (!fp.endsWith("/")) fp += "/";
                 fp += fname;
-                entry.fullPath = fp;
+                entry.fullPath = FileManager::normalizePath(fp);
                 entry.isBmp = lower.endsWith(".bmp");
                 entry.frameCount = 1;
                 entry.delayMs = 1000;
@@ -2723,6 +2722,9 @@ void UICore::loadAnimList() {
 
     scanDir("/anim");
     if (anim_count < MAX_ANIM_ENTRIES) {
+        scanDir("/mochi");
+    }
+    if (anim_count < MAX_ANIM_ENTRIES) {
         scanDir("/photos");
     }
     if (anim_count < MAX_ANIM_ENTRIES) {
@@ -2735,8 +2737,9 @@ void UICore::loadAnimList() {
 
 void UICore::openAnimationPlayer(const char* filepath, UIState return_state) {
     if (!filepath || strlen(filepath) == 0) return;
+    String cleanPath = FileManager::normalizePath(String(filepath));
     anim_return_state = return_state;
-    if (animEngine.open(filepath)) {
+    if (animEngine.open(cleanPath.c_str())) {
         current_state = UIState::APP_ANIM_PLAYER;
         anim_hud_visible = true;
         anim_hud_timer = millis();
@@ -3892,8 +3895,13 @@ void UICore::handleMochiInput() {
             needs_redraw = true;
         }
     } else if (sub == MochiSubmode::STATS_HUD) {
-        if (cancel_evt == BTN_EVT_SHORT_PRESS || ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (cancel_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.toggleHud();
+            soundManager.playNavSelect();
+            needs_redraw = true;
+        } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.loadMochiAnims();
+            mochiPet.setSubmode(MochiSubmode::ANIM_PICKER);
             soundManager.playNavSelect();
             needs_redraw = true;
         } else if (up_evt == BTN_EVT_SHORT_PRESS) {
@@ -3909,7 +3917,7 @@ void UICore::handleMochiInput() {
             menu_scroll_offset = 11;
             needs_redraw = true;
         }
-    } else if (sub == MochiSubmode::EMOTE_PICKER || sub == MochiSubmode::HELMET_PICKER) {
+    } else if (sub == MochiSubmode::EMOTE_PICKER || sub == MochiSubmode::HELMET_PICKER || sub == MochiSubmode::ANIM_PICKER) {
         if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
             mochiPet.pickerUp();
             soundManager.playNavMove();

@@ -150,11 +150,13 @@ object QLinkPacketParser {
             val filesArr = root.optJSONArray("files") ?: JSONArray()
             for (i in 0 until filesArr.length()) {
                 val fObj = filesArr.getJSONObject(i)
-                val name = fObj.optString("name")
+                val rawName = fObj.optString("name")
+                val cleanName = if (rawName.contains("/")) rawName.substringAfterLast('/') else rawName
                 val size = fObj.optLong("size", 0L)
                 val isDir = fObj.optBoolean("is_dir", false)
-                val fullPath = if (basePath.endsWith("/")) "$basePath$name" else "$basePath/$name"
-                list.add(WatchFile(name, fullPath, size, isDir))
+                val cleanBase = if (basePath.endsWith("/")) basePath else "$basePath/"
+                val fullPath = "$cleanBase$cleanName"
+                list.add(WatchFile(cleanName, fullPath, size, isDir))
             }
         } catch (_: Exception) {
             // Return empty or partial list on error

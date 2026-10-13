@@ -419,11 +419,64 @@ void MochiPet::update(float dt) {
     }
 }
 
+static const int MAX_MOCHI_STATIC_ANIMS = 32;
+static char s_mochi_static_anims[MAX_MOCHI_STATIC_ANIMS][24];
+static int s_mochi_static_count = 0;
+
+void MochiPet::loadMochiAnims() {
+    s_mochi_static_count = 0;
+    picker_selection = 0;
+    picker_offset = 0;
+#ifdef ARDUINO
+    if (!LittleFS.exists("/mochi")) {
+        LittleFS.mkdir("/mochi");
+        return;
+    }
+    File dir = LittleFS.open("/mochi");
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        return;
+    }
+    File file = dir.openNextFile();
+    while (file && s_mochi_static_count < MAX_MOCHI_STATIC_ANIMS) {
+        String fname = String(file.name());
+        int lastSlash = fname.lastIndexOf('/');
+        if (lastSlash >= 0) fname = fname.substring(lastSlash + 1);
+        String lower = fname;
+        lower.toLowerCase();
+        if (!file.isDirectory() && lower.endsWith(".anim")) {
+            String base = fname.substring(0, fname.length() - 5);
+            strncpy(s_mochi_static_anims[s_mochi_static_count], base.c_str(), sizeof(s_mochi_static_anims[0]) - 1);
+            s_mochi_static_anims[s_mochi_static_count][sizeof(s_mochi_static_anims[0]) - 1] = '\0';
+            s_mochi_static_count++;
+        }
+        file.close();
+        file = dir.openNextFile();
+    }
+    if (file) file.close();
+    dir.close();
+#endif
+}
+
+int MochiPet::getMochiAnimCount() const {
+    return s_mochi_static_count;
+}
+
+const char* MochiPet::getMochiAnimName(int idx) const {
+    if (idx >= 0 && idx < s_mochi_static_count) {
+        return s_mochi_static_anims[idx];
+    }
+    return "";
+}
+
 void MochiPet::pickerUp() {
     if (submode == MochiSubmode::EMOTE_PICKER) {
         if (picker_selection > 0) picker_selection--;
         if (picker_selection < picker_offset) picker_offset = picker_selection;
     } else if (submode == MochiSubmode::HELMET_PICKER) {
+        if (picker_selection > 0) picker_selection--;
+        if (picker_selection < picker_offset) picker_offset = picker_selection;
+    } else if (submode == MochiSubmode::ANIM_PICKER) {
         if (picker_selection > 0) picker_selection--;
         if (picker_selection < picker_offset) picker_offset = picker_selection;
     }
@@ -437,6 +490,10 @@ void MochiPet::pickerDown() {
     } else if (submode == MochiSubmode::HELMET_PICKER) {
         int max_items = static_cast<int>(MochiHelmet::COUNT);
         if (picker_selection < max_items - 1) picker_selection++;
+        if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
+    } else if (submode == MochiSubmode::ANIM_PICKER) {
+        int max_items = s_mochi_static_count;
+        if (max_items > 0 && picker_selection < max_items - 1) picker_selection++;
         if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
     }
 }
@@ -461,6 +518,15 @@ void MochiPet::pickerSelect() {
         auto_play_timer = 0.0f;
         if (picker_selection == 1) { // GUNDAM
             playAnim("gundam");
+        }
+    } else if (submode == MochiSubmode::ANIM_PICKER) {
+        if (s_mochi_static_count > 0 && picker_selection < s_mochi_static_count) {
+            char name[32];
+            strncpy(name, s_mochi_static_anims[picker_selection], sizeof(name) - 1);
+            name[sizeof(name) - 1] = '\0';
+            submode = MochiSubmode::INTERACTIVE;
+            auto_play_timer = 0.0f;
+            playAnim(name);
         }
     }
 }
@@ -619,8 +685,40 @@ void MochiPet::render(U8G2& display) {
         // Mood & Helmet
         snprintf(buf, sizeof(buf), "MOOD: %s", getEmoteName(current_emote));
         display.drawStr(4, 49, buf);
-        snprintf(buf, sizeof(buf), "HELM: %s", getHelmetName(current_helmet));
+        snprintf(buf, sizeof(buf), "H:%s  OK:ANIMS", getHelmetName(current_helmet));
         display.drawStr(4, 60, buf);
+        return;
+    }
+
+    if (submode == MochiSubmode::ANIM_PICKER) {
+        display.setFont(u8g2_font_6x10_tf);
+        display.setDrawColor(1);
+        display.drawStr(4, 10, "MOCHI ANIMS");
+        display.drawHLine(0, 13, 128);
+
+        if (s_mochi_static_count == 0) {
+            display.setFont(u8g2_font_5x7_tf);
+            display.drawStr(8, 30, "NO ANIMS IN /mochi");
+            display.drawStr(8, 42, "Deploy from Market");
+            display.drawStr(8, 54, "or Android Studio");
+            return;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int idx = picker_offset + i;
+            if (idx >= s_mochi_static_count) break;
+            int y = 23 + (i * 12);
+            const char* name = s_mochi_static_anims[idx];
+
+            if (idx == picker_selection) {
+                display.drawBox(2, y - 9, 124, 11);
+                display.setDrawColor(0);
+                display.drawStr(4, y, name);
+                display.setDrawColor(1);
+            } else {
+                display.drawStr(4, y, name);
+            }
+        }
         return;
     }
 
