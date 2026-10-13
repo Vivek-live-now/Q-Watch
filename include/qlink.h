@@ -125,6 +125,7 @@ public:
     // Notification Handler
     void handleNotification(const String& app_name, const String& title, const String& body,
                             const String& alert_style, const String& led_hex);
+    void notifyFileReceived(const String& path);
 
     // Clock & Weather Sync
     bool syncTime(uint32_t epoch_sec, int32_t tz_offset_sec);

@@ -196,6 +196,25 @@ void UICore::showToast(const char* msg, uint32_t duration_ms) {
     needs_redraw = true;
 }
 
+void UICore::wakeDisplay() {
+    display_off = false;
+    displayManager.setPowerSave(false);
+    if (settingsManager.get().ble_enabled) {
+        qlink.resumeBleAdvertising();
+    }
+    if (current_state == UIState::SLEEPING) {
+        current_state = UIState::APP_HOME;
+    }
+    btnManager.flushEvents();
+    last_activity_time = millis();
+    display_off_time = 0;
+    needs_redraw = true;
+}
+
+void UICore::registerActivity() {
+    wakeDisplay();
+}
+
 void UICore::openKeyboard(const String& initial_text, const String& title, KeyboardMode mode, bool mask, int max_len, void (*on_complete)(bool success, const String& result)) {
     return_state = current_state;
     kb_callback = on_complete;
@@ -612,6 +631,23 @@ void UICore::loop() {
             current_state = UIState::MAIN_MENU;
             menu_selection = 16;
             menu_scroll_offset = 13;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_FILE_MANAGER) {
+            soundManager.playNavBack();
+            if (fm_current_path != "/" && fm_current_path.length() > 1) {
+                int lastSlash = fm_current_path.lastIndexOf('/');
+                if (lastSlash > 0) {
+                    fm_current_path = fm_current_path.substring(0, lastSlash);
+                } else {
+                    fm_current_path = "/";
+                }
+                loadDirectory(fm_current_path);
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 11;
+                menu_scroll_offset = 9;
+            }
             needs_redraw = true;
             return;
         } else {
@@ -1619,6 +1655,7 @@ void UICore::handleMainMenuInput() {
             case 13: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
             case 14:
                 current_state = UIState::APP_MOCHI;
+                mochiPet.loadMochiAnims();
                 mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
                 break;
             case 15:

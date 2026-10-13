@@ -21,6 +21,7 @@
 #include "settings_data.h"
 #include "air_mouse.h"
 #include "wifi_portal.h"
+#include "vibration_manager.h"
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_system.h>
@@ -736,19 +737,7 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
         upload_file.flush();
         upload_file.close();
     }
-    if (upload_file_path.endsWith(".ir")) {
-        ui.showToast("IR Remote Loaded!", 2000);
-        soundManager.playTone(2000, 100);
-    } else if (upload_file_path.endsWith(".anim")) {
-        ui.showToast("Anim Saved!", 2000);
-        soundManager.playTone(2400, 80);
-    } else if (upload_file_path.endsWith(".bmp")) {
-        ui.showToast("Photo Saved!", 2000);
-        soundManager.playTone(2400, 80);
-    }
-    if (ui.getState() == UIState::APP_ANIM_LIST) {
-        ui.loadAnimList();
-    }
+    notifyFileReceived(upload_file_path);
 #endif
     upload_in_progress = false;
     return true;
@@ -1047,6 +1036,54 @@ void QLinkEngine::handleNotification(const String& app_name, const String& title
     }
     CRGB color = parseHexColor(led_hex);
     ledManager.triggerPulse(color, 2, 80);
+#endif
+}
+
+void QLinkEngine::notifyFileReceived(const String& path) {
+#ifdef ARDUINO
+    ui.wakeDisplay();
+
+    String fname = path;
+    int lastSlash = fname.lastIndexOf('/');
+    if (lastSlash >= 0) fname = fname.substring(lastSlash + 1);
+    String lower = fname;
+    lower.toLowerCase();
+
+    String toast;
+    if (path.startsWith("/mochi") || path.indexOf("mochi") >= 0) {
+        toast = "[MOCHI] " + fname;
+    } else if (lower.endsWith(".anim")) {
+        toast = "[ANIM] " + fname;
+    } else if (lower.endsWith(".bmp")) {
+        toast = "[PHOTO] " + fname;
+    } else if (lower.endsWith(".ir")) {
+        toast = "[IR] " + fname;
+    } else {
+        toast = "[FILE] " + fname;
+    }
+
+    ui.showToast(toast.c_str(), 3000);
+
+    if (soundManager.isNotificationsEnabled() && soundManager.isMasterSwitchOn()) {
+        soundManager.playNotification();
+    } else {
+        soundManager.playTone(2200, 150);
+    }
+
+    vibrationManager.triggerPattern(VibePattern::DOUBLE_PULSE);
+    ledManager.triggerPulse(CRGB::Cyan, 2, 80);
+
+    // Refresh Mochi Pet's animations immediately
+    mochiPet.loadMochiAnims();
+
+    // If currently in Animation List or File Manager, refresh UI list view
+    if (ui.getState() == UIState::APP_ANIM_LIST) {
+        ui.loadAnimList();
+    } else if (ui.getState() == UIState::APP_FILE_MANAGER) {
+        ui.loadDirectory(ui.getFmCurrentPath());
+    }
+#else
+    (void)path;
 #endif
 }
 
@@ -1435,16 +1472,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
 
             if (fileManager.write(path, (const uint8_t*)body.c_str(), body.length())) {
-                if (path.endsWith(".bmp")) {
-                    ui.showToast("Photo Saved!", 2000);
-                    soundManager.playTone(2400, 80);
-                } else if (path.endsWith(".anim")) {
-                    ui.showToast("Anim Saved!", 2000);
-                    soundManager.playTone(2400, 80);
-                }
-                if (ui.getState() == UIState::APP_ANIM_LIST) {
-                    ui.loadAnimList();
-                }
+                notifyFileReceived(path);
                 server.send(200, "application/json", "{\"status\":\"uploaded\",\"path\":\"" + path + "\",\"size\":" + String((unsigned long)body.length()) + "}");
                 return;
             } else {
@@ -1488,51 +1516,7 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 s_upload_file.flush();
                 s_upload_file.close();
             }
-            // QANM validation on completed upload: purge if corrupted
-            if (s_upload_path.endsWith(".anim")) {
-                File check = LittleFS.open(s_upload_path, FILE_READ);
-                bool valid = false;
-                if (check && check.size() >= 16) {
-                    uint8_t hdr[16];
-                    check.read(hdr, 16);
-                    uint32_t magic = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
-                    uint16_t frames = (uint16_t)hdr[8] | ((uint16_t)hdr[9] << 8);
-                    size_t expected_size = 16 + (size_t)frames * 1024;
-                    valid = (magic == ANIM_MAGIC && frames > 0 && check.size() == expected_size);
-                    check.close();
-                } else if (check) {
-                    check.close();
-                }
-                if (!valid) {
-                    LittleFS.remove(s_upload_path); // Recover from bad upload
-                } else {
-                    ui.showToast("Anim Saved!", 2000);
-                    soundManager.playTone(2400, 80);
-                    if (ui.getState() == UIState::APP_ANIM_LIST) {
-                        ui.loadAnimList();
-                    }
-                }
-            } else if (s_upload_path.endsWith(".bmp")) {
-                File check = LittleFS.open(s_upload_path, FILE_READ);
-                bool valid = false;
-                if (check && check.size() >= 54) {
-                    uint8_t bmp_magic[2];
-                    check.read(bmp_magic, 2);
-                    valid = (bmp_magic[0] == 'B' && bmp_magic[1] == 'M');
-                    check.close();
-                } else if (check) {
-                    check.close();
-                }
-                if (!valid) {
-                    LittleFS.remove(s_upload_path);
-                } else {
-                    ui.showToast("Photo Saved!", 2000);
-                    soundManager.playTone(2400, 80);
-                    if (ui.getState() == UIState::APP_ANIM_LIST) {
-                        ui.loadAnimList();
-                    }
-                }
-            }
+            notifyFileReceived(s_upload_path);
         } else if (upload.status == UPLOAD_FILE_ABORTED) {
             // Failed transfer recovery: immediately delete partial truncated file
             if (s_upload_file) {

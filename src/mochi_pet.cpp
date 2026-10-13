@@ -12,6 +12,10 @@ static const char* HELMET_NAMES[] = {
     "CLASSIC", "GUNDAM", "CYBER", "NEKO", "TACTICAL"
 };
 
+static const int MAX_MOCHI_STATIC_ANIMS = 32;
+static char s_mochi_static_anims[MAX_MOCHI_STATIC_ANIMS][24];
+static int s_mochi_static_count = 0;
+
 static inline float clampf(float val, float min_val, float max_val) {
     if (val < min_val) return min_val;
     if (val > max_val) return max_val;
@@ -68,6 +72,7 @@ MochiPet::MochiPet()
 }
 
 void MochiPet::begin() {
+    loadMochiAnims();
     updateMoodLed();
     triggerSound(MochiSound::HAPPY_CHIRP);
 }
@@ -76,6 +81,12 @@ bool MochiPet::playAnim(const char* name, bool loop) {
     if (!name || strlen(name) == 0) return false;
     char path[64];
     snprintf(path, sizeof(path), "/mochi/%s.anim", name);
+    if (playAnimFile(path, loop)) return true;
+    snprintf(path, sizeof(path), "/mochi/%s", name);
+    if (playAnimFile(path, loop)) return true;
+    snprintf(path, sizeof(path), "/anim/%s.anim", name);
+    if (playAnimFile(path, loop)) return true;
+    snprintf(path, sizeof(path), "/anim/%s", name);
     return playAnimFile(path, loop);
 }
 
@@ -391,11 +402,16 @@ void MochiPet::update(float dt) {
         auto_play_timer += dt;
         if (auto_play_timer > 25.0f && !is_playing_anim && submode == MochiSubmode::INTERACTIVE) {
             auto_play_timer = 0.0f;
-            static const char* const idle_anims[] = {
-                "wink", "smile", "sparkle", "giggle", "playful", "relaxed", "hello", "dancing"
-            };
-            int idx = static_cast<int>(anim_timer) % 8;
-            playAnim(idle_anims[idx]);
+            if (s_mochi_static_count > 0 && (rand() % 2 == 0)) {
+                int rIdx = rand() % s_mochi_static_count;
+                playAnim(s_mochi_static_anims[rIdx]);
+            } else {
+                static const char* const idle_anims[] = {
+                    "wink", "smile", "sparkle", "giggle", "playful", "relaxed", "hello", "dancing"
+                };
+                int idx = static_cast<int>(anim_timer) % 8;
+                playAnim(idle_anims[idx]);
+            }
         }
         if (idle_timer > 22.0f && current_emote != MochiEmote::SLEEPY) {
             setEmote(MochiEmote::SLEEPY);
@@ -419,42 +435,52 @@ void MochiPet::update(float dt) {
     }
 }
 
-static const int MAX_MOCHI_STATIC_ANIMS = 32;
-static char s_mochi_static_anims[MAX_MOCHI_STATIC_ANIMS][24];
-static int s_mochi_static_count = 0;
-
 void MochiPet::loadMochiAnims() {
     s_mochi_static_count = 0;
     picker_selection = 0;
     picker_offset = 0;
 #ifdef ARDUINO
-    if (!LittleFS.exists("/mochi")) {
-        LittleFS.mkdir("/mochi");
-        return;
-    }
-    File dir = LittleFS.open("/mochi");
-    if (!dir || !dir.isDirectory()) {
-        if (dir) dir.close();
-        return;
-    }
-    File file = dir.openNextFile();
-    while (file && s_mochi_static_count < MAX_MOCHI_STATIC_ANIMS) {
-        String fname = String(file.name());
-        int lastSlash = fname.lastIndexOf('/');
-        if (lastSlash >= 0) fname = fname.substring(lastSlash + 1);
-        String lower = fname;
-        lower.toLowerCase();
-        if (!file.isDirectory() && lower.endsWith(".anim")) {
-            String base = fname.substring(0, fname.length() - 5);
-            strncpy(s_mochi_static_anims[s_mochi_static_count], base.c_str(), sizeof(s_mochi_static_anims[0]) - 1);
-            s_mochi_static_anims[s_mochi_static_count][sizeof(s_mochi_static_anims[0]) - 1] = '\0';
-            s_mochi_static_count++;
+    auto scanFolder = [](const char* path) {
+        if (!LittleFS.exists(path)) {
+            LittleFS.mkdir(path);
+            return;
         }
-        file.close();
-        file = dir.openNextFile();
-    }
-    if (file) file.close();
-    dir.close();
+        File dir = LittleFS.open(path);
+        if (!dir || !dir.isDirectory()) {
+            if (dir) dir.close();
+            return;
+        }
+        File file = dir.openNextFile();
+        while (file && s_mochi_static_count < MAX_MOCHI_STATIC_ANIMS) {
+            String fname = String(file.name());
+            int lastSlash = fname.lastIndexOf('/');
+            if (lastSlash >= 0) fname = fname.substring(lastSlash + 1);
+            String lower = fname;
+            lower.toLowerCase();
+            if (!file.isDirectory() && lower.endsWith(".anim")) {
+                String base = fname.substring(0, fname.length() - 5);
+                bool exists = false;
+                for (int i = 0; i < s_mochi_static_count; i++) {
+                    if (strcasecmp(s_mochi_static_anims[i], base.c_str()) == 0) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    strncpy(s_mochi_static_anims[s_mochi_static_count], base.c_str(), sizeof(s_mochi_static_anims[0]) - 1);
+                    s_mochi_static_anims[s_mochi_static_count][sizeof(s_mochi_static_anims[0]) - 1] = '\0';
+                    s_mochi_static_count++;
+                }
+            }
+            file.close();
+            file = dir.openNextFile();
+        }
+        if (file) file.close();
+        dir.close();
+    };
+
+    scanFolder("/mochi");
+    scanFolder("/anim");
 #endif
 }
 

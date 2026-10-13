@@ -504,8 +504,8 @@ class QLinkBleTransport(
                 )
             )
 
-            // Inter-chunk pacing delay to prevent HCI buffer congestion
-            delay(16)
+            // Inter-chunk pacing delay to prevent HCI buffer congestion and allow flash write
+            delay(30)
         }
 
         // 3. Send FINISH packet

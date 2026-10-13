@@ -672,6 +672,7 @@ public:
     void performSilentDeepSleepWake();
     uint32_t calculateNextRecordIntervalSec();
     bool isDisplayOff() const { return display_off; }
+    void wakeDisplay();
     void registerActivity();
 
     // Battery & Power Management App
