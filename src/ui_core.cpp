@@ -1645,6 +1645,8 @@ void UICore::handleMainMenuInput() {
 
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        displayManager.captureTransitionSnapshot();
+        displayManager.startTransition(SIMD_TRANSITION_DISSOLVE, 120);
         if (menu_selection == 0) {
             soundManager.playNavSelect();
         } else {

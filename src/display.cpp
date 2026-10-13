@@ -65,10 +65,21 @@ void DisplayManager::andBuffer(const uint8_t* mask) {
     }
 }
 
-void DisplayManager::orBuffer(const uint8_t* mask) {
-    uint8_t* buf = oled.getBufferPtr();
-    if (buf && mask) {
-        simd_or_mask_128(buf, buf, mask, getBufferSize());
+void DisplayManager::startTransition(simd_transition_t type, uint16_t duration_ms) {
+    if (type == SIMD_TRANSITION_NONE) {
+        transition_active = false;
+        return;
+    }
+    transition_type = type;
+    transition_duration_ms = (duration_ms > 0) ? duration_ms : 120;
+    transition_start_time = millis();
+    transition_active = true;
+}
+
+void DisplayManager::captureTransitionSnapshot() {
+    uint8_t* current_buf = oled.getBufferPtr();
+    if (current_buf) {
+        memcpy(transition_old_buf, current_buf, 1024);
     }
 }
 
@@ -123,6 +134,29 @@ void DisplayManager::update() {
             drawTacticalOverlay();
         }
         drawToastOverlay();
+    }
+
+    if (transition_active) {
+        uint32_t elapsed = millis() - transition_start_time;
+        if (elapsed >= transition_duration_ms) {
+            transition_active = false;
+        } else {
+            uint8_t* current_frame = oled.getBufferPtr();
+            if (current_frame) {
+                uint8_t pct = (uint8_t)((elapsed * 100) / transition_duration_ms);
+                if (transition_type == SIMD_TRANSITION_DISSOLVE || transition_type == SIMD_TRANSITION_CROSSFADE) {
+                    uint8_t step = (uint8_t)((elapsed * 16) / transition_duration_ms);
+                    simd_generate_dither_mask(transition_mask_buf, step, 1024);
+                    simd_blend_frames_128(current_frame, transition_old_buf, current_frame, transition_mask_buf, 1024);
+                } else if (transition_type == SIMD_TRANSITION_WIPE_RIGHT) {
+                    simd_generate_wipe_mask(transition_mask_buf, pct, 0, 1024);
+                    simd_blend_frames_128(current_frame, transition_old_buf, current_frame, transition_mask_buf, 1024);
+                } else if (transition_type == SIMD_TRANSITION_WIPE_DOWN) {
+                    simd_generate_wipe_mask(transition_mask_buf, pct, 1, 1024);
+                    simd_blend_frames_128(current_frame, transition_old_buf, current_frame, transition_mask_buf, 1024);
+                }
+            }
+        }
     }
 
     oled.sendBuffer();

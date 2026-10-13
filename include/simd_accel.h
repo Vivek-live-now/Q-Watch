@@ -34,6 +34,25 @@ int16_t simd_fir_filter_32(const int16_t* history_32, const int16_t* coeffs_32);
 // Batch 32-tap FIR filter
 void simd_fir_filter_batch(const int16_t* input, const int16_t* coeffs, int16_t* output, size_t num_samples);
 
+// Candidate 2: Vector Screen Transitions (128-bit SIMD Animation Engine)
+typedef enum {
+    SIMD_TRANSITION_NONE = 0,
+    SIMD_TRANSITION_DISSOLVE = 1,   // Bayer 4x4 matrix pseudo-random pixel melt
+    SIMD_TRANSITION_WIPE_RIGHT = 2, // Left-to-right curtain wipe
+    SIMD_TRANSITION_WIPE_DOWN = 3,  // Top-to-bottom page wipe
+    SIMD_TRANSITION_CROSSFADE = 4   // 128-bit vector blend
+} simd_transition_t;
+
+// 128-bit vector blend between two 1024-byte framebuffers using a mask:
+// dst[i] = (old_buf[i] & ~mask[i]) | (new_buf[i] & mask[i])
+void simd_blend_frames_128(uint8_t* dst, const uint8_t* old_buf, const uint8_t* new_buf, const uint8_t* mask, size_t len);
+
+// Generates a 128-bit aligned dither mask for step (0..16) using 4x4 Bayer threshold matrix
+void simd_generate_dither_mask(uint8_t* mask, uint8_t step, size_t len);
+
+// Generates a wipe mask for progress (0..100) (direction: 0=horizontal, 1=vertical)
+void simd_generate_wipe_mask(uint8_t* mask, uint8_t progress_pct, uint8_t direction, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

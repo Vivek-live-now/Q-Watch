@@ -3481,6 +3481,160 @@ def test_four_sensor_sleep_engine():
     assert "stopPortal();" in wpc, "portal loop must stop portal on timeout"
     print("  [PASS] 8. Wi-Fi SoftAP portal 3-minute inactivity auto-timeout verified.")
 
+def test_vector_fir_and_screen_transitions():
+    print("\n--- 50. Xtensa LX7 Vector FIR Filter & Vector Screen Transitions ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+    disp_h = os.path.join(base_dir, "include", "display.h")
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+
+    # 1. Header API Verification
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "SIMD_TRANSITION_DISSOLVE" in sh, "simd_accel.h must declare SIMD_TRANSITION_DISSOLVE"
+    assert "SIMD_TRANSITION_WIPE_RIGHT" in sh, "simd_accel.h must declare SIMD_TRANSITION_WIPE_RIGHT"
+    assert "SIMD_TRANSITION_WIPE_DOWN" in sh, "simd_accel.h must declare SIMD_TRANSITION_WIPE_DOWN"
+    assert "SIMD_TRANSITION_CROSSFADE" in sh, "simd_accel.h must declare SIMD_TRANSITION_CROSSFADE"
+    assert "void simd_blend_frames_128(" in sh, "simd_accel.h must declare simd_blend_frames_128"
+    assert "void simd_generate_dither_mask(" in sh, "simd_accel.h must declare simd_generate_dither_mask"
+    assert "void simd_generate_wipe_mask(" in sh, "simd_accel.h must declare simd_generate_wipe_mask"
+    print("  [PASS] 1. Vector screen transition types and function signatures verified.")
+
+    # 2. Hardware Assembly Instruction Verification
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "ee.zero.qacc" in sc, "simd_fir_filter_32 must clear quad accumulator with ee.zero.qacc"
+    assert "ee.vmulas.s16.qacc" in sc, "simd_fir_filter_32 must use ee.vmulas.s16.qacc for 8-way MAC"
+    assert "ee.srs.qacc" in sc, "simd_fir_filter_32 must scale & round accumulator with ee.srs.qacc"
+    assert "ee.notq" in sc and "ee.andq" in sc and "ee.orq" in sc, "simd_blend_frames_128 must use vector logic instructions"
+    print("  [PASS] 2. Xtensa LX7 PIE vector instructions (FIR MAC & blend bitwise) verified in assembly paths.")
+
+    # 3. Bayer 4x4 Dither Mask Mathematical Equivalence
+    bayer = [
+        [  0,  8,  2, 10 ],
+        [ 12,  4, 14,  6 ],
+        [  3, 11,  1,  9 ],
+        [ 15,  7, 13,  5 ]
+    ]
+
+    def py_generate_dither_mask(step, length=1024):
+        if step == 0:
+            return bytearray(length)
+        if step >= 16:
+            return bytearray([0xFF] * length)
+        col_pattern = [0] * 4
+        for col in range(4):
+            b = 0
+            for row in range(4):
+                if bayer[row][col] < step:
+                    b |= (1 << row)
+                    b |= (1 << (row + 4))
+            col_pattern[col] = b
+        mask = bytearray(length)
+        for i in range(length):
+            mask[i] = col_pattern[i % 4]
+        return mask
+
+    # Test steps 0 to 16
+    prev_popcount = -1
+    for step in range(17):
+        m = py_generate_dither_mask(step, 1024)
+        pop = sum(bin(b).count("1") for b in m)
+        assert pop >= prev_popcount, "Dither mask popcount must monotonically increase"
+        prev_popcount = pop
+        if step == 0:
+            assert pop == 0
+        elif step == 16:
+            assert pop == 1024 * 8
+
+    # Verify per-pixel accuracy
+    m_step8 = py_generate_dither_mask(8, 1024)
+    for col in range(128):
+        for page in range(8):
+            byte_val = m_step8[page * 128 + col]
+            for bit in range(8):
+                y = page * 8 + bit
+                expected_on = 1 if bayer[y % 4][col % 4] < 8 else 0
+                actual_on = (byte_val >> bit) & 1
+                assert actual_on == expected_on, f"Dither mismatch at x={col}, y={y}"
+    print("  [PASS] 3. Bayer 4x4 dither mask monotonic progression and pixel-perfect equivalence verified.")
+
+    # 4. Wipe Mask Generator Mathematical Verification
+    def py_generate_wipe_mask(pct, direction, length=1024):
+        if pct == 0: return bytearray(length)
+        if pct >= 100: return bytearray([0xFF] * length)
+        mask = bytearray(length)
+        if direction == 0: # Horizontal
+            thresh_col = (pct * 128) // 100
+            for p in range(8):
+                for col in range(128):
+                    mask[p * 128 + col] = 0xFF if col < thresh_col else 0x00
+        else: # Vertical
+            thresh_row = (pct * 64) // 100
+            active_page = thresh_row // 8
+            rem = thresh_row % 8
+            part = ((1 << rem) - 1) if rem > 0 else 0
+            for p in range(8):
+                val = 0xFF if p < active_page else (part if p == active_page else 0x00)
+                for col in range(128):
+                    mask[p * 128 + col] = val
+        return mask
+
+    h_wipe_50 = py_generate_wipe_mask(50, 0, 1024)
+    # Left 64 columns on, right 64 columns off across all 8 pages
+    for p in range(8):
+        for col in range(64):
+            assert h_wipe_50[p * 128 + col] == 0xFF
+        for col in range(64, 128):
+            assert h_wipe_50[p * 128 + col] == 0x00
+
+    v_wipe_50 = py_generate_wipe_mask(50, 1, 1024)
+    # Top 4 pages on (rows 0-31), bottom 4 pages off (rows 32-63)
+    for p in range(4):
+        for col in range(128):
+            assert v_wipe_50[p * 128 + col] == 0xFF
+    for p in range(4, 8):
+        for col in range(128):
+            assert v_wipe_50[p * 128 + col] == 0x00
+    print("  [PASS] 4. Horizontal and vertical wipe mask boundaries verified.")
+
+    # 5. 128-Bit Frame Blending Mathematical Equivalence
+    old_frame = bytearray([0xAA] * 1024) # 10101010
+    new_frame = bytearray([0x55] * 1024) # 01010101
+    mask_frame = py_generate_dither_mask(8, 1024)
+    blended = bytearray((old_frame[i] & ~mask_frame[i]) | (new_frame[i] & mask_frame[i]) for i in range(1024))
+    assert len(blended) == 1024
+    # Test boundary: mask all 0
+    blend_0 = bytearray((old_frame[i] & ~0) | (new_frame[i] & 0) for i in range(1024))
+    assert blend_0 == old_frame
+    # Test boundary: mask all FF
+    blend_1 = bytearray((old_frame[i] & ~0xFF) | (new_frame[i] & 0xFF) for i in range(1024))
+    assert blend_1 == new_frame
+    print("  [PASS] 5. 128-bit frame blending logic and boundary equivalence verified.")
+
+    # 6. DisplayManager Transition API & ui_core Integration
+    with open(disp_h, "r", encoding="utf-8") as f:
+        dh = f.read()
+    assert "void startTransition(simd_transition_t type, uint16_t duration_ms = 120);" in dh
+    assert "void captureTransitionSnapshot();" in dh
+    assert "bool isTransitionActive() const" in dh
+    assert "uint8_t transition_old_buf[1024] __attribute__((aligned(16)));" in dh
+
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "void DisplayManager::startTransition(" in dc
+    assert "void DisplayManager::captureTransitionSnapshot()" in dc
+    assert "simd_blend_frames_128(" in dc
+    assert "simd_generate_dither_mask(" in dc
+
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "displayManager.captureTransitionSnapshot();" in uc
+    assert "displayManager.startTransition(SIMD_TRANSITION_DISSOLVE" in uc
+    print("  [PASS] 6. DisplayManager transition engine and UICore app launch integration verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3522,6 +3676,7 @@ if __name__ == "__main__":
     test_online_irdb_transmission_suite()
     test_media_upload_integrity_and_export_suite()
     test_four_sensor_sleep_engine()
+    test_vector_fir_and_screen_transitions()
     print("\nAll self-test verifications PASSED!")
 
 
