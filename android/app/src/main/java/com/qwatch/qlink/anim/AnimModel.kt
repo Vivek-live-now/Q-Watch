@@ -1,5 +1,7 @@
 package com.qwatch.qlink.anim
 
+import android.graphics.Bitmap
+
 /**
  * Binary animation header specification (16 bytes fixed layout).
  * Matches include/anim_engine.h AnimHeader struct.
@@ -170,6 +172,13 @@ data class StudioFrame(
     var delayMs: Int = 50
 ) {
     fun clone(): StudioFrame = StudioFrame(pixels.clone(), delayMs)
+
+    fun toBitmap(): Bitmap {
+        val bmp = Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888)
+        val colors = IntArray(128 * 64) { i -> if (pixels[i]) 0xFFFFFFFF.toInt() else 0xFF000000.toInt() }
+        bmp.setPixels(colors, 0, 128, 0, 0, 128, 64)
+        return bmp
+    }
 
     fun getPixel(x: Int, y: Int): Boolean {
         if (x !in 0 until 128 || y !in 0 until 64) return false

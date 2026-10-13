@@ -742,6 +742,12 @@ bool QLinkEngine::finishFileUpload(size_t expected_size) {
     } else if (upload_file_path.endsWith(".anim")) {
         ui.showToast("Anim Saved!", 2000);
         soundManager.playTone(2400, 80);
+    } else if (upload_file_path.endsWith(".bmp")) {
+        ui.showToast("Photo Saved!", 2000);
+        soundManager.playTone(2400, 80);
+    }
+    if (ui.getState() == UIState::APP_ANIM_LIST) {
+        ui.loadAnimList();
     }
 #endif
     upload_in_progress = false;
@@ -1429,6 +1435,16 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
             }
 
             if (fileManager.write(path, (const uint8_t*)body.c_str(), body.length())) {
+                if (path.endsWith(".bmp")) {
+                    ui.showToast("Photo Saved!", 2000);
+                    soundManager.playTone(2400, 80);
+                } else if (path.endsWith(".anim")) {
+                    ui.showToast("Anim Saved!", 2000);
+                    soundManager.playTone(2400, 80);
+                }
+                if (ui.getState() == UIState::APP_ANIM_LIST) {
+                    ui.loadAnimList();
+                }
                 server.send(200, "application/json", "{\"status\":\"uploaded\",\"path\":\"" + path + "\",\"size\":" + String((unsigned long)body.length()) + "}");
                 return;
             } else {
@@ -1478,6 +1494,18 @@ void QLinkEngine::registerHttpRoutes(WebServer& server) {
                 }
                 if (!valid) {
                     LittleFS.remove(s_upload_path); // Recover from bad upload
+                } else {
+                    ui.showToast("Anim Saved!", 2000);
+                    soundManager.playTone(2400, 80);
+                    if (ui.getState() == UIState::APP_ANIM_LIST) {
+                        ui.loadAnimList();
+                    }
+                }
+            } else if (s_upload_path.endsWith(".bmp")) {
+                ui.showToast("Photo Saved!", 2000);
+                soundManager.playTone(2400, 80);
+                if (ui.getState() == UIState::APP_ANIM_LIST) {
+                    ui.loadAnimList();
                 }
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {

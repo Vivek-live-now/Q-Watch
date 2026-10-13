@@ -63,16 +63,35 @@ fun AnimStudioScreen(
     val client = remember { QLinkClient.instance }
 
     // Studio Project State
-    var animName by remember { mutableStateOf(initialAnimName?.removeSuffix(".anim") ?: "custom_anim") }
-    var frames by remember {
+    var animName by remember(initialAnimName) {
+        mutableStateOf(initialAnimName?.removeSuffix(".anim")?.removeSuffix(".bmp") ?: "custom_anim")
+    }
+    var frames by remember(initialAnimBytes) {
         val initialList = mutableListOf<StudioFrame>()
         if (initialAnimBytes != null) {
-            val parsed = AnimParser.parseAnim("initial", initialAnimBytes)
-            if (parsed != null && parsed.frames.isNotEmpty()) {
-                val isMsb = AnimParser.detectLikelyMsb(parsed.frames[0])
-                for (fb in parsed.frames) {
-                    val px = AnimParser.decodeFramePixels(fb, isMsb)
-                    initialList.add(StudioFrame(pixels = px, delayMs = parsed.header.frameDelayMs))
+            if (AnimEncoder.isBmp(initialAnimBytes)) {
+                val bmpFrame = AnimEncoder.decodeBmpToStudioFrame(initialAnimBytes)
+                if (bmpFrame != null) {
+                    initialList.add(bmpFrame)
+                }
+            } else if (AnimEncoder.isAnim(initialAnimBytes)) {
+                val parsed = AnimParser.parseAnim("initial", initialAnimBytes)
+                if (parsed != null && parsed.frames.isNotEmpty()) {
+                    val isMsb = AnimParser.detectLikelyMsb(parsed.frames[0])
+                    for (fb in parsed.frames) {
+                        val px = AnimParser.decodeFramePixels(fb, isMsb)
+                        initialList.add(StudioFrame(pixels = px, delayMs = parsed.header.frameDelayMs))
+                    }
+                }
+            } else {
+                // Fallback attempt to parse as .anim
+                val parsed = AnimParser.parseAnim("initial", initialAnimBytes)
+                if (parsed != null && parsed.frames.isNotEmpty()) {
+                    val isMsb = AnimParser.detectLikelyMsb(parsed.frames[0])
+                    for (fb in parsed.frames) {
+                        val px = AnimParser.decodeFramePixels(fb, isMsb)
+                        initialList.add(StudioFrame(pixels = px, delayMs = parsed.header.frameDelayMs))
+                    }
                 }
             }
         }
@@ -230,9 +249,9 @@ fun AnimStudioScreen(
                             frames = newFrames
                             currentFrameIndex = safeIndex + 1
                             canvasRevision++
-                            statusMessage = "Imported 128x64 1-bit BMP!"
+                            statusMessage = "Imported 128x64 BMP photo!"
                         } else {
-                            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            val bmp = AnimEncoder.decodeBmpToBitmap(bytes) ?: BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                             if (bmp != null) {
                                 pendingImportBitmap = bmp
                                 showImportDialog = true
@@ -1159,17 +1178,32 @@ fun AnimStudioScreen(
                         // Deploy Animation to /anim/
                         Button(
                             onClick = {
-                                val cleanName = if (animName.endsWith(".anim")) animName else "$animName.anim"
+                                if (!client.isConnected()) {
+                                    statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                    return@Button
+                                }
+                                val baseName = animName.trim().replace(" ", "_").removeSuffix(".anim").removeSuffix(".bmp").ifBlank { "custom_anim" }
+                                val cleanName = "$baseName.anim"
                                 val remotePath = "/anim/$cleanName"
+                                val animPayload = AnimEncoder.encodeStudioFrames(
+                                    frames = frames,
+                                    delayMs = (1000 / playbackFps.coerceIn(1, 60)),
+                                    loop = isLooping,
+                                    invert = isInverted
+                                )
                                 isDeploying = true
                                 deployProgress = 0.1f
 
                                 scope.launch {
-                                    val res = client.uploadFileWithProgress(remotePath, binaryBytes) { prog ->
+                                    val res = client.uploadFileWithProgress(remotePath, animPayload) { prog ->
                                         deployProgress = prog.progress
                                     }
                                     isDeploying = false
-                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Successfully deployed to $remotePath!" else "Failed to deploy to watch!"
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                        "Successfully deployed to $remotePath!"
+                                    } else {
+                                        "Failed to deploy to watch: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                    }
                                 }
                             },
                             enabled = !isDeploying,
@@ -1184,7 +1218,11 @@ fun AnimStudioScreen(
                         // Deploy Photo to /photos/
                         Button(
                             onClick = {
-                                val baseName = animName.removeSuffix(".anim").removeSuffix(".bmp")
+                                if (!client.isConnected()) {
+                                    statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                    return@Button
+                                }
+                                val baseName = animName.trim().replace(" ", "_").removeSuffix(".anim").removeSuffix(".bmp").ifBlank { "photo" }
                                 val cleanBmpName = "$baseName.bmp"
                                 val remotePath = "/photos/$cleanBmpName"
                                 val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
@@ -1196,7 +1234,11 @@ fun AnimStudioScreen(
                                         deployProgress = prog.progress
                                     }
                                     isDeploying = false
-                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Photo deployed to $remotePath!" else "Photo deploy failed!"
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                        "Photo deployed to $remotePath!"
+                                    } else {
+                                        "Photo deploy failed: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                    }
                                 }
                             },
                             enabled = !isDeploying,
@@ -1216,14 +1258,28 @@ fun AnimStudioScreen(
                         // Set as Boot Animation
                         Button(
                             onClick = {
+                                if (!client.isConnected()) {
+                                    statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                    return@Button
+                                }
+                                val animPayload = AnimEncoder.encodeStudioFrames(
+                                    frames = frames,
+                                    delayMs = (1000 / playbackFps.coerceIn(1, 60)),
+                                    loop = isLooping,
+                                    invert = isInverted
+                                )
                                 isDeploying = true
                                 deployProgress = 0.1f
                                 scope.launch {
-                                    val res = client.uploadFileWithProgress("/boot/boot.anim", binaryBytes) { prog ->
+                                    val res = client.uploadFileWithProgress("/boot/boot.anim", animPayload) { prog ->
                                         deployProgress = prog.progress
                                     }
                                     isDeploying = false
-                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Installed as /boot/boot.anim!" else "Boot deploy failed!"
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                        "Installed as /boot/boot.anim!"
+                                    } else {
+                                        "Boot deploy failed: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                    }
                                 }
                             },
                             enabled = !isDeploying,
@@ -1238,6 +1294,10 @@ fun AnimStudioScreen(
                         // Set as Boot Photo Splash
                         Button(
                             onClick = {
+                                if (!client.isConnected()) {
+                                    statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                    return@Button
+                                }
                                 val bmpBytes = AnimEncoder.encodeStudioFrameToBmp(currentFrame, isInverted)
                                 isDeploying = true
                                 deployProgress = 0.1f
@@ -1246,7 +1306,11 @@ fun AnimStudioScreen(
                                         deployProgress = prog.progress
                                     }
                                     isDeploying = false
-                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Saved as /boot/boot.bmp splash!" else "Boot BMP deploy failed!"
+                                    statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                        "Saved as /boot/boot.bmp splash!"
+                                    } else {
+                                        "Boot BMP deploy failed: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                    }
                                 }
                             },
                             enabled = !isDeploying,

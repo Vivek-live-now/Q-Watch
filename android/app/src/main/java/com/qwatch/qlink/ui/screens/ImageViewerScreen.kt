@@ -128,12 +128,23 @@ fun ImageViewerScreen(
                         val decodedFrame = AnimEncoder.decodeBmpToStudioFrame(bytes)
                         if (decodedFrame != null) {
                             previewFrame = decodedFrame
-                            statusMessage = "Loaded 128x64 BMP directly!"
+                            sourceBitmap = decodedFrame.toBitmap()
+                            statusMessage = "Loaded 128x64 BMP photo!"
+                        } else {
+                            val bmp = AnimEncoder.decodeBmpToBitmap(bytes) ?: BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bmp != null) {
+                                sourceBitmap = bmp
+                            } else {
+                                statusMessage = "Unsupported BMP format!"
+                            }
                         }
-                    }
-                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    if (bmp != null) {
-                        sourceBitmap = bmp
+                    } else {
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bmp != null) {
+                            sourceBitmap = bmp
+                        } else {
+                            statusMessage = "Unsupported image format!"
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -498,12 +509,17 @@ fun ImageViewerScreen(
                             // Deploy to /photos/
                             Button(
                                 onClick = {
+                                    if (!client.isConnected()) {
+                                        statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                        return@Button
+                                    }
                                     val bytes = currentBmpBytes
                                     if (bytes == null) {
                                         statusMessage = "Select an image first!"
                                         return@Button
                                     }
-                                    val cleanName = if (photoName.endsWith(".bmp")) photoName else "$photoName.bmp"
+                                    val sanitized = photoName.trim().replace(" ", "_").removeSuffix(".bmp").ifBlank { "photo" }
+                                    val cleanName = "$sanitized.bmp"
                                     val remotePath = "/photos/$cleanName"
                                     isDeploying = true
                                     deployProgress = 0.1f
@@ -513,7 +529,11 @@ fun ImageViewerScreen(
                                             deployProgress = prog.progress
                                         }
                                         isDeploying = false
-                                        statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Photo deployed to $remotePath!" else "Deploy failed!"
+                                        statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                            "Photo deployed to $remotePath!"
+                                        } else {
+                                            "Deploy failed: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                        }
                                     }
                                 },
                                 enabled = !isDeploying && currentBmpBytes != null,
@@ -528,6 +548,10 @@ fun ImageViewerScreen(
                             // Set as Watch Boot Screen
                             Button(
                                 onClick = {
+                                    if (!client.isConnected()) {
+                                        statusMessage = "Watch not connected! Connect via Wi-Fi or BLE first."
+                                        return@Button
+                                    }
                                     val bytes = currentBmpBytes
                                     if (bytes == null) {
                                         statusMessage = "Select an image first!"
@@ -541,7 +565,11 @@ fun ImageViewerScreen(
                                             deployProgress = prog.progress
                                         }
                                         isDeploying = false
-                                        statusMessage = if (res.isSuccess && res.getOrDefault(false)) "Installed as /boot/boot.bmp splash!" else "Boot deploy failed!"
+                                        statusMessage = if (res.isSuccess && res.getOrDefault(false)) {
+                                            "Installed as /boot/boot.bmp splash!"
+                                        } else {
+                                            "Boot deploy failed: ${res.exceptionOrNull()?.message ?: "upload failed"}"
+                                        }
                                     }
                                 },
                                 enabled = !isDeploying && currentBmpBytes != null,
@@ -682,6 +710,7 @@ fun ImageViewerScreen(
                                                         val frame = AnimEncoder.decodeBmpToStudioFrame(bytes)
                                                         if (frame != null) {
                                                             previewFrame = frame
+                                                            sourceBitmap = frame.toBitmap()
                                                             activeTab = 0
                                                             photoName = file.name.removeSuffix(".bmp")
                                                             statusMessage = "Previewing ${file.name}"
@@ -704,14 +733,20 @@ fun ImageViewerScreen(
                                     // Set as Boot button
                                     Button(
                                         onClick = {
+                                            if (!client.isConnected()) {
+                                                statusMessage = "Watch not connected!"
+                                                return@Button
+                                            }
                                             scope.launch {
                                                 val res = client.downloadFile(file.path)
                                                 if (res.isSuccess) {
                                                     val bytes = res.getOrNull()
                                                     if (bytes != null) {
                                                         val upRes = client.uploadFile("/boot/boot.bmp", bytes)
-                                                        statusMessage = if (upRes.isSuccess) "Set ${file.name} as boot splash!" else "Boot set failed"
+                                                        statusMessage = if (upRes.isSuccess && upRes.getOrDefault(false)) "Set ${file.name} as boot splash!" else "Boot set failed: ${upRes.exceptionOrNull()?.message ?: "error"}"
                                                     }
+                                                } else {
+                                                    statusMessage = "Failed to download ${file.name}"
                                                 }
                                             }
                                         },

@@ -2665,11 +2665,20 @@ void UICore::loadAnimList() {
     if (!LittleFS.exists("/anim")) {
         LittleFS.mkdir("/anim");
     }
+    if (!LittleFS.exists("/photos")) {
+        LittleFS.mkdir("/photos");
+    }
+    if (!LittleFS.exists("/images")) {
+        LittleFS.mkdir("/images");
+    }
 
     auto scanDir = [&](const char* dirpath) {
         if (!LittleFS.exists(dirpath)) return;
         File dir = LittleFS.open(dirpath);
-        if (!dir || !dir.isDirectory()) return;
+        if (!dir || !dir.isDirectory()) {
+            if (dir) dir.close();
+            return;
+        }
 
         File file = dir.openNextFile();
         while (file && anim_count < MAX_ANIM_ENTRIES) {
@@ -2683,7 +2692,7 @@ void UICore::loadAnimList() {
 
             String lower = fname;
             lower.toLowerCase();
-            if (lower.endsWith(".anim") || lower.endsWith(".bmp")) {
+            if (!file.isDirectory() && (lower.endsWith(".anim") || lower.endsWith(".bmp"))) {
                 AnimEntry& entry = anim_entries[anim_count];
                 entry.filename = fname;
                 String fp = String(dirpath);
@@ -2705,8 +2714,11 @@ void UICore::loadAnimList() {
                 }
                 anim_count++;
             }
+            file.close();
             file = dir.openNextFile();
         }
+        if (file) file.close();
+        dir.close();
     };
 
     scanDir("/anim");

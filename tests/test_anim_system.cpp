@@ -82,6 +82,165 @@ static void create_test_bmp(const char* filepath) {
     fclose(fp);
 }
 
+static void create_test_bmp_24bit(const char* filepath, int width, int height) {
+    FILE* fp = fopen(filepath, "wb");
+    assert(fp != NULL);
+
+    size_t row_stride = ((size_t)(width * 3 + 3) / 4) * 4;
+    uint32_t image_size = (uint32_t)(row_stride * height);
+    uint32_t file_size = 14 + 40 + image_size;
+
+    uint8_t file_hdr[14] = {
+        'B', 'M',
+        (uint8_t)(file_size & 0xFF), (uint8_t)((file_size >> 8) & 0xFF),
+        (uint8_t)((file_size >> 16) & 0xFF), (uint8_t)((file_size >> 24) & 0xFF),
+        0x00, 0x00, 0x00, 0x00,
+        54, 0x00, 0x00, 0x00
+    };
+    fwrite(file_hdr, 1, sizeof(file_hdr), fp);
+
+    uint8_t info_hdr[40] = {0};
+    info_hdr[0] = 40;
+    info_hdr[4] = (uint8_t)(width & 0xFF); info_hdr[5] = (uint8_t)((width >> 8) & 0xFF);
+    info_hdr[8] = (uint8_t)(height & 0xFF); info_hdr[9] = (uint8_t)((height >> 8) & 0xFF);
+    info_hdr[12] = 1;
+    info_hdr[14] = 24;
+    info_hdr[20] = (uint8_t)(image_size & 0xFF); info_hdr[21] = (uint8_t)((image_size >> 8) & 0xFF);
+    fwrite(info_hdr, 1, sizeof(info_hdr), fp);
+
+    uint8_t* row = (uint8_t*)calloc(1, row_stride);
+    for (int y = 0; y < height; y++) {
+        uint8_t val = (y >= height / 2) ? 0xFF : 0x00;
+        for (int x = 0; x < width; x++) {
+            row[x * 3] = val;
+            row[x * 3 + 1] = val;
+            row[x * 3 + 2] = val;
+        }
+        fwrite(row, 1, row_stride, fp);
+    }
+    free(row);
+    fclose(fp);
+}
+
+static void create_test_bmp_32bit(const char* filepath, int width, int height) {
+    FILE* fp = fopen(filepath, "wb");
+    assert(fp != NULL);
+
+    size_t row_stride = (size_t)width * 4;
+    uint32_t image_size = (uint32_t)(row_stride * height);
+    uint32_t file_size = 14 + 40 + image_size;
+
+    uint8_t file_hdr[14] = {
+        'B', 'M',
+        (uint8_t)(file_size & 0xFF), (uint8_t)((file_size >> 8) & 0xFF),
+        (uint8_t)((file_size >> 16) & 0xFF), (uint8_t)((file_size >> 24) & 0xFF),
+        0x00, 0x00, 0x00, 0x00,
+        54, 0x00, 0x00, 0x00
+    };
+    fwrite(file_hdr, 1, sizeof(file_hdr), fp);
+
+    uint8_t info_hdr[40] = {0};
+    info_hdr[0] = 40;
+    info_hdr[4] = (uint8_t)(width & 0xFF); info_hdr[5] = (uint8_t)((width >> 8) & 0xFF);
+    info_hdr[8] = (uint8_t)(height & 0xFF); info_hdr[9] = (uint8_t)((height >> 8) & 0xFF);
+    info_hdr[12] = 1;
+    info_hdr[14] = 32;
+    info_hdr[20] = (uint8_t)(image_size & 0xFF); info_hdr[21] = (uint8_t)((image_size >> 8) & 0xFF);
+    fwrite(info_hdr, 1, sizeof(info_hdr), fp);
+
+    uint8_t* row = (uint8_t*)calloc(1, row_stride);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            bool is_lit = (y == height - 1 && x == 0);
+            row[x * 4] = is_lit ? 0xFF : 0;
+            row[x * 4 + 1] = is_lit ? 0xFF : 0;
+            row[x * 4 + 2] = is_lit ? 0xFF : 0;
+            row[x * 4 + 3] = 0xFF;
+        }
+        fwrite(row, 1, row_stride, fp);
+    }
+    free(row);
+    fclose(fp);
+}
+
+static void create_test_bmp_8bit(const char* filepath, int width, int height) {
+    FILE* fp = fopen(filepath, "wb");
+    assert(fp != NULL);
+
+    size_t row_stride = ((size_t)(width + 3) / 4) * 4;
+    uint32_t image_size = (uint32_t)(row_stride * height);
+    uint32_t file_size = 14 + 40 + 1024 + image_size;
+
+    uint8_t file_hdr[14] = {
+        'B', 'M',
+        (uint8_t)(file_size & 0xFF), (uint8_t)((file_size >> 8) & 0xFF),
+        (uint8_t)((file_size >> 16) & 0xFF), (uint8_t)((file_size >> 24) & 0xFF),
+        0x00, 0x00, 0x00, 0x00,
+        (uint8_t)((54 + 1024) & 0xFF), (uint8_t)(((54 + 1024) >> 8) & 0xFF), 0x00, 0x00
+    };
+    fwrite(file_hdr, 1, sizeof(file_hdr), fp);
+
+    uint8_t info_hdr[40] = {0};
+    info_hdr[0] = 40;
+    info_hdr[4] = (uint8_t)(width & 0xFF); info_hdr[5] = (uint8_t)((width >> 8) & 0xFF);
+    info_hdr[8] = (uint8_t)(height & 0xFF); info_hdr[9] = (uint8_t)((height >> 8) & 0xFF);
+    info_hdr[12] = 1;
+    info_hdr[14] = 8;
+    info_hdr[20] = (uint8_t)(image_size & 0xFF); info_hdr[21] = (uint8_t)((image_size >> 8) & 0xFF);
+    info_hdr[32] = 0; info_hdr[33] = 1;
+    fwrite(info_hdr, 1, sizeof(info_hdr), fp);
+
+    uint8_t palette[1024];
+    for (int i = 0; i < 256; i++) {
+        palette[i * 4] = (uint8_t)i;
+        palette[i * 4 + 1] = (uint8_t)i;
+        palette[i * 4 + 2] = (uint8_t)i;
+        palette[i * 4 + 3] = 0;
+    }
+    fwrite(palette, 1, sizeof(palette), fp);
+
+    uint8_t* row = (uint8_t*)calloc(1, row_stride);
+    for (int y = 0; y < height; y++) {
+        uint8_t idx = (y >= height / 2) ? 255 : 0;
+        memset(row, idx, width);
+        fwrite(row, 1, row_stride, fp);
+    }
+    free(row);
+    fclose(fp);
+}
+
+static void create_test_bmp_inverted_palette_1bit(const char* filepath) {
+    FILE* fp = fopen(filepath, "wb");
+    assert(fp != NULL);
+
+    uint8_t file_hdr[14] = {
+        'B', 'M',
+        0x3E, 0x04, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x3E, 0x00, 0x00, 0x00
+    };
+    fwrite(file_hdr, 1, sizeof(file_hdr), fp);
+
+    uint8_t info_hdr[40] = {0};
+    info_hdr[0] = 40;
+    info_hdr[4] = 128; info_hdr[8] = 64;
+    info_hdr[12] = 1; info_hdr[14] = 1;
+    info_hdr[20] = 0x00; info_hdr[21] = 0x04;
+    info_hdr[32] = 2;
+    fwrite(info_hdr, 1, sizeof(info_hdr), fp);
+
+    uint8_t palette[8] = {
+        0xFF, 0xFF, 0xFF, 0x00,
+        0x00, 0x00, 0x00, 0x00
+    };
+    fwrite(palette, 1, sizeof(palette), fp);
+
+    uint8_t rows[1024];
+    memset(rows, 0, sizeof(rows));
+    fwrite(rows, 1, sizeof(rows), fp);
+    fclose(fp);
+}
+
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
     printf("=== Running Animation Engine Unit Tests ===\n");
@@ -188,6 +347,46 @@ int main(int argc, char** argv) {
 
     animEngine.close();
     unlink(bmp_file);
+
+    // 3b. Multi-Format BMP Photos Test (24-bit, 32-bit, 8-bit, and Inverted Palettes)
+    const char* bmp24_file = "tests/test_24bit.bmp";
+    create_test_bmp_24bit(bmp24_file, 128, 64);
+    assert(animEngine.open(bmp24_file) == true);
+    assert(animEngine.isBmpFormat() == true);
+    bmp_fb = animEngine.getFrameBuffer();
+    assert(bmp_fb[0] == 0xFF);
+    assert(bmp_fb[63 * 16] == 0x00);
+    animEngine.close();
+    unlink(bmp24_file);
+
+    const char* bmp32_file = "tests/test_32bit.bmp";
+    create_test_bmp_32bit(bmp32_file, 128, 64);
+    assert(animEngine.open(bmp32_file) == true);
+    assert(animEngine.isBmpFormat() == true);
+    bmp_fb = animEngine.getFrameBuffer();
+    assert((bmp_fb[0] & 0x01) != 0);
+    animEngine.close();
+    unlink(bmp32_file);
+
+    const char* bmp8_file = "tests/test_8bit.bmp";
+    create_test_bmp_8bit(bmp8_file, 128, 64);
+    assert(animEngine.open(bmp8_file) == true);
+    assert(animEngine.isBmpFormat() == true);
+    bmp_fb = animEngine.getFrameBuffer();
+    assert(bmp_fb[0] == 0xFF);
+    assert(bmp_fb[63 * 16] == 0x00);
+    animEngine.close();
+    unlink(bmp8_file);
+
+    const char* bmp_inv_file = "tests/test_inv.bmp";
+    create_test_bmp_inverted_palette_1bit(bmp_inv_file);
+    assert(animEngine.open(bmp_inv_file) == true);
+    assert(animEngine.isBmpFormat() == true);
+    bmp_fb = animEngine.getFrameBuffer();
+    assert(bmp_fb[0] == 0xFF);
+    animEngine.close();
+    unlink(bmp_inv_file);
+
     printf("  PASS: 1-bit BMP scanline parsing and MSB-to-LSB bit reversal verified.\n");
 
     // 4. Boot Animation Configuration Test

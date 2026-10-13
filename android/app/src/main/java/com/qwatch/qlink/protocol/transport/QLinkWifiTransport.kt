@@ -16,6 +16,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 class QLinkWifiTransport(
@@ -287,10 +288,16 @@ class QLinkWifiTransport(
         }
     }
 
+    private fun urlEncode(value: String): String = try {
+        URLEncoder.encode(value, "UTF-8")
+    } catch (_: Exception) {
+        value
+    }
+
     override suspend fun listFiles(path: String): Result<List<WatchFile>> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_LIST}?path=$path")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_LIST}?path=${urlEncode(path)}")
                 .build()
             client.newCall(req).execute().use { res ->
                 val body = res.body?.string() ?: ""
@@ -304,7 +311,7 @@ class QLinkWifiTransport(
     override suspend fun downloadFile(path: String): Result<ByteArray> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_DOWNLOAD}?path=$path")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_DOWNLOAD}?path=${urlEncode(path)}")
                 .build()
             client.newCall(req).execute().use { res ->
                 val bytes = res.body?.bytes() ?: ByteArray(0)
@@ -358,7 +365,7 @@ class QLinkWifiTransport(
                 .build()
 
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=$path")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_UPLOAD}?path=${urlEncode(path)}")
                 .post(formBody)
                 .build()
 
@@ -412,7 +419,7 @@ class QLinkWifiTransport(
     override suspend fun deleteFile(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_DELETE}?path=$path")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_DELETE}?path=${urlEncode(path)}")
                 .delete()
                 .build()
             client.newCall(req).execute().use { res ->
@@ -426,7 +433,7 @@ class QLinkWifiTransport(
     override suspend fun createDirectory(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_MKDIR}?path=$path")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_MKDIR}?path=${urlEncode(path)}")
                 .post("".toRequestBody(null))
                 .build()
             client.newCall(req).execute().use { res ->
@@ -440,7 +447,7 @@ class QLinkWifiTransport(
     override suspend fun renameFile(oldPath: String, newPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_RENAME}?from=$oldPath&to=$newPath")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_RENAME}?from=${urlEncode(oldPath)}&to=${urlEncode(newPath)}")
                 .post("".toRequestBody(null))
                 .build()
             client.newCall(req).execute().use { res ->
@@ -454,7 +461,7 @@ class QLinkWifiTransport(
     override suspend fun copyFile(sourcePath: String, destPath: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${baseUrl()}${QLinkConstants.PATH_FS_COPY}?src=$sourcePath&dst=$destPath")
+                .url("${baseUrl()}${QLinkConstants.PATH_FS_COPY}?src=${urlEncode(sourcePath)}&dst=${urlEncode(destPath)}")
                 .post("".toRequestBody(null))
                 .build()
             client.newCall(req).execute().use { res ->

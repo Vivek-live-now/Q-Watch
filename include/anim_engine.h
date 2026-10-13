@@ -109,6 +109,11 @@ private:
     uint32_t last_frame_time;
     uint32_t bmp_pixel_offset;
     bool bmp_flip_y;
+    uint16_t bmp_bpp;
+    int32_t bmp_width;
+    int32_t bmp_height;
+    bool bmp_palette_invert;
+    uint8_t bmp_palette[1024];
 
     uint8_t frame_buffer[ANIM_FRAME_BYTES];
 };

@@ -7,12 +7,17 @@ FileManager::FileManager() {
 
 void FileManager::ensureParentDir(const String& path) {
     int lastSlash = path.lastIndexOf('/');
-    if (lastSlash > 0) {
-        String dir = path.substring(0, lastSlash);
-        if (!LittleFS.exists(dir)) {
-            LittleFS.mkdir(dir);
-        }
+    if (lastSlash <= 0) return;
+    String dir = path.substring(0, lastSlash);
+    int idx = 1;
+    while (idx < (int)dir.length()) {
+        int nextSlash = dir.indexOf('/', idx);
+        String sub = (nextSlash == -1) ? dir : dir.substring(0, nextSlash);
+        LittleFS.mkdir(sub);
+        if (nextSlash == -1) break;
+        idx = nextSlash + 1;
     }
+    LittleFS.mkdir(dir);
 }
 
 bool FileManager::begin() {

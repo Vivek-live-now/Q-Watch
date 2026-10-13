@@ -47,11 +47,16 @@ AnimEngine::AnimEngine() :
     current_frame_idx(0),
     last_frame_time(0),
     bmp_pixel_offset(62),
-    bmp_flip_y(true)
+    bmp_flip_y(true),
+    bmp_bpp(1),
+    bmp_width(ANIM_WIDTH),
+    bmp_height(ANIM_HEIGHT),
+    bmp_palette_invert(false)
 {
     memset(&current_header, 0, sizeof(current_header));
     memset(current_filepath, 0, sizeof(current_filepath));
     memset(frame_buffer, 0, sizeof(frame_buffer));
+    memset(bmp_palette, 0, sizeof(bmp_palette));
 }
 
 AnimEngine::~AnimEngine() {
@@ -96,20 +101,47 @@ bool AnimEngine::parseBmpFile(File& f) {
     if (f.read(file_hdr, sizeof(file_hdr)) != sizeof(file_hdr)) return false;
     if (file_hdr[0] != 'B' || file_hdr[1] != 'M') return false;
 
-    bmp_pixel_offset = *(uint32_t*)&file_hdr[10];
+    bmp_pixel_offset = (uint32_t)file_hdr[10] | ((uint32_t)file_hdr[11] << 8) |
+                       ((uint32_t)file_hdr[12] << 16) | ((uint32_t)file_hdr[13] << 24);
 
     uint8_t info_hdr[40];
     if (f.read(info_hdr, sizeof(info_hdr)) != sizeof(info_hdr)) return false;
 
-    int32_t w = *(int32_t*)&info_hdr[4];
-    int32_t h = *(int32_t*)&info_hdr[8];
-    uint16_t bpp = *(uint16_t*)&info_hdr[14];
+    uint32_t hdr_size = (uint32_t)info_hdr[0] | ((uint32_t)info_hdr[1] << 8) |
+                        ((uint32_t)info_hdr[2] << 16) | ((uint32_t)info_hdr[3] << 24);
+    int32_t w = (int32_t)((uint32_t)info_hdr[4] | ((uint32_t)info_hdr[5] << 8) |
+                          ((uint32_t)info_hdr[6] << 16) | ((uint32_t)info_hdr[7] << 24));
+    int32_t h = (int32_t)((uint32_t)info_hdr[8] | ((uint32_t)info_hdr[9] << 8) |
+                          ((uint32_t)info_hdr[10] << 16) | ((uint32_t)info_hdr[11] << 24));
+    uint16_t planes = (uint16_t)info_hdr[12] | ((uint16_t)info_hdr[13] << 8);
+    uint16_t bpp = (uint16_t)info_hdr[14] | ((uint16_t)info_hdr[15] << 8);
+    uint32_t comp = (uint32_t)info_hdr[16] | ((uint32_t)info_hdr[17] << 8) |
+                    ((uint32_t)info_hdr[18] << 16) | ((uint32_t)info_hdr[19] << 24);
 
-    if (w != ANIM_WIDTH || (h != ANIM_HEIGHT && h != -ANIM_HEIGHT) || bpp != 1) {
-        return false;
+    if (w <= 0 || h == 0 || planes != 1) return false;
+    if (comp != 0 && comp != 3) return false;
+    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) return false;
+
+    bmp_width = w;
+    bmp_height = (h < 0) ? -h : h;
+    bmp_flip_y = (h > 0);
+    bmp_bpp = bpp;
+    bmp_palette_invert = false;
+    memset(bmp_palette, 0, sizeof(bmp_palette));
+
+    if (bpp == 1) {
+        uint8_t pal[8] = {0};
+        f.seek(14 + hdr_size);
+        f.read(pal, sizeof(pal));
+        int lum0 = ((int)pal[2] * 77 + (int)pal[1] * 150 + (int)pal[0] * 29) >> 8;
+        int lum1 = ((int)pal[6] * 77 + (int)pal[5] * 150 + (int)pal[4] * 29) >> 8;
+        if (lum0 > lum1) {
+            bmp_palette_invert = true;
+        }
+    } else if (bpp == 8) {
+        f.seek(14 + hdr_size);
+        f.read(bmp_palette, sizeof(bmp_palette));
     }
-
-    bmp_flip_y = (h > 0); // positive height means rows stored bottom-up
 
     current_header.magic = ANIM_MAGIC;
     current_header.version = ANIM_VERSION;
@@ -129,20 +161,49 @@ bool AnimEngine::parseBmpFile(FILE* f) {
     if (fread(file_hdr, 1, sizeof(file_hdr), f) != sizeof(file_hdr)) return false;
     if (file_hdr[0] != 'B' || file_hdr[1] != 'M') return false;
 
-    bmp_pixel_offset = *(uint32_t*)&file_hdr[10];
+    bmp_pixel_offset = (uint32_t)file_hdr[10] | ((uint32_t)file_hdr[11] << 8) |
+                       ((uint32_t)file_hdr[12] << 16) | ((uint32_t)file_hdr[13] << 24);
 
     uint8_t info_hdr[40];
     if (fread(info_hdr, 1, sizeof(info_hdr), f) != sizeof(info_hdr)) return false;
 
-    int32_t w = *(int32_t*)&info_hdr[4];
-    int32_t h = *(int32_t*)&info_hdr[8];
-    uint16_t bpp = *(uint16_t*)&info_hdr[14];
+    uint32_t hdr_size = (uint32_t)info_hdr[0] | ((uint32_t)info_hdr[1] << 8) |
+                        ((uint32_t)info_hdr[2] << 16) | ((uint32_t)info_hdr[3] << 24);
+    int32_t w = (int32_t)((uint32_t)info_hdr[4] | ((uint32_t)info_hdr[5] << 8) |
+                          ((uint32_t)info_hdr[6] << 16) | ((uint32_t)info_hdr[7] << 24));
+    int32_t h = (int32_t)((uint32_t)info_hdr[8] | ((uint32_t)info_hdr[9] << 8) |
+                          ((uint32_t)info_hdr[10] << 16) | ((uint32_t)info_hdr[11] << 24));
+    uint16_t planes = (uint16_t)info_hdr[12] | ((uint16_t)info_hdr[13] << 8);
+    uint16_t bpp = (uint16_t)info_hdr[14] | ((uint16_t)info_hdr[15] << 8);
+    uint32_t comp = (uint32_t)info_hdr[16] | ((uint32_t)info_hdr[17] << 8) |
+                    ((uint32_t)info_hdr[18] << 16) | ((uint32_t)info_hdr[19] << 24);
 
-    if (w != ANIM_WIDTH || (h != ANIM_HEIGHT && h != -ANIM_HEIGHT) || bpp != 1) {
-        return false;
-    }
+    if (w <= 0 || h == 0 || planes != 1) return false;
+    if (comp != 0 && comp != 3) return false;
+    if (bpp != 1 && bpp != 8 && bpp != 24 && bpp != 32) return false;
 
+    bmp_width = w;
+    bmp_height = (h < 0) ? -h : h;
     bmp_flip_y = (h > 0);
+    bmp_bpp = bpp;
+    bmp_palette_invert = false;
+    memset(bmp_palette, 0, sizeof(bmp_palette));
+
+    if (bpp == 1) {
+        uint8_t pal[8] = {0};
+        fseek(f, 14 + hdr_size, SEEK_SET);
+        if (fread(pal, 1, sizeof(pal), f) == sizeof(pal)) {
+            int lum0 = ((int)pal[2] * 77 + (int)pal[1] * 150 + (int)pal[0] * 29) >> 8;
+            int lum1 = ((int)pal[6] * 77 + (int)pal[5] * 150 + (int)pal[4] * 29) >> 8;
+            if (lum0 > lum1) {
+                bmp_palette_invert = true;
+            }
+        }
+    } else if (bpp == 8) {
+        fseek(f, 14 + hdr_size, SEEK_SET);
+        size_t r = fread(bmp_palette, 1, sizeof(bmp_palette), f);
+        (void)r;
+    }
 
     current_header.magic = ANIM_MAGIC;
     current_header.version = ANIM_VERSION;
@@ -233,27 +294,109 @@ bool AnimEngine::readFrameData(uint16_t frame_idx) {
     if (!anim_file) return false;
 
     if (is_bmp) {
-        const size_t row_bytes = ANIM_WIDTH / 8; // 16 bytes
-        uint8_t temp_row[row_bytes];
+        memset(frame_buffer, 0, sizeof(frame_buffer));
+        if (bmp_bpp == 1 && bmp_width == ANIM_WIDTH && bmp_height == ANIM_HEIGHT) {
+            // Fast path for native 128x64 1-bit monochrome BMP
+            const size_t row_bytes = ANIM_WIDTH / 8; // 16 bytes
+            uint8_t temp_row[row_bytes];
 
-        for (int row = 0; row < ANIM_HEIGHT; row++) {
-            int src_row = bmp_flip_y ? (ANIM_HEIGHT - 1 - row) : row;
-            size_t offset = bmp_pixel_offset + (size_t)src_row * row_bytes;
+            for (int row = 0; row < ANIM_HEIGHT; row++) {
+                int src_row = bmp_flip_y ? (ANIM_HEIGHT - 1 - row) : row;
+                size_t offset = bmp_pixel_offset + (size_t)src_row * row_bytes;
 #ifdef ARDUINO
-            anim_file.seek(offset);
-            if (anim_file.read(temp_row, row_bytes) != row_bytes) {
-                return false;
-            }
+                anim_file.seek(offset);
+                if (anim_file.read(temp_row, row_bytes) != row_bytes) {
+                    return false;
+                }
 #else
-            fseek(anim_file, offset, SEEK_SET);
-            if (fread(temp_row, 1, row_bytes, anim_file) != row_bytes) {
-                return false;
-            }
+                fseek(anim_file, offset, SEEK_SET);
+                if (fread(temp_row, 1, row_bytes, anim_file) != row_bytes) {
+                    return false;
+                }
 #endif
-            for (size_t col = 0; col < row_bytes; col++) {
-                frame_buffer[row * row_bytes + col] = reverse_byte_bits(temp_row[col]);
+                for (size_t col = 0; col < row_bytes; col++) {
+                    uint8_t b = temp_row[col];
+                    if (bmp_palette_invert) b = ~b;
+                    frame_buffer[row * row_bytes + col] = reverse_byte_bits(b);
+                }
+            }
+            return true;
+        }
+
+        // Scaled / Multi-format BMP decoder path (1-bit, 8-bit, 24-bit, 32-bit of any resolution)
+        size_t row_stride = 0;
+        if (bmp_bpp == 1) row_stride = ((size_t)(bmp_width + 31) / 32) * 4;
+        else if (bmp_bpp == 8) row_stride = ((size_t)(bmp_width + 3) / 4) * 4;
+        else if (bmp_bpp == 24) row_stride = ((size_t)(bmp_width * 3 + 3) / 4) * 4;
+        else if (bmp_bpp == 32) row_stride = (size_t)bmp_width * 4;
+        if (row_stride == 0) return false;
+
+        uint8_t* row_buf = (uint8_t*)malloc(row_stride);
+        if (!row_buf) return false;
+
+        int last_loaded_file_row = -1;
+
+        for (int y = 0; y < ANIM_HEIGHT; y++) {
+            int src_y = (bmp_height > 1) ? ((y * bmp_height) / ANIM_HEIGHT) : 0;
+            int file_row = bmp_flip_y ? (bmp_height - 1 - src_y) : src_y;
+
+            if (file_row != last_loaded_file_row) {
+                size_t offset = bmp_pixel_offset + (size_t)file_row * row_stride;
+#ifdef ARDUINO
+                anim_file.seek(offset);
+                if (anim_file.read(row_buf, row_stride) != row_stride) {
+                    free(row_buf);
+                    return false;
+                }
+#else
+                fseek(anim_file, offset, SEEK_SET);
+                if (fread(row_buf, 1, row_stride, anim_file) != row_stride) {
+                    free(row_buf);
+                    return false;
+                }
+#endif
+                last_loaded_file_row = file_row;
+            }
+
+            for (int x = 0; x < ANIM_WIDTH; x++) {
+                int src_x = (bmp_width > 1) ? ((x * bmp_width) / ANIM_WIDTH) : 0;
+                bool lit = false;
+
+                if (bmp_bpp == 1) {
+                    int byte_idx = src_x / 8;
+                    int bit_idx = 7 - (src_x % 8);
+                    lit = ((row_buf[byte_idx] >> bit_idx) & 1) != 0;
+                    if (bmp_palette_invert) lit = !lit;
+                } else if (bmp_bpp == 8) {
+                    uint8_t c_idx = row_buf[src_x];
+                    uint8_t B = bmp_palette[c_idx * 4];
+                    uint8_t G = bmp_palette[c_idx * 4 + 1];
+                    uint8_t R = bmp_palette[c_idx * 4 + 2];
+                    int lum = ((int)R * 77 + (int)G * 150 + (int)B * 29) >> 8;
+                    lit = (lum >= 128);
+                } else if (bmp_bpp == 24) {
+                    size_t px = (size_t)src_x * 3;
+                    uint8_t B = row_buf[px];
+                    uint8_t G = row_buf[px + 1];
+                    uint8_t R = row_buf[px + 2];
+                    int lum = ((int)R * 77 + (int)G * 150 + (int)B * 29) >> 8;
+                    lit = (lum >= 128);
+                } else if (bmp_bpp == 32) {
+                    size_t px = (size_t)src_x * 4;
+                    uint8_t B = row_buf[px];
+                    uint8_t G = row_buf[px + 1];
+                    uint8_t R = row_buf[px + 2];
+                    int lum = ((int)R * 77 + (int)G * 150 + (int)B * 29) >> 8;
+                    lit = (lum >= 128);
+                }
+
+                if (lit) {
+                    frame_buffer[y * 16 + (x / 8)] |= (1 << (x % 8));
+                }
             }
         }
+
+        free(row_buf);
         return true;
     }
 

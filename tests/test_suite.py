@@ -2960,10 +2960,11 @@ def test_photo_viewer_and_anim_packer_overhaul():
         enc = f.read()
     assert "fun encodeStudioFrameToBmp" in enc, "AnimEncoder must provide encodeStudioFrameToBmp"
     assert "fun decodeBmpToStudioFrame" in enc, "AnimEncoder must provide decodeBmpToStudioFrame"
+    assert "fun decodeBmpToBitmap" in enc, "AnimEncoder must provide decodeBmpToBitmap fallback for multi-format BMPs"
     assert "fun isGif" in enc and "fun isBmp" in enc and "fun isAnim" in enc, "AnimEncoder must provide magic byte checkers"
     assert "adjustBrightnessContrast" in enc, "AnimEncoder must provide brightness and contrast adjustments"
     assert "val shift = (threshold - 128f) * (255f / 128f)" in enc, "AnimEncoder must adjust Bayer 4x4 threshold dynamically"
-    print("  [PASS] 4. Android AnimEncoder 1-bit BMP encoder/decoder, Bayer 4x4 threshold responsiveness & fallback verified.")
+    print("  [PASS] 4. Android AnimEncoder multi-format BMP encoder/decoder, Bayer 4x4 threshold responsiveness & fallback verified.")
 
     # 5. AnimStudioScreen 128x64 authentic OLED canvas, shape tools suite, and GIF Import Studio
     studio_kt = os.path.join(android_screens, "AnimStudioScreen.kt")
@@ -2978,6 +2979,8 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert "gifDitherMode" in studio and "gifFitMode" in studio, "AnimStudioScreen GIF Import must support dither and fit selection"
     assert "gifBrightness" in studio and "gifContrast" in studio and "gifThreshold" in studio, "AnimStudioScreen GIF Import must provide fine-tuning sliders"
     assert 'remotePath = "/photos/$cleanBmpName"' in studio, "AnimStudioScreen must support direct /photos deployment"
+    assert "AnimEncoder.isBmp(initialAnimBytes)" in studio, "AnimStudioScreen must load BMP bytes passed via onOpenInAnimStudio"
+    assert "!client.isConnected()" in studio, "AnimStudioScreen must pre-check watch connectivity prior to deploy"
 
     model_kt = os.path.join(android_anim, "AnimModel.kt")
     with open(model_kt, "r", encoding="utf-8") as f:
@@ -2985,7 +2988,8 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert "FILL_CIRCLE" in model and "BUCKET" in model, "AnimModel must provide FILL_CIRCLE and BUCKET tools"
     assert "fun floodFill" in model, "StudioFrame must implement BFS floodFill"
     assert "fun drawCircle" in model and "fill: Boolean = false" in model, "StudioFrame drawCircle must support filled circles"
-    print("  [PASS] 5. AnimStudioScreen 128x64 OLED canvas, interactive shape drag suite & GIF Import Studio verified.")
+    assert "fun toBitmap" in model, "StudioFrame must support toBitmap conversion for preview and canvas rendering"
+    print("  [PASS] 5. AnimStudioScreen 128x64 OLED canvas, interactive shape drag suite, BMP loading & GIF Import Studio verified.")
 
     # 6. Dedicated ImageViewerScreen Photo Studio & Watch Gallery
     viewer_kt = os.path.join(android_screens, "ImageViewerScreen.kt")
@@ -2997,7 +3001,20 @@ def test_photo_viewer_and_anim_packer_overhaul():
     assert "refreshWatchGallery" in viewer, "ImageViewerScreen must provide watch gallery explorer"
     assert '"/photos/$cleanName"' in viewer, "ImageViewerScreen must deploy photos to /photos"
     assert '"/boot/boot.bmp"' in viewer, "ImageViewerScreen must deploy boot splash to /boot/boot.bmp"
-    print("  [PASS] 6. ImageViewerScreen photo quantizer, OLED simulator, and Watch Gallery manager verified.")
+    assert "sourceBitmap = decodedFrame.toBitmap()" in viewer, "ImageViewerScreen must synchronize sourceBitmap on BMP loading"
+    assert "!client.isConnected()" in viewer, "ImageViewerScreen must pre-check watch connectivity prior to deploy"
+
+    # 6b. Firmware multi-format BMP support & Wi-Fi URL encoding
+    anim_h = os.path.join(base_dir, "include", "anim_engine.h")
+    with open(anim_h, "r", encoding="utf-8") as f:
+        ah = f.read()
+    assert "bmp_bpp" in ah and "bmp_palette_invert" in ah, "AnimEngine must support multi-bpp BMP and palette inversion"
+
+    wifi_transport_kt = os.path.join(base_dir, "android", "app", "src", "main", "java", "com", "qwatch", "qlink", "protocol", "transport", "QLinkWifiTransport.kt")
+    with open(wifi_transport_kt, "r", encoding="utf-8") as f:
+        wt = f.read()
+    assert "urlEncode(path)" in wt, "QLinkWifiTransport must URL-encode path query parameters"
+    print("  [PASS] 6. ImageViewerScreen photo quantizer, OLED simulator, Watch Gallery manager & Wi-Fi URL encoding verified.")
 
     # 7. Navigation wiring
     with open(main_kt, "r", encoding="utf-8") as f:

@@ -367,38 +367,129 @@ object AnimEncoder {
     }
 
     /**
+     * Decodes any Windows BMP (1-bit, 4-bit, 8-bit, 24-bit, 32-bit of arbitrary dimensions) into an Android Bitmap.
+     */
+    fun decodeBmpToBitmap(data: ByteArray): Bitmap? {
+        if (!isBmp(data) || data.size < 54) return null
+        val buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        val pixelOffset = buf.getInt(10)
+        val headerSize = buf.getInt(14)
+        val width = buf.getInt(18)
+        val height = buf.getInt(22)
+        val planes = buf.getShort(26).toInt()
+        val bpp = buf.getShort(28).toInt()
+        val compression = buf.getInt(30)
+
+        if (width <= 0 || height == 0 || planes != 1) return null
+        if (compression != 0 && compression != 3) return null
+        if (bpp != 1 && bpp != 4 && bpp != 8 && bpp != 24 && bpp != 32) return null
+
+        val absHeight = kotlin.math.abs(height)
+        val isBottomUp = height > 0
+        val bmp = Bitmap.createBitmap(width, absHeight, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(width * absHeight)
+
+        val palette = if (bpp <= 8) {
+            val numColors = if (buf.remaining() >= 36) buf.getInt(46).let { if (it > 0) it else (1 shl bpp) } else (1 shl bpp)
+            val palOffset = 14 + headerSize
+            val pal = IntArray(numColors)
+            for (i in 0 until numColors) {
+                val off = palOffset + i * 4
+                if (off + 3 < data.size) {
+                    val b = data[off].toInt() and 0xFF
+                    val g = data[off + 1].toInt() and 0xFF
+                    val r = data[off + 2].toInt() and 0xFF
+                    pal[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                }
+            }
+            pal
+        } else null
+
+        val rowStride = ((width * bpp + 31) / 32) * 4
+
+        for (y in 0 until absHeight) {
+            val fileRow = if (isBottomUp) (absHeight - 1 - y) else y
+            val offset = pixelOffset + fileRow * rowStride
+            if (offset + rowStride > data.size) break
+
+            for (x in 0 until width) {
+                val color = when (bpp) {
+                    1 -> {
+                        val byteVal = data[offset + (x / 8)].toInt() and 0xFF
+                        val bit = (byteVal shr (7 - (x % 8))) and 1
+                        palette?.getOrNull(bit) ?: if (bit == 1) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+                    }
+                    4 -> {
+                        val byteVal = data[offset + (x / 2)].toInt() and 0xFF
+                        val nibble = if (x % 2 == 0) (byteVal shr 4) and 0x0F else byteVal and 0x0F
+                        palette?.getOrNull(nibble) ?: 0xFF000000.toInt()
+                    }
+                    8 -> {
+                        val cIdx = data[offset + x].toInt() and 0xFF
+                        palette?.getOrNull(cIdx) ?: 0xFF000000.toInt()
+                    }
+                    24 -> {
+                        val px = offset + x * 3
+                        val b = data[px].toInt() and 0xFF
+                        val g = data[px + 1].toInt() and 0xFF
+                        val r = data[px + 2].toInt() and 0xFF
+                        (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                    }
+                    32 -> {
+                        val px = offset + x * 4
+                        val b = data[px].toInt() and 0xFF
+                        val g = data[px + 1].toInt() and 0xFF
+                        val r = data[px + 2].toInt() and 0xFF
+                        val a = data[px + 3].toInt() and 0xFF
+                        val alpha = if (a == 0) 0xFF else a
+                        (alpha shl 24) or (r shl 16) or (g shl 8) or b
+                    }
+                    else -> 0xFF000000.toInt()
+                }
+                pixels[y * width + x] = color
+            }
+        }
+
+        bmp.setPixels(pixels, 0, width, 0, 0, width, absHeight)
+        return bmp
+    }
+
+    /**
      * Decodes a standard 128x64 1-bit BMP into an editable StudioFrame.
+     * Also supports multi-format BMP photos (24-bit, 32-bit, 8-bit, scaled) via fallback.
      */
     fun decodeBmpToStudioFrame(data: ByteArray): StudioFrame? {
-        if (!isBmp(data) || data.size < 62 + 1024) return null
+        if (!isBmp(data) || data.size < 54) return null
         val buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
         val pixelOffset = buf.getInt(10)
         val width = buf.getInt(18)
         val height = buf.getInt(22)
         val bpp = buf.getShort(28).toInt()
 
-        if (width != AnimParser.ANIM_WIDTH || kotlin.math.abs(height) != AnimParser.ANIM_HEIGHT || bpp != 1) {
-            return null
-        }
+        if (width == AnimParser.ANIM_WIDTH && kotlin.math.abs(height) == AnimParser.ANIM_HEIGHT && bpp == 1) {
+            val isBottomUp = height > 0
+            val frame = StudioFrame()
+            val rowBytes = AnimParser.ANIM_WIDTH / 8
 
-        val isBottomUp = height > 0
-        val frame = StudioFrame()
-        val rowBytes = AnimParser.ANIM_WIDTH / 8
+            for (row in 0 until AnimParser.ANIM_HEIGHT) {
+                val fileRow = if (isBottomUp) (AnimParser.ANIM_HEIGHT - 1 - row) else row
+                val offset = pixelOffset + fileRow * rowBytes
+                if (offset + rowBytes > data.size) break
 
-        for (row in 0 until AnimParser.ANIM_HEIGHT) {
-            val fileRow = if (isBottomUp) (AnimParser.ANIM_HEIGHT - 1 - row) else row
-            val offset = pixelOffset + fileRow * rowBytes
-            if (offset + rowBytes > data.size) break
-
-            for (col in 0 until rowBytes) {
-                val bVal = data[offset + col].toInt() and 0xFF
-                for (b in 0 until 8) {
-                    val isSet = (bVal and (1 shl (7 - b))) != 0
-                    frame.setPixel(col * 8 + b, row, isSet)
+                for (col in 0 until rowBytes) {
+                    val bVal = data[offset + col].toInt() and 0xFF
+                    for (b in 0 until 8) {
+                        val isSet = (bVal and (1 shl (7 - b))) != 0
+                        frame.setPixel(col * 8 + b, row, isSet)
+                    }
                 }
             }
+            return frame
         }
-        return frame
+
+        // Fallback for 24-bit, 32-bit, 8-bit, or non-128x64 BMP photos
+        val bmp = decodeBmpToBitmap(data) ?: return null
+        return decodeBitmapToStudioFrame(bmp)
     }
 
     // =========================================================================
