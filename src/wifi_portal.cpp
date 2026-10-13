@@ -13,6 +13,10 @@ WifiPortal wifiPortal;
 
 const byte DNS_PORT = 53;
 
+static File uploadFile;
+static String s_portal_upload_path;
+static bool s_portal_upload_ok = true;
+
 WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), scan_in_progress(false), scanned_count(0) {}
 
 void WifiPortal::begin() {
@@ -781,10 +785,6 @@ void WifiPortal::handleFileCopy() {
         server.send(400, "text/plain", "Missing Params");
     }
 }
-
-static File uploadFile;
-static String s_portal_upload_path;
-static bool s_portal_upload_ok = true;
 
 void WifiPortal::handleFileUpload() {
     if (!settingsManager.get().fileserver_enabled) {
