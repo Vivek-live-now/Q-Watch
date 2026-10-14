@@ -563,7 +563,7 @@ void SensorManager::readMpu() {
         int16_t in_gz = (Wire.read() << 8) | Wire.read();
 
         if (imu_filter_enabled) {
-            int16_t raw_vec[8] ALIGNED16 = {
+            __attribute__((aligned(16))) int16_t raw_vec[8] = {
                 in_ax, in_ay, in_az, 0,
                 in_gx, in_gy, in_gz, 0
             };

@@ -4,6 +4,14 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if !defined(ALIGNED16)
+  #if defined(__GNUC__) || defined(__clang__)
+    #define ALIGNED16 __attribute__((aligned(16)))
+  #else
+    #define ALIGNED16
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
