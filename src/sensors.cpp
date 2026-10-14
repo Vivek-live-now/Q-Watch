@@ -5,6 +5,10 @@
 #include "simd_accel.h"
 #include "gesture_ai.h"
 #include <math.h>
+#ifdef ARDUINO
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 
 SensorManager sensors;
 
@@ -254,7 +258,11 @@ void SensorManager::calibrateAccel() {
         ax_sum += raw_data.ax;
         ay_sum += raw_data.ay;
         az_sum += raw_data.az;
+#ifdef ARDUINO
+        vTaskDelay(pdMS_TO_TICKS(5));
+#else
         delay(5);
+#endif
     }
 
     // Z is gravity (1G), which is 4096 in 8G range
@@ -470,7 +478,11 @@ void SensorManager::calibrateGyro() {
         gx_sum += raw_data.gx;
         gy_sum += raw_data.gy;
         gz_sum += raw_data.gz;
+#ifdef ARDUINO
+        vTaskDelay(pdMS_TO_TICKS(5)); // Yield RTOS thread during 1 second calibration routine
+#else
         delay(5); // 5ms * 200 = 1 second calibration routine during boot
+#endif
     }
 
     // Store the raw bias average
