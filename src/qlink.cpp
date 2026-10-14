@@ -1200,41 +1200,27 @@ void QLinkEngine::fillCompactTelemetry(QLinkCompactTelemetry& out) {
 }
 
 String QLinkEngine::generateTelemetryJson() {
-    String json;
-    json.reserve(512);
 #ifdef ARDUINO
     EnvironmentData env = sensors.getEnvData();
     OrientationData ori = sensors.getOrientation();
     HealthMetrics hm = max30102Manager.getMetrics();
 
-    json = "{\"bme280\":{";
-    json += "\"temperature_c\":" + String(env.temperature, 2) + ",";
-    json += "\"pressure_hpa\":" + String(env.pressure, 2) + ",";
-    json += "\"humidity_pct\":" + String(env.humidity, 1) + ",";
-    json += "\"altitude_m\":" + String(env.altitude, 1) + "},";
-
-    json += "\"imu\":{";
-    json += "\"pitch_deg\":" + String(ori.pitch, 1) + ",";
-    json += "\"roll_deg\":" + String(ori.roll, 1) + ",";
-    json += "\"heading_deg\":" + String(ori.yaw, 1) + "},";
-
-    json += "\"health\":{";
-    json += "\"heart_rate_bpm\":" + String(hm.bpm) + ",";
-    json += "\"spo2_pct\":" + String(hm.spo2) + ",";
-    json += "\"finger_detected\":" + String(hm.finger_detected ? "true" : "false") + "},";
-
-    json += "\"pedometer\":{";
-    json += "\"steps\":" + String(timekeeping.pedometer.getSteps()) + ",";
-    json += "\"distance_km\":" + String(timekeeping.pedometer.getDistanceKm(), 2) + ",";
-    json += "\"calories_kcal\":" + String(timekeeping.pedometer.getCaloriesKcal()) + "},";
-
-    json += "\"battery\":{";
-    json += "\"percent\":" + String(battery.readPercentage()) + ",";
-    json += "\"voltage_v\":" + String(battery.readVoltage(), 2) + "}}";
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"bme280\":{\"temperature_c\":%.2f,\"pressure_hpa\":%.2f,\"humidity_pct\":%.1f,\"altitude_m\":%.1f},"
+        "\"imu\":{\"pitch_deg\":%.1f,\"roll_deg\":%.1f,\"heading_deg\":%.1f},"
+        "\"health\":{\"heart_rate_bpm\":%u,\"spo2_pct\":%u,\"finger_detected\":%s},"
+        "\"pedometer\":{\"steps\":%lu,\"distance_km\":%.2f,\"calories_kcal\":%lu},"
+        "\"battery\":{\"percent\":%d,\"voltage_v\":%.2f}}",
+        env.temperature, env.pressure, env.humidity, env.altitude,
+        ori.pitch, ori.roll, ori.yaw,
+        (unsigned int)hm.bpm, (unsigned int)hm.spo2, hm.finger_detected ? "true" : "false",
+        (unsigned long)timekeeping.pedometer.getSteps(), timekeeping.pedometer.getDistanceKm(), (unsigned long)timekeeping.pedometer.getCaloriesKcal(),
+        battery.readPercentage(), battery.readVoltage());
+    return String(buf);
 #else
-    json = "{\"status\":\"mock\"}";
+    return String("{\"status\":\"mock\"}");
 #endif
-    return json;
 }
 
 String QLinkEngine::generateDeviceInfoJson() {

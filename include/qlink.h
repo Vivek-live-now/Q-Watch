@@ -14,6 +14,7 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 class String : public std::string {
 public:
     String() : std::string() {}
