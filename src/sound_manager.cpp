@@ -3,6 +3,10 @@
 #include "settings_data.h"
 #include "file_manager.h"
 
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+#include <driver/gpio.h>
+#endif
+
 SoundManager soundManager;
 
 // Predefined effects sequences
@@ -43,12 +47,22 @@ SoundManager::SoundManager() :
     is_tone_active(false)
 {}
 
-void SoundManager::begin() {
+void SoundManager::reinitHardware() {
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis((gpio_num_t)BUZZER_PIN);
     pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, LOW);
     ledcSetup(BUZZER_LEDC_CHANNEL, 2700, BUZZER_LEDC_RES_BITS);
     ledcAttachPin(BUZZER_PIN, BUZZER_LEDC_CHANNEL);
     ledcWrite(BUZZER_LEDC_CHANNEL, 0);
+#endif
+    is_playing = false;
+    is_tone_active = false;
+    active_duty_pct = 0;
+}
+
+void SoundManager::begin() {
+    reinitHardware();
 }
 
 bool SoundManager::isMasterSwitchOn() const {
@@ -103,7 +117,6 @@ void SoundManager::setStyle(SoundStyle style) {
 
 void SoundManager::stop() {
     ledcWrite(BUZZER_LEDC_CHANNEL, 0);
-    digitalWrite(BUZZER_PIN, LOW);
     is_playing = false;
     is_tone_active = false;
     active_duty_pct = 0;
@@ -112,7 +125,6 @@ void SoundManager::stop() {
 void SoundManager::applyPwmTone(uint16_t freq, uint8_t duty_pct) {
     if (freq == 0 || duty_pct == 0) {
         ledcWrite(BUZZER_LEDC_CHANNEL, 0);
-        digitalWrite(BUZZER_PIN, LOW);
         return;
     }
     ledcWriteTone(BUZZER_LEDC_CHANNEL, freq);

@@ -22,12 +22,16 @@
 #include "gesture_ai.h"
 #include "poly_synth.h"
 #include "wireframe_3d.h"
+#include "hw_config.h"
 
 // Hardware RTC memory boot loop detector & recovery guard
 #ifdef ARDUINO
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include <esp_system.h>
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+#include <driver/gpio.h>
+#endif
 
 RTC_DATA_ATTR static uint32_t s_rapid_boot_count = 0;
 RTC_DATA_ATTR static bool s_safe_mode_active = false;
@@ -42,6 +46,14 @@ void setup() {
 #ifdef ARDUINO
   // Transient brownout guard for ESP32-S3 SuperMini board startup & RF synth inrush
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+  // Release RTC deep sleep pad holds latched during sleep to unfreeze buzzer, vibrator and LED
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis((gpio_num_t)BUZZER_PIN);
+  gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
+  gpio_hold_dis((gpio_num_t)RGB_LED);
+#endif
 
   esp_reset_reason_t rst_reason = esp_reset_reason();
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();

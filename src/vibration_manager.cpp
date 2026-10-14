@@ -3,6 +3,9 @@
 
 #ifdef ARDUINO
 #include "settings_data.h"
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+#include <driver/gpio.h>
+#endif
 #endif
 
 VibrationManager vibrationManager;
@@ -26,14 +29,24 @@ VibrationManager::VibrationManager() :
 {
 }
 
-void VibrationManager::begin() {
+void VibrationManager::reinitHardware() {
 #ifdef ARDUINO
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
+#endif
     pinMode(VIBRATOR_PIN, OUTPUT);
-    digitalWrite(VIBRATOR_PIN, LOW);
     ledcSetup(VIBE_LEDC_CHANNEL, VIBE_LEDC_FREQ, VIBE_LEDC_RES_BITS);
     ledcAttachPin(VIBRATOR_PIN, VIBE_LEDC_CHANNEL);
     ledcWrite(VIBE_LEDC_CHANNEL, 0);
+#endif
+    is_active = false;
+    active_step_duty = 0;
+}
 
+void VibrationManager::begin() {
+    reinitHardware();
+#ifdef ARDUINO
     master_switch = settingsManager.get().vibe_master_on;
     intensity_pct = settingsManager.get().vibe_intensity;
     button_haptics = settingsManager.get().vibe_button_clicks;

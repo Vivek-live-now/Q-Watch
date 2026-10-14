@@ -30,6 +30,7 @@ public:
     VibrationManager();
     void begin();
     void loop();
+    void reinitHardware();
 
     // Trigger predefined patterns
     void triggerPattern(VibePattern pattern);

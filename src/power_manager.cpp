@@ -1,12 +1,15 @@
 #include "power_manager.h"
 #include "settings_data.h"
 #include "hw_config.h"
+#include "sound_manager.h"
+#include "vibration_manager.h"
 #include <stdio.h>
 #include <math.h>
 
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
 #include <esp_sleep.h>
 #include <driver/rtc_io.h>
+#include <driver/gpio.h>
 #endif
 
 static const char* const PROFILE_NAMES[] = {
@@ -285,17 +288,23 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
             esp_light_sleep_start();
             // On wake, release pin holds
+            gpio_deep_sleep_hold_dis();
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            soundManager.reinitHardware();
+            vibrationManager.reinitHardware();
             break;
         }
 
         case SleepEngine::DISPLAY_OFF: {
             // Display off only: no deep/light sleep, CPU yields
+            gpio_deep_sleep_hold_dis();
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            soundManager.reinitHardware();
+            vibrationManager.reinitHardware();
             delay(10);
             break;
         }

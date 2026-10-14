@@ -3027,6 +3027,8 @@ void UICore::enterDeepSleep() {
     last_activity_time = millis();
     display_off_time = 0;
     btnManager.flushEvents();
+    soundManager.reinitHardware();
+    vibrationManager.reinitHardware();
     soundManager.playWake();
     needs_redraw = true;
 }

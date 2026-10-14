@@ -20,6 +20,7 @@ public:
     SoundManager();
     void begin();
     void loop();
+    void reinitHardware();
 
     // Direct Tone Control & SW Volume / Duty Control
     void playTone(uint16_t freq, uint16_t duration_ms, uint8_t duty_pct = 0);
