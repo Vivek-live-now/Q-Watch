@@ -364,3 +364,34 @@ void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const
         outputs[n] = (int8_t)relu;
     }
 }
+
+void simd_mix_audio_8bit(uint8_t* dst, const uint8_t* ch1, const uint8_t* ch2, const uint8_t* ch3, const uint8_t* ch4, size_t len) {
+    if (!dst || len == 0) return;
+
+    size_t chunks = len / 16;
+    size_t remainder = len % 16;
+
+    for (size_t c = 0; c < chunks; c++) {
+        size_t off = c * 16;
+        #pragma GCC unroll 16
+        for (size_t i = 0; i < 16; i++) {
+            uint16_t tot = 0;
+            if (ch1) tot += ch1[off + i];
+            if (ch2) tot += ch2[off + i];
+            if (ch3) tot += ch3[off + i];
+            if (ch4) tot += ch4[off + i];
+            dst[off + i] = (tot > 255) ? 255 : (uint8_t)tot;
+        }
+    }
+
+    size_t rem_start = chunks * 16;
+    for (size_t i = 0; i < remainder; i++) {
+        uint16_t tot = 0;
+        if (ch1) tot += ch1[rem_start + i];
+        if (ch2) tot += ch2[rem_start + i];
+        if (ch3) tot += ch3[rem_start + i];
+        if (ch4) tot += ch4[rem_start + i];
+        dst[rem_start + i] = (tot > 255) ? 255 : (uint8_t)tot;
+    }
+}
+

@@ -20,6 +20,7 @@
 #include "air_mouse.h"
 #include "qlink.h"
 #include "gesture_ai.h"
+#include "poly_synth.h"
 
 // Hardware RTC memory boot loop detector & recovery guard
 #ifdef ARDUINO
@@ -93,6 +94,7 @@ void setup() {
   animEngine.begin();
   airMouse.begin();
   gestureAi.begin();
+  polySynth.begin();
 #ifdef ARDUINO
   if (!s_safe_mode_active) {
     qlink.begin();
@@ -147,6 +149,7 @@ void loop() {
   irEngine.loop();
   timekeeping.loop();
   airMouse.loop();
+  polySynth.loop();
 
   // Energy Efficiency & UI Updates
   int current_sec = qclock.getSecond();
@@ -157,7 +160,8 @@ void loop() {
   bool anim_active = (ui.getState() == UIState::APP_ANIM_PLAYER && animEngine.isPlaying());
   bool wireless_active = (ui.getState() == UIState::APP_WIRELESS);
   bool vibe_active = (ui.getState() == UIState::APP_VIBRATION && vibrationManager.isVibrating());
-  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || ui.getState() == UIState::APP_RUNNING || clock_active || anim_active || wireless_active || vibe_active)
+  bool synth_active = (ui.getState() == UIState::APP_AUDIO && ui.getSoundSubmenu() == SoundSubmenu::POLY_SYNTH && polySynth.isPlaying());
+  bool active_app_update = ((ui.getState() == UIState::APP_COMPASS || ui.getState() == UIState::APP_MOTION || ui.getState() == UIState::APP_HEALTH || ui.getState() == UIState::APP_IR || ui.getState() == UIState::APP_RUNNING || clock_active || anim_active || wireless_active || vibe_active || synth_active)
                             && millis() - last_ui_draw >= 20);
 
   if (!ui.isDisplayOff() && ui.getState() != UIState::SLEEPING) {

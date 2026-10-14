@@ -3799,6 +3799,102 @@ def test_gesture_ai_subapp_and_simd():
     assert "gestureAi.begin();" in mc, "main.cpp must initialize gestureAi in setup()"
     print("  [PASS] 4. IMU6500 sub-app routing, live monitor HUD, customization menu & sensor pipeline verified.")
 
+def test_poly_synth_and_simd_mixing():
+    print("\n--- 53. 4-Channel Polyphonic Audio Engine & SIMD Saturated Mixing ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+
+    # 1. SIMD Mixer Declarations & Saturated Addition
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void simd_mix_audio_8bit(" in sh, "simd_accel.h must declare simd_mix_audio_8bit"
+
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "void simd_mix_audio_8bit(" in sc, "simd_accel.cpp must implement simd_mix_audio_8bit"
+    assert "#pragma GCC unroll 16" in sc, "simd_mix_audio_8bit must unroll 16-way vector mixing loop"
+    assert "(tot > 255) ? 255 : (uint8_t)tot" in sc, "simd_mix_audio_8bit must clamp with 8-bit saturation ceiling"
+    print("  [PASS] 1. SIMD 8-bit saturated audio mixer with 16-way unrolling verified.")
+
+    # 2. Host C++ Binary Compilation & Direct Saturated Mixing Execution
+    test_src = os.path.join(base_dir, "tests", "test_poly_synth_host.cpp")
+    test_bin = os.path.join(base_dir, "test_poly_synth_host_bin")
+    compile_cmd = [
+        "g++", "-std=c++17", "-O2", "-Iinclude",
+        test_src, simd_cpp,
+        "-o", test_bin
+    ]
+    res_cmp = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res_cmp.returncode == 0, f"Failed to compile test_poly_synth_host:\n{res_cmp.stderr}"
+
+    res_run = subprocess.run([test_bin], cwd=base_dir, capture_output=True, text=True)
+    assert res_run.returncode == 0, f"Host C++ audio unit test failed:\n{res_run.stderr}"
+    assert "[PASS]" in res_run.stdout
+    if os.path.exists(test_bin):
+        os.remove(test_bin)
+    print("  [PASS] 2. Host C++ direct execution verified with zero-overflow saturation clamp.")
+
+    # 3. Polyphonic Synthesizer Engine & Retro Chiptune Songs
+    poly_h = os.path.join(base_dir, "include", "poly_synth.h")
+    poly_cpp = os.path.join(base_dir, "src", "poly_synth.cpp")
+
+    with open(poly_h, "r", encoding="utf-8") as f:
+        ph = f.read()
+    assert "class PolySynth" in ph, "poly_synth.h must define PolySynth class"
+    assert "enum class WaveType" in ph, "poly_synth.h must define WaveType enum"
+    assert "SQUARE_50" in ph and "PULSE_25" in ph and "PULSE_12" in ph and "TRIANGLE" in ph and "NOISE" in ph
+    assert "renderBuffer(uint8_t* out_mix, size_t len)" in ph
+    assert "playSong(uint8_t song_id)" in ph
+    assert "driveBuzzerHardware()" in ph
+
+    with open(poly_cpp, "r", encoding="utf-8") as f:
+        pc = f.read()
+    assert "simd_mix_audio_8bit(" in pc, "renderBuffer must call simd_mix_audio_8bit"
+    assert "s_song_fanfare" in pc, "poly_synth.cpp must define retro fanfare song"
+    assert "s_song_cyber" in pc, "poly_synth.cpp must define cyber arpeggio song"
+    assert "s_song_march" in pc, "poly_synth.cpp must define space march song"
+    assert "s_song_mission" in pc, "poly_synth.cpp must define mission theme song"
+    assert "soundManager.setToneDuty" in pc, "driveBuzzerHardware must drive buzzer through soundManager"
+    print("  [PASS] 3. 4-channel polyphonic synthesizer core, waveforms, and chiptune songs verified.")
+
+    # 4. Sound UI App Submenu Routing, Display & Main Pipeline
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "SoundSubmenu::POLY_SYNTH" in uh or "POLY_SYNTH" in uh
+    assert "SOUND_MAIN_ITEM_COUNT = 8" in uh, "SOUND_MAIN_ITEM_COUNT must be updated to 8"
+    assert '"CHIPTUNE SYNTH"' in uh, "sound_main_items must include CHIPTUNE SYNTH"
+    assert "handlePolySynthInput()" in uh
+
+    ui_snd_cpp = os.path.join(base_dir, "src", "ui_core_sound.cpp")
+    with open(ui_snd_cpp, "r", encoding="utf-8") as f:
+        usc = f.read()
+    assert "SoundSubmenu::POLY_SYNTH: handlePolySynthInput()" in usc
+    assert "SoundSubmenu::POLY_SYNTH; sound_selection = 0" in usc
+    assert "void UICore::handlePolySynthInput()" in usc
+
+    disp_h = os.path.join(base_dir, "include", "display.h")
+    with open(disp_h, "r", encoding="utf-8") as f:
+        dh = f.read()
+    assert "void drawPolySynth();" in dh
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "SoundSubmenu::POLY_SYNTH) {" in dc
+    assert "drawPolySynth();" in dc
+    assert "void DisplayManager::drawPolySynth()" in dc
+
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "polySynth.begin();" in mc
+    assert "polySynth.loop();" in mc
+    assert "synth_active" in mc
+    print("  [PASS] 4. Sound App submenu integration, interactive HUD, telemetry meters & main loop verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3843,6 +3939,7 @@ if __name__ == "__main__":
     test_vector_fir_and_screen_transitions()
     test_imu_vector_filter_and_sensors()
     test_gesture_ai_subapp_and_simd()
+    test_poly_synth_and_simd_mixing()
     print("\nAll self-test verifications PASSED!")
 
 

@@ -95,6 +95,7 @@ private:
     void drawBatteryPageUlp();
     void drawAppLED();
     void drawAppAudio();
+    void drawPolySynth();
     void drawAppAbout();
     void drawFileManager();
     void drawAppApps();

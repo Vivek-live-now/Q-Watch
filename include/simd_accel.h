@@ -70,6 +70,11 @@ void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t al
 // output[n] = relu((bias[n] + sum(inputs[i] * weights[n * num_inputs + i])) >> 4)
 void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const int32_t* bias, int8_t* outputs, size_t num_inputs, size_t num_neurons);
 
+// Candidate 6: 4-Channel 8-Bit Polyphonic Audio Saturated Mixing
+// Mixes 4 channels of 8-bit unsigned PCM audio samples into dst with saturation clamp:
+// dst[i] = min(255, ch1[i] + ch2[i] + ch3[i] + ch4[i])
+void simd_mix_audio_8bit(uint8_t* dst, const uint8_t* ch1, const uint8_t* ch2, const uint8_t* ch3, const uint8_t* ch4, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

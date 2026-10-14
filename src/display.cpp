@@ -23,6 +23,7 @@
 #include "mochi_pet.h"
 #include "vibration_manager.h"
 #include "gesture_ai.h"
+#include "poly_synth.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -3483,9 +3484,76 @@ void DisplayManager::drawAppAudio() {
         oled.drawStr(10, 30, "UP:   TX CQ CQ");
         oled.drawStr(10, 42, "DN:   TX SOS");
         oled.drawStr(10, 54, "OK:   CUSTOM TEXT");
+    } else if (sub == SoundSubmenu::POLY_SYNTH) {
+        drawPolySynth();
     }
 
     drawToastOverlay();
+}
+
+void DisplayManager::drawPolySynth() {
+    oled.setFont(u8g2_font_5x7_tf);
+
+    // Title / Song status header
+    char title[32];
+    snprintf(title, sizeof(title), "SYNTH: %s", polySynth.getSongName(polySynth.getActiveSong()));
+    oled.drawStr(2, 9, title);
+    oled.drawStr(98, 9, polySynth.isPlaying() ? "[PLAY]" : "[STOP]");
+    oled.drawLine(0, 11, 128, 11);
+
+    // 4 Polyphonic Voices Telemetry
+    for (uint8_t ch = 0; ch < PolySynth::NUM_CHANNELS; ch++) {
+        int y = 20 + ch * 9;
+        uint16_t freq = polySynth.getChannelFreq(ch);
+        uint8_t vol = polySynth.getChannelVolume(ch);
+
+        const char* sw = "SQ50";
+        switch (polySynth.getWaveType(ch)) {
+            case WaveType::SQUARE_50: sw = "SQ50"; break;
+            case WaveType::PULSE_25:  sw = "PL25"; break;
+            case WaveType::PULSE_12:  sw = "PL12"; break;
+            case WaveType::TRIANGLE:  sw = "TRIA"; break;
+            case WaveType::SAWTOOTH:  sw = "SAWT"; break;
+            case WaveType::NOISE:     sw = "NOIS"; break;
+            default: sw = "WAVE"; break;
+        }
+
+        char row[32];
+        if (polySynth.isMuted(ch)) {
+            snprintf(row, sizeof(row), "C%u:[MUTE] %s", ch + 1, sw);
+        } else if (freq > 0) {
+            snprintf(row, sizeof(row), "C%u:%4uHz %s", ch + 1, freq, sw);
+        } else {
+            snprintf(row, sizeof(row), "C%u: ----Hz %s", ch + 1, sw);
+        }
+        oled.drawStr(2, y, row);
+
+        // Amplitude / volume level bar on right
+        oled.drawFrame(98, y - 6, 28, 6);
+        if (vol > 0 && freq > 0 && !polySynth.isMuted(ch)) {
+            int fill = (vol * 26) / 15;
+            if (fill > 26) fill = 26;
+            if (fill < 2) fill = 2;
+            oled.drawBox(99, y - 5, fill, 4);
+        }
+    }
+
+    oled.drawLine(0, 53, 128, 53);
+
+    // Controls footer or 16-step beat progression
+    if (polySynth.isPlaying()) {
+        uint16_t step = polySynth.getSongStep();
+        for (uint16_t s = 0; s < 16; s++) {
+            int x = 4 + s * 7;
+            if (s == step) {
+                oled.drawBox(x, 56, 5, 5);
+            } else {
+                oled.drawFrame(x, 56, 5, 5);
+            }
+        }
+    } else {
+        oled.drawStr(4, 62, "OK:PLAY/STP  UP/DN:SONG");
+    }
 }
 
 void DisplayManager::drawAppMochi() {

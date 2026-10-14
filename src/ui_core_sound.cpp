@@ -2,6 +2,7 @@
 #include "sound_manager.h"
 #include "settings_data.h"
 #include "button_manager.h"
+#include "poly_synth.h"
 
 static const uint16_t NOTE_BASE_FREQS[] = { 262, 294, 330, 349, 392, 440, 494, 0 }; // C4, D4, E4, F4, G4, A4, B4, REST (0Hz)
 static const char* const NOTE_NAMES[] = { "C", "D", "E", "F", "G", "A", "B", "REST" };
@@ -56,6 +57,7 @@ void UICore::handleSoundInput() {
         case SoundSubmenu::LAB: handleSoundLabInput(); break;
         case SoundSubmenu::METRONOME: handleMetronomeInput(); break;
         case SoundSubmenu::MORSE: handleMorseInput(); break;
+        case SoundSubmenu::POLY_SYNTH: handlePolySynthInput(); break;
         default: break;
     }
 }
@@ -94,6 +96,7 @@ void UICore::handleSoundMainInput() {
             case 4: sound_submenu = SoundSubmenu::LAB; sound_selection = 0; sound_scroll_offset = 0; break;
             case 5: sound_submenu = SoundSubmenu::METRONOME; sound_selection = 0; sound_scroll_offset = 0; break;
             case 6: sound_submenu = SoundSubmenu::MORSE; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 7: sound_submenu = SoundSubmenu::POLY_SYNTH; sound_selection = 0; sound_scroll_offset = 0; break;
         }
         needs_redraw = true;
     }
@@ -546,3 +549,30 @@ void UICore::handleMorseInput() {
         needs_redraw = true;
     }
 }
+
+void UICore::handlePolySynthInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        polySynth.prevSong();
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        polySynth.nextSong();
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        polySynth.toggleSong(polySynth.getActiveSong());
+        soundManager.playNavSelect();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        static uint8_t mute_idx = 0;
+        polySynth.toggleMute(mute_idx);
+        mute_idx = (mute_idx + 1) % PolySynth::NUM_CHANNELS;
+        soundManager.playNavSelect();
+        needs_redraw = true;
+    }
+}
+

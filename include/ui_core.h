@@ -9,6 +9,7 @@
 #include "sound_manager.h"
 #include "mochi_pet.h"
 #include "gesture_ai.h"
+#include "poly_synth.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
@@ -79,7 +80,8 @@ enum class SoundSubmenu {
     COMPOSER,
     LAB,
     METRONOME,
-    MORSE
+    MORSE,
+    POLY_SYNTH
 };
 
 enum class ClockSubmenu {
@@ -307,9 +309,9 @@ public:
         "IMU6500", "IR REMOTE", "SOUND", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
     };
 
-    static const int SOUND_MAIN_ITEM_COUNT = 7;
+    static const int SOUND_MAIN_ITEM_COUNT = 8;
     const char* sound_main_items[SOUND_MAIN_ITEM_COUNT] = {
-        "SETTINGS", "SOUND EFFECTS", "MELODY CREATOR", "COMPOSER", "SOUND LAB", "METRONOME", "MORSE / Q-CODE"
+        "SETTINGS", "SOUND EFFECTS", "MELODY CREATOR", "COMPOSER", "SOUND LAB", "METRONOME", "MORSE / Q-CODE", "CHIPTUNE SYNTH"
     };
 
     static const int SOUND_SETTINGS_ITEM_COUNT = 5;
@@ -547,6 +549,7 @@ public:
     void handleSoundLabInput();
     void handleMetronomeInput();
     void handleMorseInput();
+    void handlePolySynthInput();
 
     void handleSettingsMenuInput();
     void handleValueEditInput();

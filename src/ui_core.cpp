@@ -21,6 +21,7 @@
 #include "battery.h"
 #include "vibration_manager.h"
 #include "qlink.h"
+#include "poly_synth.h"
 
 UICore ui;
 String UICore::pending_selected_ssid = "";
@@ -458,6 +459,9 @@ void UICore::loop() {
                 menu_selection = 7;
                 menu_scroll_offset = 5;
             } else {
+                if (sound_submenu == SoundSubmenu::POLY_SYNTH) {
+                    polySynth.stopSong();
+                }
                 sound_submenu = SoundSubmenu::MAIN;
                 sound_selection = 0;
                 sound_scroll_offset = 0;
@@ -680,7 +684,7 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT)))) {
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT || sound_submenu == SoundSubmenu::POLY_SYNTH)))) {
             if (cancel_evt == BTN_EVT_LONG_PRESS) {
                 btnManager.getEvent(BTN_ID_CANCEL);
             } else {
@@ -693,6 +697,7 @@ void UICore::loop() {
                 if (irEngine.isTvBGoneRunning()) irEngine.stopTvBGone();
                 current_state = UIState::MAIN_MENU;
             } else if (current_state == UIState::APP_AUDIO) {
+                polySynth.stopSong();
                 soundManager.stop();
                 current_state = UIState::MAIN_MENU;
             } else if (current_state == UIState::APP_CLOCK) {
