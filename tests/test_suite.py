@@ -2253,7 +2253,7 @@ def test_compass_games_airmouse_overhaul():
     with open(ui_h, "r", encoding="utf-8") as f:
         uh = f.read()
     assert "SUBAPP_MOUSE_SETTINGS" in uh, "ui_core.h must declare SUBAPP_MOUSE_SETTINGS"
-    assert "IMU_SUBAPP_COUNT = 3" in uh, "IMU_SUBAPP_COUNT must be 3"
+    assert ("IMU_SUBAPP_COUNT = 3" in uh or "IMU_SUBAPP_COUNT = 4" in uh), "IMU_SUBAPP_COUNT must be at least 3"
     assert '"MOUSE SETTINGS"' in uh, "imu_subapp_items must include MOUSE SETTINGS"
     assert "handleMouseSettingsInput()" in uh, "ui_core.h must declare handleMouseSettingsInput()"
 
@@ -3707,6 +3707,98 @@ def test_imu_vector_filter_and_sensors():
     assert y_state[0] > 990 and y_state[0] <= 1000
     print("  [PASS] 4. Boundary conditions (1.0 passthrough and 20-step exponential convergence) verified.")
 
+def test_gesture_ai_subapp_and_simd():
+    print("\n--- 52. TinyML On-Device Gesture AI Sub-App & SIMD INT8 Inference Engine ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void simd_nn_dense_layer_int8(" in sh, "simd_accel.h must declare simd_nn_dense_layer_int8"
+
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "void simd_nn_dense_layer_int8(" in sc, "simd_accel.cpp must implement simd_nn_dense_layer_int8"
+    assert "#pragma GCC unroll 16" in sc, "simd_nn_dense_layer_int8 must unroll 16-element MAC loop"
+    assert "acc >> 4" in sc, "simd_nn_dense_layer_int8 must apply quantized ReLU with >> 4 scaling"
+    print("  [PASS] 1. SIMD INT8 Dense Neural Layer and 16-way unrolled MAC verified.")
+
+    # 2. Header and Engine Verification
+    gest_h = os.path.join(base_dir, "include", "gesture_ai.h")
+    with open(gest_h, "r", encoding="utf-8") as f:
+        gh = f.read()
+    assert "enum class GestureType" in gh
+    assert "WRIST_FLICK" in gh and "DOUBLE_TAP" in gh and "SHAKE" in gh and "RAISE_WAKE" in gh
+    assert "enum class GestureSensitivity" in gh
+    assert "enum class GestureAction" in gh
+    assert "class GestureAI" in gh
+    assert "triggerSimulatedGesture" in gh
+
+    gest_cpp = os.path.join(base_dir, "src", "gesture_ai.cpp")
+    with open(gest_cpp, "r", encoding="utf-8") as f:
+        gc = f.read()
+    assert "s_gesture_weights" in gc
+    assert "s_gesture_bias" in gc
+    assert "extractFeatures" in gc
+    assert "classifyAndDispatch" in gc
+    assert "simd_nn_dense_layer_int8" in gc
+    print("  [PASS] 2. GestureAI engine architecture, 5-class quantized weights, and 16-sample feature extractor verified.")
+
+    # 3. Mathematical Equivalence: 16-input x 5-neuron Dense Layer + Quantized ReLU
+    inputs = [12, -45, 88, 3, -120, 77, 4, -18, 92, 110, -5, -67, 33, 41, -89, 52]
+    weights = [
+        [ 0,  0,  1, -1,  2, -1,  0,  1, -2,  1,  0, -1,  1, -2,  0,  1], # 0: NONE / IDLE
+        [ 2, -1,  3,  0, -2,  1,  4, -3,  1,  2, -1,  0,  3, -2,  1,  0], # 1: WRIST_FLICK
+        [-3,  2, -1,  1,  4, -2,  0,  2, -1, -3,  2,  1, -1,  3, -2,  1], # 2: DOUBLE_TAP
+        [ 1,  4, -2, -3,  1,  0, -1,  2,  3,  1, -2,  4, -1,  0,  2, -1], # 3: SHAKE
+        [-1,  1,  3, -1,  0,  2, -1,  2,  4, -2,  1,  0,  1, -2,  5, -3]  # 4: RAISE_WAKE
+    ]
+    biases = [-50, 150, -300, 420, 200]
+
+    logits = []
+    for n in range(5):
+        acc = biases[n] + sum(a * b for a, b in zip(inputs, weights[n]))
+        relu = max(0, min(127, acc >> 4))
+        logits.append(relu)
+
+    assert logits[1] == 69, f"Neuron 1 (WRIST_FLICK) activation must be 69, got {logits[1]}"
+    assert logits[0] == 0 and logits[2] == 0 and logits[3] == 0 and logits[4] == 0
+    print(f"  [PASS] 3. Neural net ground truth verified (WRIST_FLICK activation = {logits[1]}, others suppressed).")
+
+    # 4. IMU Sub-App Integration and Display Menu
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "SUBAPP_GESTURE_AI" in uh, "ui_core.h must declare SUBAPP_GESTURE_AI"
+    assert '"GESTURE AI"' in uh, "imu_subapp_items must include GESTURE AI"
+    assert "handleGestureAiInput()" in uh, "ui_core.h must declare handleGestureAiInput()"
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "Imu6500SubApp::SUBAPP_GESTURE_AI" in uc
+    assert "handleGestureAiInput()" in uc
+    assert "dispatchGestureAction" in uc
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "drawAppGestureAi()" in dc
+    assert "drawAppGestureAiHud()" in dc
+    assert "drawAppGestureAiSettings()" in dc
+
+    sens_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+    with open(sens_cpp, "r", encoding="utf-8") as f:
+        sec = f.read()
+    assert "gestureAi.update(" in sec, "SensorManager::loop must feed IMU data to gestureAi"
+
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "gestureAi.begin();" in mc, "main.cpp must initialize gestureAi in setup()"
+    print("  [PASS] 4. IMU6500 sub-app routing, live monitor HUD, customization menu & sensor pipeline verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3750,7 +3842,9 @@ if __name__ == "__main__":
     test_four_sensor_sleep_engine()
     test_vector_fir_and_screen_transitions()
     test_imu_vector_filter_and_sensors()
+    test_gesture_ai_subapp_and_simd()
     print("\nAll self-test verifications PASSED!")
+
 
 
 

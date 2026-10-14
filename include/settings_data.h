@@ -69,6 +69,17 @@ struct SettingsData {
     int vibe_intensity = 100;         // 25, 50, 75, 100%
     bool vibe_button_clicks = true;
     bool vibe_alarms = true;
+
+    // TINYML ON-DEVICE GESTURE AI
+    bool gesture_ai_enabled = true;
+    int gesture_sensitivity_idx = 1;  // 0: LOW, 1: MED, 2: HIGH, 3: ULTRA
+    bool gesture_wake_enabled = true;
+    bool gesture_flick_enabled = true;
+    bool gesture_tap_enabled = true;
+    bool gesture_shake_enabled = true;
+    int gesture_flick_action = 2;     // ACTION_NEXT_PAGE
+    int gesture_tap_action = 4;       // ACTION_SELECT
+    int gesture_shake_action = 6;     // ACTION_TOGGLE_TORCH
 };
 
 // Option labels lists

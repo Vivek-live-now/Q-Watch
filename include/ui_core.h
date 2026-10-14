@@ -8,12 +8,14 @@
 #include "ir_engine.h"
 #include "sound_manager.h"
 #include "mochi_pet.h"
+#include "gesture_ai.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
     SUBAPP_ALTIMETER,
     SUBAPP_AIRMOUSE,
-    SUBAPP_MOUSE_SETTINGS
+    SUBAPP_MOUSE_SETTINGS,
+    SUBAPP_GESTURE_AI
 };
 
 enum class SettingsSubmenu {
@@ -151,6 +153,11 @@ public:
     Imu6500SubApp getImuSubApp() const { return imu_subapp; }
     int getImuSubAppSelection() const { return imu_subapp_selection; }
     int getMouseSettingsSelection() const { return mouse_settings_selection; }
+    int getGestureAiSelection() const { return gesture_ai_selection; }
+    int getGestureAiViewMode() const { return gesture_ai_view_mode; }
+    void setGestureAiViewMode(int mode) { gesture_ai_view_mode = mode; needs_redraw = true; }
+    void resetActivityTimer() { last_activity_time = millis(); }
+    void dispatchGestureAction(GestureAction action);
 
     SettingsSubmenu getSettingsSubmenu() const { return settings_submenu; }
     int getSettingsSelection() const { return settings_selection; }
@@ -270,9 +277,9 @@ public:
         "Zero Altitude", "Zero Level IMU", "Calibrate Gyro", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
     };
 
-    static const int IMU_SUBAPP_COUNT = 3;
+    static const int IMU_SUBAPP_COUNT = 4;
     const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
-        "IMU / HORIZON", "AIR MOUSE", "MOUSE SETTINGS"
+        "IMU / HORIZON", "AIR MOUSE", "MOUSE SETTINGS", "GESTURE AI"
     };
 
     static const int CLOCK_MENU_ITEM_COUNT = 8;
@@ -403,6 +410,8 @@ private:
     Imu6500SubApp imu_subapp;
     int imu_subapp_selection;
     int mouse_settings_selection;
+    int gesture_ai_selection;
+    int gesture_ai_view_mode;
 
     uint32_t last_activity_time;
     bool display_off;
@@ -546,6 +555,7 @@ public:
     void handleCompassInput();
     void handleAirMouseInput();
     void handleMouseSettingsInput();
+    void handleGestureAiInput();
 
     void handleSettingsMainInput();
     void handleConnectivityInput();

@@ -30,6 +30,8 @@ UICore::UICore() :
     imu_subapp(Imu6500SubApp::SUBAPP_MENU),
     imu_subapp_selection(0),
     mouse_settings_selection(0),
+    gesture_ai_selection(0),
+    gesture_ai_view_mode(0),
     last_activity_time(millis()),
     display_off(false),
     display_off_time(0),
@@ -3348,9 +3350,13 @@ void UICore::handleMotionInput() {
             } else if (imu_subapp_selection == 1) {
                 imu_subapp = Imu6500SubApp::SUBAPP_AIRMOUSE;
                 if (!airMouse.isEnabled()) airMouse.start();
-            } else {
+            } else if (imu_subapp_selection == 2) {
                 imu_subapp = Imu6500SubApp::SUBAPP_MOUSE_SETTINGS;
                 mouse_settings_selection = 0;
+            } else {
+                imu_subapp = Imu6500SubApp::SUBAPP_GESTURE_AI;
+                gesture_ai_selection = 0;
+                gesture_ai_view_mode = 0;
             }
             needs_redraw = true;
         }
@@ -3364,6 +3370,11 @@ void UICore::handleMotionInput() {
 
     if (imu_subapp == Imu6500SubApp::SUBAPP_MOUSE_SETTINGS) {
         handleMouseSettingsInput();
+        return;
+    }
+
+    if (imu_subapp == Imu6500SubApp::SUBAPP_GESTURE_AI) {
+        handleGestureAiInput();
         return;
     }
 
@@ -3696,6 +3707,143 @@ void UICore::handleMouseSettingsInput() {
         }
         needs_redraw = true;
     }
+}
+
+void UICore::handleGestureAiInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    // View Mode 1: LIVE TELEMETRY & INFERENCE MONITOR HUD
+    if (gesture_ai_view_mode == 1) {
+        if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_PRESS) {
+            soundManager.playNavBack();
+            gesture_ai_view_mode = 0;
+            needs_redraw = true;
+            return;
+        }
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavSelect();
+            gestureAi.toggleEnabled();
+            showToast(gestureAi.isEnabled() ? "[AI ENGINE ON]" : "[AI ENGINE OFF]", 1000);
+            needs_redraw = true;
+        } else if (up_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            gestureAi.cycleSensitivity();
+            showToast(gestureAi.getSensitivityName(), 800);
+            needs_redraw = true;
+        } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            soundManager.playNavMove();
+            // Interactive test cycle for developer / user verification
+            static uint8_t sim_g = 1;
+            gestureAi.triggerSimulatedGesture(static_cast<GestureType>(sim_g));
+            sim_g = (sim_g % 4) + 1;
+            needs_redraw = true;
+        }
+        return;
+    }
+
+    // View Mode 0: SETTINGS & CUSTOMIZATION MENU
+    // 0: Master Switch (ON/OFF)
+    // 1: Live HUD Monitor (Enter)
+    // 2: Sensitivity (LOW / MED / HIGH / ULTRA)
+    // 3: Raise Wake (ON/OFF)
+    // 4: Wrist Flick (ON/OFF)
+    // 5: Double Tap (ON/OFF)
+    // 6: Shake Watch (ON/OFF)
+    // 7: Flick Action (NEXT_PAGE / PREV_PAGE / TORCH / WAKE / NONE)
+    // 8: Tap Action (SELECT / NEXT_PAGE / TORCH / WAKE / NONE)
+    // 9: Shake Action (TOGGLE_TORCH / MUTE / WAKE / NONE)
+    // 10: Reset Defaults
+    const int TOTAL_ITEMS = 11;
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        gesture_ai_selection--;
+        if (gesture_ai_selection < 0) gesture_ai_selection = 0;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        gesture_ai_selection++;
+        if (gesture_ai_selection >= TOTAL_ITEMS) gesture_ai_selection = TOTAL_ITEMS - 1;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        switch (gesture_ai_selection) {
+            case 0:
+                gestureAi.toggleEnabled();
+                showToast(gestureAi.isEnabled() ? "[GESTURE AI ON]" : "[GESTURE AI OFF]", 1000);
+                break;
+            case 1:
+                gesture_ai_view_mode = 1; // Enter Live HUD
+                break;
+            case 2:
+                gestureAi.cycleSensitivity();
+                showToast(gestureAi.getSensitivityName(), 800);
+                break;
+            case 3:
+                gestureAi.toggleGestureEnabled(GestureType::RAISE_WAKE);
+                showToast(gestureAi.isGestureEnabled(GestureType::RAISE_WAKE) ? "[RAISE ON]" : "[RAISE OFF]", 1000);
+                break;
+            case 4:
+                gestureAi.toggleGestureEnabled(GestureType::WRIST_FLICK);
+                showToast(gestureAi.isGestureEnabled(GestureType::WRIST_FLICK) ? "[FLICK ON]" : "[FLICK OFF]", 1000);
+                break;
+            case 5:
+                gestureAi.toggleGestureEnabled(GestureType::DOUBLE_TAP);
+                showToast(gestureAi.isGestureEnabled(GestureType::DOUBLE_TAP) ? "[TAP ON]" : "[TAP OFF]", 1000);
+                break;
+            case 6:
+                gestureAi.toggleGestureEnabled(GestureType::SHAKE);
+                showToast(gestureAi.isGestureEnabled(GestureType::SHAKE) ? "[SHAKE ON]" : "[SHAKE OFF]", 1000);
+                break;
+            case 7:
+                gestureAi.cycleGestureAction(GestureType::WRIST_FLICK);
+                showToast(gestureAi.getActionName(gestureAi.getGestureAction(GestureType::WRIST_FLICK)), 800);
+                break;
+            case 8:
+                gestureAi.cycleGestureAction(GestureType::DOUBLE_TAP);
+                showToast(gestureAi.getActionName(gestureAi.getGestureAction(GestureType::DOUBLE_TAP)), 800);
+                break;
+            case 9:
+                gestureAi.cycleGestureAction(GestureType::SHAKE);
+                showToast(gestureAi.getActionName(gestureAi.getGestureAction(GestureType::SHAKE)), 800);
+                break;
+            case 10:
+                gestureAi.resetDefaults();
+                showToast("[DEFAULTS RESTORED]", 1200);
+                break;
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::dispatchGestureAction(GestureAction action) {
+    resetActivityTimer();
+    soundManager.playNavSelect();
+    if (action == GestureAction::ACTION_NEXT_PAGE) {
+        showToast("[NEXT PAGE]", 700);
+        processNavDown();
+    } else if (action == GestureAction::ACTION_PREV_PAGE) {
+        showToast("[PREV PAGE]", 700);
+        processNavUp();
+    } else if (action == GestureAction::ACTION_BACK) {
+        showToast("[BACK]", 700);
+        if (current_state != UIState::APP_HOME) {
+            current_state = UIState::MAIN_MENU;
+        }
+    } else if (action == GestureAction::ACTION_SELECT) {
+        showToast("[SELECT]", 700);
+    }
+    needs_redraw = true;
 }
 
 void UICore::handleFileServerDetailsInput() {

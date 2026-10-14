@@ -87,6 +87,15 @@ void SettingsManager::load() {
         else if (key == "vibe_intensity") settings.vibe_intensity = val.toInt();
         else if (key == "vibe_button_clicks") settings.vibe_button_clicks = (val == "1");
         else if (key == "vibe_alarms") settings.vibe_alarms = (val == "1");
+        else if (key == "gesture_ai_enabled") settings.gesture_ai_enabled = (val == "1");
+        else if (key == "gesture_sensitivity_idx") settings.gesture_sensitivity_idx = val.toInt();
+        else if (key == "gesture_wake_enabled") settings.gesture_wake_enabled = (val == "1");
+        else if (key == "gesture_flick_enabled") settings.gesture_flick_enabled = (val == "1");
+        else if (key == "gesture_tap_enabled") settings.gesture_tap_enabled = (val == "1");
+        else if (key == "gesture_shake_enabled") settings.gesture_shake_enabled = (val == "1");
+        else if (key == "gesture_flick_action") settings.gesture_flick_action = val.toInt();
+        else if (key == "gesture_tap_action") settings.gesture_tap_action = val.toInt();
+        else if (key == "gesture_shake_action") settings.gesture_shake_action = val.toInt();
             }
         }
     }
@@ -169,6 +178,15 @@ void SettingsManager::save() {
     out += "vibe_intensity=" + String(settings.vibe_intensity) + "\n";
     out += "vibe_button_clicks=" + String(settings.vibe_button_clicks ? "1" : "0") + "\n";
     out += "vibe_alarms=" + String(settings.vibe_alarms ? "1" : "0") + "\n";
+    out += "gesture_ai_enabled=" + String(settings.gesture_ai_enabled ? "1" : "0") + "\n";
+    out += "gesture_sensitivity_idx=" + String(settings.gesture_sensitivity_idx) + "\n";
+    out += "gesture_wake_enabled=" + String(settings.gesture_wake_enabled ? "1" : "0") + "\n";
+    out += "gesture_flick_enabled=" + String(settings.gesture_flick_enabled ? "1" : "0") + "\n";
+    out += "gesture_tap_enabled=" + String(settings.gesture_tap_enabled ? "1" : "0") + "\n";
+    out += "gesture_shake_enabled=" + String(settings.gesture_shake_enabled ? "1" : "0") + "\n";
+    out += "gesture_flick_action=" + String(settings.gesture_flick_action) + "\n";
+    out += "gesture_tap_action=" + String(settings.gesture_tap_action) + "\n";
+    out += "gesture_shake_action=" + String(settings.gesture_shake_action) + "\n";
 
     fileManager.write("/config/settings", out);
 

@@ -22,6 +22,7 @@
 #include "simd_accel.h"
 #include "mochi_pet.h"
 #include "vibration_manager.h"
+#include "gesture_ai.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -1594,6 +1595,147 @@ void DisplayManager::drawAppMouseSettings() {
     }
 }
 
+void DisplayManager::drawAppGestureAi() {
+    if (ui.getGestureAiViewMode() == 1) {
+        drawAppGestureAiHud();
+    } else {
+        drawAppGestureAiSettings();
+    }
+}
+
+void DisplayManager::drawAppGestureAiHud() {
+    oled.setFont(u8g2_font_5x7_tr);
+    if (gestureAi.isEnabled()) {
+        oled.drawStr(2, 7, "GESTURE AI [ON]");
+    } else {
+        oled.drawStr(2, 7, "GESTURE AI [OFF]");
+    }
+    oled.drawLine(0, 9, 128, 9);
+
+    GestureType g = gestureAi.getLastDetectedGesture();
+    const char* g_name = gestureAi.getGestureName(g);
+    uint8_t conf = gestureAi.getLastConfidence();
+
+    // Detected Gesture Banner (inverted box if active gesture)
+    oled.setFont(u8g2_font_6x10_tr);
+    if (g != GestureType::NONE) {
+        oled.drawBox(2, 12, 124, 16);
+        oled.setDrawColor(0);
+        int str_w = oled.getStrWidth(g_name);
+        int str_x = (128 - str_w) / 2;
+        oled.drawStr(str_x, 24, g_name);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawFrame(2, 12, 124, 16);
+        int str_w = oled.getStrWidth("IDLE / READY");
+        int str_x = (128 - str_w) / 2;
+        oled.drawStr(str_x, 24, "IDLE / READY");
+    }
+
+    // Confidence Bar
+    oled.setFont(u8g2_font_5x7_tr);
+    char conf_str[16];
+    snprintf(conf_str, sizeof(conf_str), "CONF: %u%%", (unsigned int)conf);
+    oled.drawStr(4, 37, conf_str);
+    oled.drawFrame(56, 31, 68, 7);
+    int bar_w = (conf * 64) / 100;
+    if (bar_w > 64) bar_w = 64;
+    if (bar_w > 0) {
+        oled.drawBox(58, 33, bar_w, 3);
+    }
+
+    // SIMD Latency & Rate
+    char stat1[32];
+    snprintf(stat1, sizeof(stat1), "SIMD: %uus  RATE: 50Hz", (unsigned int)gestureAi.getLastInferenceLatencyUs());
+    oled.drawStr(4, 47, stat1);
+
+    // Inferences count & Action
+    char stat2[32];
+    snprintf(stat2, sizeof(stat2), "INF: %lu  SENS: %s", (unsigned long)gestureAi.getInferenceCount(),
+             gestureAi.getSensitivity() == GestureSensitivity::LOW ? "LOW" :
+             gestureAi.getSensitivity() == GestureSensitivity::MEDIUM ? "MED" :
+             gestureAi.getSensitivity() == GestureSensitivity::HIGH ? "HIGH" : "ULTRA");
+    oled.drawStr(4, 55, stat2);
+
+    // Footer
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(2, 63, "OK:ON/OFF  UP:SENS  C:CFG");
+}
+
+void DisplayManager::drawAppGestureAiSettings() {
+    oled.setFont(u8g2_font_5x7_tr);
+    oled.drawStr(2, 7, "GESTURE AI CFG");
+    oled.drawLine(0, 9, 128, 9);
+
+    int sel = ui.getGestureAiSelection();
+    const int total_items = 11;
+
+    char buf_master[32];
+    snprintf(buf_master, sizeof(buf_master), "Master: %s", gestureAi.isEnabled() ? "ON" : "OFF");
+
+    char buf_sens[32];
+    snprintf(buf_sens, sizeof(buf_sens), "Sens: %s", gestureAi.getSensitivityName());
+
+    char buf_wake[32];
+    snprintf(buf_wake, sizeof(buf_wake), "Raise Wake: %s", gestureAi.isGestureEnabled(GestureType::RAISE_WAKE) ? "ON" : "OFF");
+
+    char buf_flick[32];
+    snprintf(buf_flick, sizeof(buf_flick), "Wrist Flick: %s", gestureAi.isGestureEnabled(GestureType::WRIST_FLICK) ? "ON" : "OFF");
+
+    char buf_tap[32];
+    snprintf(buf_tap, sizeof(buf_tap), "Double Tap: %s", gestureAi.isGestureEnabled(GestureType::DOUBLE_TAP) ? "ON" : "OFF");
+
+    char buf_shake[32];
+    snprintf(buf_shake, sizeof(buf_shake), "Shake Watch: %s", gestureAi.isGestureEnabled(GestureType::SHAKE) ? "ON" : "OFF");
+
+    char buf_act_flick[32];
+    snprintf(buf_act_flick, sizeof(buf_act_flick), "Flick: %s", gestureAi.getActionName(gestureAi.getGestureAction(GestureType::WRIST_FLICK)));
+
+    char buf_act_tap[32];
+    snprintf(buf_act_tap, sizeof(buf_act_tap), "Tap: %s", gestureAi.getActionName(gestureAi.getGestureAction(GestureType::DOUBLE_TAP)));
+
+    char buf_act_shake[32];
+    snprintf(buf_act_shake, sizeof(buf_act_shake), "Shake: %s", gestureAi.getActionName(gestureAi.getGestureAction(GestureType::SHAKE)));
+
+    const char* items[total_items] = {
+        buf_master,
+        "Live Monitor >",
+        buf_sens,
+        buf_wake,
+        buf_flick,
+        buf_tap,
+        buf_shake,
+        buf_act_flick,
+        buf_act_tap,
+        buf_act_shake,
+        "Reset Defaults"
+    };
+
+    int offset = (sel >= 4) ? sel - 3 : 0;
+    oled.setFont(u8g2_font_6x10_tr);
+    for (int i = offset; i < offset + 4 && i < total_items; i++) {
+        int y = 22 + ((i - offset) * 10);
+        if (i == sel) {
+            oled.drawBox(2, y - 8, 120, 10);
+            oled.setDrawColor(0);
+            oled.drawStr(4, y, items[i]);
+            oled.setDrawColor(1);
+        } else {
+            oled.drawStr(4, y, items[i]);
+        }
+    }
+
+    if (total_items > 4) {
+        int scroll_h = 36;
+        int scroll_y = 13 + ((float)offset / (total_items - 4)) * (scroll_h - 10);
+        oled.drawFrame(124, 13, 3, scroll_h);
+        oled.drawBox(124, scroll_y, 3, 10);
+    }
+
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 63, "OK:TOGGLE/SEL CANCEL:BACK");
+}
+
 void DisplayManager::drawAppMotion() {
     Imu6500SubApp sub = ui.getImuSubApp();
     if (sub == Imu6500SubApp::SUBAPP_MENU) {
@@ -1606,6 +1748,8 @@ void DisplayManager::drawAppMotion() {
         }
     } else if (sub == Imu6500SubApp::SUBAPP_MOUSE_SETTINGS) {
         drawAppMouseSettings();
+    } else if (sub == Imu6500SubApp::SUBAPP_GESTURE_AI) {
+        drawAppGestureAi();
     } else {
         MotionState s = ui.getMotionState();
         if (s == MotionState::PAGE_LEVEL) {

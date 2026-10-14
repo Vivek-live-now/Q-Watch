@@ -19,6 +19,7 @@
 #include "vibration_manager.h"
 #include "air_mouse.h"
 #include "qlink.h"
+#include "gesture_ai.h"
 
 // Hardware RTC memory boot loop detector & recovery guard
 #ifdef ARDUINO
@@ -91,6 +92,7 @@ void setup() {
   timekeeping.begin();
   animEngine.begin();
   airMouse.begin();
+  gestureAi.begin();
 #ifdef ARDUINO
   if (!s_safe_mode_active) {
     qlink.begin();

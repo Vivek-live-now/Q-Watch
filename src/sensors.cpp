@@ -3,6 +3,7 @@
 #include "sensors.h"
 #include "hw_config.h"
 #include "simd_accel.h"
+#include "gesture_ai.h"
 #include <math.h>
 
 SensorManager sensors;
@@ -1078,6 +1079,12 @@ void SensorManager::loop() {
         applyCalibrationAndMapping();
         updateMadgwick(dt);
         computeEulerAngles();
+
+        if (gestureAi.isEnabled()) {
+            gestureAi.update(cal_data.ax, cal_data.ay, cal_data.az,
+                             cal_data.gx, cal_data.gy, cal_data.gz,
+                             orientation.pitch, orientation.roll);
+        }
     }
 }
 

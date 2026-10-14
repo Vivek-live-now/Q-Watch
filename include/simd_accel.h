@@ -65,6 +65,11 @@ void simd_generate_wipe_mask(uint8_t* mask, uint8_t progress_pct, uint8_t direct
 // Filters packed [ax, ay, az, 0, gx, gy, gz, 0] across 8 parallel lanes using Q15 alpha
 void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15);
 
+// Candidate 5: TinyML INT8 Dot-Product & ReLU Neural Network Layer
+// Evaluates dense layer with num_inputs (16-byte aligned) and num_neurons:
+// output[n] = relu((bias[n] + sum(inputs[i] * weights[n * num_inputs + i])) >> 4)
+void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const int32_t* bias, int8_t* outputs, size_t num_inputs, size_t num_neurons);
+
 #ifdef __cplusplus
 }
 #endif

@@ -345,3 +345,22 @@ void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t al
         filtered_y[j] = (int16_t)(filtered_y[j] + ((diff * a) >> 15));
     }
 }
+
+void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const int32_t* bias, int8_t* outputs, size_t num_inputs, size_t num_neurons) {
+    if (!inputs || !weights || !bias || !outputs || num_inputs == 0 || num_neurons == 0) return;
+
+    for (size_t n = 0; n < num_neurons; n++) {
+        int32_t acc = bias[n];
+        const int8_t* w_row = &weights[n * num_inputs];
+
+        #pragma GCC unroll 16
+        for (size_t i = 0; i < num_inputs; i++) {
+            acc += (int32_t)inputs[i] * (int32_t)w_row[i];
+        }
+
+        int32_t relu = acc >> 4;
+        if (relu < 0) relu = 0;
+        else if (relu > 127) relu = 127;
+        outputs[n] = (int8_t)relu;
+    }
+}
