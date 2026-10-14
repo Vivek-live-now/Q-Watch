@@ -33,6 +33,7 @@ struct SettingsData {
     int contrast_idx = 3;         // 0: 25%, 1: 50%, 2: 75%, 3: 100%
     bool invert_display = false;
     int ui_option_idx = 0;
+    bool gdma_enabled = true;     // Hardware GDMA Asynchronous Display Refresh
 
     // UNIFIED AUTO DATA RECORDING & SENSORS
     bool auto_record_enabled = false;    // Unified master switch (Default: OFF -> zero periodic timer wakeups)

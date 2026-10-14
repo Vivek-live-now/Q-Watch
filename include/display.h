@@ -4,10 +4,11 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include "simd_accel.h"
+#include "gdma_manager.h"
 
 class DisplayManager {
 public:
-    DisplayManager() : mag_history_idx(0), display_dimmed(false), transition_active(false), transition_type(SIMD_TRANSITION_NONE), transition_start_time(0), transition_duration_ms(120) {
+    DisplayManager() : mag_history_idx(0), display_dimmed(false), transition_active(false), transition_type(SIMD_TRANSITION_NONE), transition_start_time(0), transition_duration_ms(120), gdma_enabled(true) {
         for(int i=0; i<64; i++) mag_history[i] = 0;
     }
 public:
@@ -23,6 +24,12 @@ public:
     void xorBuffer(const uint8_t* mask);
     void andBuffer(const uint8_t* mask);
     void orBuffer(const uint8_t* mask);
+
+    // Hardware GDMA Asynchronous Display Refresh
+    bool isGdmaEnabled() const { return gdma_enabled; }
+    void setGdmaEnabled(bool enable) { gdma_enabled = enable; }
+    void flushAsync();
+    const GdmaTransferStats& getGdmaStats() const;
 
     // Vector Screen Transitions (128-bit SIMD Animation Engine)
     void startTransition(simd_transition_t type, uint16_t duration_ms = 120);
@@ -140,6 +147,7 @@ private:
     void drawToastOverlay();
 
     bool display_dimmed;
+    bool gdma_enabled;
     bool transition_active;
     simd_transition_t transition_type;
     uint32_t transition_start_time;

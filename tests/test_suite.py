@@ -4065,6 +4065,86 @@ def test_magnetometer_filter_suite_and_simd():
     assert "FILT:" in dc
     print("  [PASS] 4. Compass UI menu item, display telemetry, auto-probe & NVS persistence verified.")
 
+def test_gdma_display_and_m2m_engine():
+    print("\n--- 56. ESP32-S3 GDMA Subsystem & Asynchronous Display Pipeline ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    gdma_h = os.path.join(base_dir, "include", "gdma_manager.h")
+    gdma_cpp = os.path.join(base_dir, "src", "gdma_manager.cpp")
+
+    # 1. GDMA Header Declarations & Architecture
+    with open(gdma_h, "r", encoding="utf-8") as f:
+        gh = f.read()
+    assert "struct GdmaTransferStats" in gh, "gdma_manager.h must declare GdmaTransferStats"
+    assert "total_transfers" in gh and "dropped_frames" in gh and "last_transfer_time_us" in gh
+    assert "enum class GdmaState" in gh
+    assert "TRANSMITTING" in gh and "IDLE" in gh
+    assert "class GdmaManager" in gh
+    assert "BUFFER_SIZE = 1024" in gh
+    assert "PAGE_COUNT = 8" in gh
+    assert "flushAsync(const uint8_t*" in gh
+    assert "waitIdle()" in gh
+    assert "memcpyM2M(" in gh
+    assert "extern GdmaManager gdmaManager;" in gh
+
+    with open(gdma_cpp, "r", encoding="utf-8") as f:
+        gc = f.read()
+    assert "GdmaManager gdmaManager;" in gc
+    assert "active_buf_idx ^= 1" in gc, "gdma_manager.cpp must swap ping-pong buffer indices on flush"
+    assert "memcpyM2M" in gc
+    print("  [PASS] 1. GDMA Manager header declarations, state machine & ping-pong double buffering verified.")
+
+    # 2. Host C++ Binary Compilation & Execution
+    test_src = os.path.join(base_dir, "tests", "test_gdma_system_host.cpp")
+    test_bin = os.path.join(base_dir, "test_gdma_system_host_bin")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+    compile_cmd = [
+        "g++", "-std=c++17", "-O2", "-Iinclude", "-DHOST_TEST",
+        test_src, gdma_cpp, simd_cpp,
+        "-o", test_bin
+    ]
+    res_cmp = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res_cmp.returncode == 0, f"Failed to compile test_gdma_system_host:\n{res_cmp.stderr}"
+
+    res_run = subprocess.run([test_bin], cwd=base_dir, capture_output=True, text=True)
+    assert res_run.returncode == 0, f"Host C++ GDMA unit test failed:\n{res_run.stderr}"
+    assert "[PASS]" in res_run.stdout
+    if os.path.exists(test_bin):
+        os.remove(test_bin)
+    print("  [PASS] 2. Host C++ direct execution verified with double buffering, ping-pong swap & M2M block copy.")
+
+    # 3. DisplayManager GDMA Integration
+    disp_h = os.path.join(base_dir, "include", "display.h")
+    with open(disp_h, "r", encoding="utf-8") as f:
+        dh = f.read()
+    assert "#include \"gdma_manager.h\"" in dh
+    assert "bool isGdmaEnabled() const" in dh
+    assert "void setGdmaEnabled(bool enable)" in dh
+    assert "void flushAsync();" in dh
+    assert "const GdmaTransferStats& getGdmaStats() const;" in dh
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "gdmaManager.begin(" in dc, "display.cpp must initialize gdmaManager in begin()"
+    assert "void DisplayManager::flushAsync()" in dc
+    assert "gdmaManager.memcpyM2M(transition_old_buf" in dc, "display.cpp must use M2M for screen transition snapshots"
+    assert "gdmaManager.waitIdle();" in dc, "display.cpp must synchronize GDMA bus in setPowerSave and setDim"
+    print("  [PASS] 3. DisplayManager asynchronous flush, M2M transition snapshot & bus sync verified.")
+
+    # 4. SettingsData Persistence
+    settings_h = os.path.join(base_dir, "include", "settings_data.h")
+    with open(settings_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "bool gdma_enabled = true;" in sh
+
+    settings_cpp = os.path.join(base_dir, "src", "settings_data.cpp")
+    with open(settings_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert 'else if (key == "gdma_enabled")' in sc
+    assert 'out += "gdma_enabled="' in sc
+    print("  [PASS] 4. SettingsData NVS persistence and user toggle verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -4112,7 +4192,9 @@ if __name__ == "__main__":
     test_poly_synth_and_simd_mixing()
     test_wireframe_3d_and_simd_transform()
     test_magnetometer_filter_suite_and_simd()
+    test_gdma_display_and_m2m_engine()
     print("\nAll self-test verifications PASSED!")
+
 
 
 

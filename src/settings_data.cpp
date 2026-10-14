@@ -60,6 +60,7 @@ void SettingsManager::load() {
         else if (key == "contrast") settings.contrast_idx = val.toInt();
         else if (key == "invert_display") settings.invert_display = (val == "1");
         else if (key == "ui_option_idx") settings.ui_option_idx = val.toInt();
+        else if (key == "gdma_enabled") settings.gdma_enabled = (val == "1");
         else if (key == "auto_record_enabled") settings.auto_record_enabled = (val == "1");
         else if (key == "auto_record_interval_idx") settings.auto_record_interval_idx = val.toInt();
         else if (key == "auto_record_target_idx") settings.auto_record_target_idx = val.toInt();
@@ -154,6 +155,7 @@ void SettingsManager::save() {
     out += "contrast=" + String(settings.contrast_idx) + "\n";
     out += "invert_display=" + String(settings.invert_display ? "1" : "0") + "\n";
     out += "ui_option_idx=" + String(settings.ui_option_idx) + "\n";
+    out += "gdma_enabled=" + String(settings.gdma_enabled ? "1" : "0") + "\n";
     out += "auto_record_enabled=" + String(settings.auto_record_enabled ? "1" : "0") + "\n";
     out += "auto_record_interval_idx=" + String(settings.auto_record_interval_idx) + "\n";
     out += "auto_record_target_idx=" + String(settings.auto_record_target_idx) + "\n";

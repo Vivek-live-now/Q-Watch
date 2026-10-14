@@ -25,6 +25,7 @@
 #include "gesture_ai.h"
 #include "poly_synth.h"
 #include "wireframe_3d.h"
+#include "gdma_manager.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -38,9 +39,22 @@ void DisplayManager::begin() {
     SPI.begin(OLED_CLK, -1, OLED_MOSI, OLED_CS);
     oled.begin();
     oled.setBusClock(8000000UL);
+    gdmaManager.begin(OLED_CLK, OLED_MOSI, OLED_CS, OLED_DC, OLED_RST, 8000000UL);
     applyDisplaySettings();
     oled.clearBuffer();
     oled.sendBuffer();
+}
+
+void DisplayManager::flushAsync() {
+    if (gdma_enabled && gdmaManager.isInitialized()) {
+        gdmaManager.flushAsync(oled.getBufferPtr());
+    } else {
+        oled.sendBuffer();
+    }
+}
+
+const GdmaTransferStats& DisplayManager::getGdmaStats() const {
+    return gdmaManager.getStats();
 }
 
 const uint8_t* DisplayManager::getBufferPtr() const {
@@ -82,7 +96,7 @@ void DisplayManager::startTransition(simd_transition_t type, uint16_t duration_m
 void DisplayManager::captureTransitionSnapshot() {
     uint8_t* current_buf = oled.getBufferPtr();
     if (current_buf) {
-        memcpy(transition_old_buf, current_buf, 1024);
+        gdmaManager.memcpyM2M(transition_old_buf, current_buf, 1024);
     }
 }
 
@@ -162,7 +176,7 @@ void DisplayManager::update() {
         }
     }
 
-    oled.sendBuffer();
+    flushAsync();
 }
 
 void DisplayManager::drawToastOverlay() {
@@ -3209,6 +3223,7 @@ void DisplayManager::drawTimeSyncStatusScreen() {
 
 void DisplayManager::applyDisplaySettings() {
     SettingsData& s = settingsManager.get();
+    gdma_enabled = s.gdma_enabled;
 
     // Contrast Presets: 0: 25% (64), 1: 50% (128), 2: 75% (192), 3: 100% (255)
     uint8_t contrast_val = 255;
@@ -3228,6 +3243,9 @@ void DisplayManager::applyDisplaySettings() {
 }
 
 void DisplayManager::setPowerSave(bool enable) {
+    if (gdma_enabled) {
+        gdmaManager.waitIdle();
+    }
     if (enable) {
         oled.clearDisplay();
     }
@@ -3236,6 +3254,9 @@ void DisplayManager::setPowerSave(bool enable) {
 
 void DisplayManager::setDim(bool dim) {
     display_dimmed = dim;
+    if (gdma_enabled) {
+        gdmaManager.waitIdle();
+    }
     if (dim) {
         oled.setContrast(16); // Ultra-low contrast (saves up to 70% OLED emission power)
     } else {
