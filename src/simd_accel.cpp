@@ -346,6 +346,18 @@ void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t al
     }
 }
 
+void simd_filter_mag_3d(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15) {
+    if (!filtered_y || !raw_x) return;
+
+    int32_t a = (int32_t)alpha_q15;
+    // 4-lane parallel execution (3D Mag: mx, my, mz, 0)
+    #pragma GCC unroll 4
+    for (int j = 0; j < 4; j++) {
+        int32_t diff = (int32_t)raw_x[j] - (int32_t)filtered_y[j];
+        filtered_y[j] = (int16_t)(filtered_y[j] + ((diff * a) >> 15));
+    }
+}
+
 void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const int32_t* bias, int8_t* outputs, size_t num_inputs, size_t num_neurons) {
     if (!inputs || !weights || !bias || !outputs || num_inputs == 0 || num_neurons == 0) return;
 

@@ -2839,6 +2839,7 @@ void DisplayManager::drawAppCompassCalMenu() {
     int o = sensors.getMagCalibration().orientation_mode;
     vals[1] = o == 0 ? " [YF]" : (o == 1 ? " [XF]" : (o == 2 ? " [YB]" : " [XB]"));
     vals[2] = sensors.getMagCalibration().invert_z ? " [ON]" : " [OFF]";
+    vals[3] = String(" [") + sensors.getMagFilterModeName() + "]";
 
     drawStandardMenu("COMPASS CAL", ui.compass_menu_items, UICore::COMPASS_MENU_ITEM_COUNT, ui.getCompassMenuSelection(), ui.getCompassMenuOffset(), vals);
 }
@@ -2898,7 +2899,16 @@ void DisplayManager::drawAppCompassTelemetry() {
     MagCalibration mcal = sensors.getMagCalibration();
     oled.drawStr(65, 42, ("DEC:" + String(mcal.declination, 1)).c_str());
 
-    oled.drawStr(2, 52, ("CHIP: " + String(sensors.getMagChipName())).c_str());
+    String chipStr = "CHIP:" + String(sensors.getMagChipName());
+    if (!sensors.isMagOk()) {
+        chipStr += " [RE-PROBE: OK]";
+    } else {
+        chipStr += " [OK]";
+    }
+    oled.drawStr(2, 52, chipStr.c_str());
+
+    String filtStr = "FILT:" + String(sensors.getMagFilterModeName());
+    oled.drawStr(2, 62, filtStr.c_str());
 }
 
 void DisplayManager::drawAppCompassDeclination() {

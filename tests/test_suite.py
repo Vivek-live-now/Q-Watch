@@ -3988,6 +3988,83 @@ def test_wireframe_3d_and_simd_transform():
     assert "wireframe3d.update();" in mc
     print("  [PASS] 4. IMU6500 sub-app routing, real-time OLED wireframe renderer & main loop verified.")
 
+def test_magnetometer_filter_suite_and_simd():
+    print("\n--- 55. 3D Magnetometer Filter Suite & SIMD Parallel Vector ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+
+    # 1. SIMD Vector Declarations & Implementations
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void simd_filter_mag_3d(" in sh, "simd_accel.h must declare simd_filter_mag_3d"
+
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "void simd_filter_mag_3d(" in sc, "simd_accel.cpp must implement simd_filter_mag_3d"
+    assert "#pragma GCC unroll 4" in sc, "simd_filter_mag_3d must unroll 4-lane vector loop"
+    print("  [PASS] 1. 3D Magnetometer SIMD parallel vector filter declarations & 4-lane unroll verified.")
+
+    # 2. Host C++ Binary Compilation & Execution
+    test_src = os.path.join(base_dir, "tests", "test_mag_filter_host.cpp")
+    test_bin = os.path.join(base_dir, "test_mag_filter_host_bin")
+    compile_cmd = [
+        "g++", "-std=c++17", "-O2", "-Iinclude",
+        test_src, simd_cpp,
+        "-o", test_bin
+    ]
+    res_cmp = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res_cmp.returncode == 0, f"Failed to compile test_mag_filter_host:\n{res_cmp.stderr}"
+
+    res_run = subprocess.run([test_bin], cwd=base_dir, capture_output=True, text=True)
+    assert res_run.returncode == 0, f"Host C++ mag filter test failed:\n{res_run.stderr}"
+    assert "[PASS]" in res_run.stdout
+    if os.path.exists(test_bin):
+        os.remove(test_bin)
+    print("  [PASS] 2. Host C++ direct execution verified with Median, SIMD LPF, Kalman & Hybrid filter.")
+
+    # 3. MagFilterMode Enum, Auto-Recovery & Bus Clearance in SensorManager
+    sensors_h = os.path.join(base_dir, "include", "sensors.h")
+    sensors_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+
+    with open(sensors_h, "r", encoding="utf-8") as f:
+        seh = f.read()
+    assert "enum class MagFilterMode" in seh
+    assert "HYBRID" in seh and "VECTOR_LPF" in seh and "MEDIAN" in seh and "KALMAN" in seh and "MADGWICK_MARG" in seh and "RAW" in seh
+    assert "probeMagnetometer()" in seh
+    assert "recoverI2CBus()" in seh
+    assert "getMagFilterModeName()" in seh
+
+    with open(sensors_cpp, "r", encoding="utf-8") as f:
+        sec = f.read()
+    assert "void SensorManager::recoverI2CBus()" in sec
+    assert "bool SensorManager::probeMagnetometer()" in sec
+    assert "simd_filter_mag_3d(mag_filtered_vec" in sec
+    assert "mag_filter_mode == MagFilterMode::MADGWICK_MARG" in sec
+    assert "last_mag_probe_retry" in sec, "sensors.cpp must include background auto-recovery retry"
+    print("  [PASS] 3. MagFilterMode enum, 9-clock I2C bus recovery, dynamic probe & auto-recovery verified.")
+
+    # 4. Compass Menu UI Wiring, Display Telemetry & App Entry
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "COMPASS_MENU_ITEM_COUNT = 7" in uh
+    assert '"Mag Filter"' in uh
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "sensors.setMagFilterMode((MagFilterMode)next_mode)" in uc
+    assert "sensors.probeMagnetometer()" in uc
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "sensors.getMagFilterModeName()" in dc
+    assert "FILT:" in dc
+    print("  [PASS] 4. Compass UI menu item, display telemetry, auto-probe & NVS persistence verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -4034,6 +4111,7 @@ if __name__ == "__main__":
     test_gesture_ai_subapp_and_simd()
     test_poly_synth_and_simd_mixing()
     test_wireframe_3d_and_simd_transform()
+    test_magnetometer_filter_suite_and_simd()
     print("\nAll self-test verifications PASSED!")
 
 

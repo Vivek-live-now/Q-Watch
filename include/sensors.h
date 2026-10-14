@@ -51,6 +51,15 @@ enum class MagChipType {
     HMC5883L   // 0x1E (MAG_CHIP_HMC5883L)
 };
 
+enum class MagFilterMode {
+    HYBRID = 0,        // 3-Sample Median + 4-Lane SIMD Vector LPF (Default)
+    VECTOR_LPF = 1,    // 4-Lane SIMD Vector LPF
+    MEDIAN = 2,        // 3-Axis Sliding Window Median
+    KALMAN = 3,        // 3-Axis Kalman Filter State Estimator
+    MADGWICK_MARG = 4, // 9-DOF Madgwick AHRS Orientation
+    RAW = 5            // Direct Unfiltered Passthrough
+};
+
 enum class MagCalState {
     IDLE,
     SWEEPING,
@@ -155,6 +164,18 @@ public:
     void setImuFilterAlpha(uint16_t alpha_q15) { imu_filter_alpha_q15 = alpha_q15; }
     uint16_t getImuFilterAlpha() const { return imu_filter_alpha_q15; }
 
+    // 3D Magnetometer Filter Suite (SIMD Vector LPF, Median, Kalman, Madgwick)
+    void setMagFilterMode(MagFilterMode mode);
+    MagFilterMode getMagFilterMode() const { return mag_filter_mode; }
+    const char* getMagFilterModeName() const;
+    void setMagFilterAlpha(uint16_t alpha_q15) { mag_filter_alpha_q15 = alpha_q15; }
+    uint16_t getMagFilterAlpha() const { return mag_filter_alpha_q15; }
+
+    // Dynamic Hardware Probe & I2C Bus Recovery
+    bool probeMagnetometer();
+    void recoverI2CBus();
+    void resetMagFilterState();
+
     // For Telemetry
     RawSensorData getRawData() const { return raw_data; }
     CalibratedSensorData getCalData() const { return cal_data; }
@@ -201,6 +222,24 @@ private:
     int16_t imu_filtered_vec[8] __attribute__((aligned(16)));
     bool imu_filter_enabled;
     uint16_t imu_filter_alpha_q15;
+
+    // 3D Magnetometer Filter Suite State
+    MagFilterMode mag_filter_mode;
+    uint16_t mag_filter_alpha_q15;
+    int16_t mag_filtered_vec[4] __attribute__((aligned(16)));
+    int16_t mag_history[3][3];
+    uint8_t mag_hist_count;
+    uint8_t mag_hist_idx;
+
+    // Kalman Filter State for 3D Magnetometer
+    float mag_kalman_x[3];
+    float mag_kalman_p[3];
+    float mag_kalman_q;
+    float mag_kalman_r;
+    bool mag_kalman_init;
+
+    uint32_t last_mag_probe_retry;
+    uint8_t mag_error_count;
 
     Adafruit_BME280 bme;
     EnvironmentData env_data;

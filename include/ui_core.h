@@ -231,11 +231,12 @@ public:
     int getCalOrientPreset() const { return cal_orient_preset; }
     void setCalOrientPreset(int p) { cal_orient_preset = p; needs_redraw = true; }
 
-    static const int COMPASS_MENU_ITEM_COUNT = 6;
+    static const int COMPASS_MENU_ITEM_COUNT = 7;
     const char* compass_menu_items[COMPASS_MENU_ITEM_COUNT] = {
         "3D Sweep Cal",
         "3D Mount Orient",
         "Invert Z-Axis",
+        "Mag Filter",
         "Mag Declin.",
         "Telemetry",
         "Factory Reset"

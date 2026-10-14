@@ -54,14 +54,50 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0), sensors_sleeping(false), mag_active(true), gyro_active(true), imu_filter_enabled(true), imu_filter_alpha_q15(8192) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0), sensors_sleeping(false), mag_active(true), gyro_active(true), imu_filter_enabled(true), imu_filter_alpha_q15(8192), mag_filter_mode(MagFilterMode::HYBRID), mag_filter_alpha_q15(8192), mag_hist_count(0), mag_hist_idx(0), mag_kalman_q(0.05f), mag_kalman_r(4.0f), mag_kalman_init(false), last_mag_probe_retry(0), mag_error_count(0) {
     memset(imu_filtered_vec, 0, sizeof(imu_filtered_vec));
+    memset(mag_filtered_vec, 0, sizeof(mag_filtered_vec));
+    memset(mag_history, 0, sizeof(mag_history));
+    memset(mag_kalman_x, 0, sizeof(mag_kalman_x));
+    for (int i = 0; i < 3; i++) mag_kalman_p[i] = 1.0f;
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
     offsets.accel_bias_x = 0; offsets.accel_bias_y = 0; offsets.accel_bias_z = 0;
     offsets.pitch_offset = 0; offsets.roll_offset = 0;
     offsets.swap_xy = false; offsets.inv_x = false; offsets.inv_y = false; offsets.inv_z = false;
+}
+
+const char* SensorManager::getMagFilterModeName() const {
+    switch (mag_filter_mode) {
+        case MagFilterMode::HYBRID: return "HYBRID";
+        case MagFilterMode::VECTOR_LPF: return "VECTOR LPF";
+        case MagFilterMode::MEDIAN: return "MEDIAN";
+        case MagFilterMode::KALMAN: return "KALMAN";
+        case MagFilterMode::MADGWICK_MARG: return "MADGWICK";
+        case MagFilterMode::RAW: return "RAW";
+        default: return "HYBRID";
+    }
+}
+
+void SensorManager::setMagFilterMode(MagFilterMode mode) {
+    mag_filter_mode = mode;
+    resetMagFilterState();
+    prefs.begin("sensors", false);
+    prefs.putInt("mag_filt", (int)mode);
+    prefs.end();
+}
+
+void SensorManager::resetMagFilterState() {
+    memset(mag_filtered_vec, 0, sizeof(mag_filtered_vec));
+    memset(mag_history, 0, sizeof(mag_history));
+    mag_hist_count = 0;
+    mag_hist_idx = 0;
+    mag_kalman_init = false;
+    for (int i = 0; i < 3; i++) {
+        mag_kalman_x[i] = 0.0f;
+        mag_kalman_p[i] = 1.0f;
+    }
 }
 
 const char* SensorManager::getMagChipName() const {
@@ -126,6 +162,9 @@ void SensorManager::loadCalibration() {
         mag_cal.declination = prefs.getFloat("decl", 0.0f);
         mag_cal.auto_declination = prefs.getBool("auto_decl", false);
     }
+
+    mag_filter_mode = (MagFilterMode)prefs.getInt("mag_filt", (int)MagFilterMode::HYBRID);
+    mag_filter_alpha_q15 = prefs.getUShort("mag_alpha", 8192);
 
     prefs.end();
 }
@@ -275,6 +314,71 @@ void SensorManager::factoryResetCalibration() {
     saveMagCalibration(mag_cal);
 }
 
+void SensorManager::recoverI2CBus() {
+    pinMode(I2C_SCL, OUTPUT);
+    pinMode(I2C_SDA, INPUT_PULLUP);
+    for (int i = 0; i < 9; i++) {
+        digitalWrite(I2C_SCL, HIGH);
+        delayMicroseconds(5);
+        digitalWrite(I2C_SCL, LOW);
+        delayMicroseconds(5);
+    }
+    digitalWrite(I2C_SCL, HIGH);
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(10);
+}
+
+bool SensorManager::probeMagnetometer() {
+    // 1. Try QMC5883P (0x2C)
+    Wire.beginTransmission(QMC5883P_ADDR);
+    if (Wire.endTransmission() == 0) {
+        mag_i2c_addr = QMC5883P_ADDR;
+        mag_type = MagChipType::QMC5883P;
+        writeRegister(mag_i2c_addr, QMC5883P_CONFIG, 0x08); // Set/Reset, 8G
+        delay(10);
+        writeRegister(mag_i2c_addr, QMC5883P_MODE, 0xCF);   // Continuous, 200Hz, 8G, OSR=512
+        mag_ok = true;
+        resetMagFilterState();
+        Serial.println("QMC5883P Magnetometer Ready at 0x2C.");
+        return true;
+    }
+
+    // 2. Try QMC5883L (0x0D)
+    Wire.beginTransmission(QMC5883L_ADDR);
+    if (Wire.endTransmission() == 0) {
+        mag_i2c_addr = QMC5883L_ADDR;
+        mag_type = MagChipType::QMC5883L;
+        writeRegister(mag_i2c_addr, QMC5883L_CONFIG_2, 0x80); // Soft reset
+        delay(10);
+        writeRegister(mag_i2c_addr, QMC5883L_SET_RESET, 0x01); // SET/RESET period
+        delay(5);
+        writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1D); // Continuous, 200Hz, 8G, OSR=512
+        mag_ok = true;
+        resetMagFilterState();
+        Serial.println("QMC5883L Magnetometer Ready at 0x0D.");
+        return true;
+    }
+
+    // 3. Try HMC5883L (0x1E)
+    Wire.beginTransmission(HMC5883L_ADDR);
+    if (Wire.endTransmission() == 0) {
+        mag_i2c_addr = HMC5883L_ADDR;
+        mag_type = MagChipType::HMC5883L;
+        writeRegister(mag_i2c_addr, HMC5883L_CONFIG_A, 0x78); // 8 samples average, 75Hz
+        writeRegister(mag_i2c_addr, HMC5883L_CONFIG_B, 0x20); // Gain 1.3 Gauss
+        writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x00);     // Continuous measurement
+        mag_ok = true;
+        resetMagFilterState();
+        Serial.println("HMC5883L Magnetometer Ready at 0x1E.");
+        return true;
+    }
+
+    mag_ok = false;
+    mag_type = MagChipType::NONE;
+    return false;
+}
+
 void SensorManager::begin() {
     loadCalibration();
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -343,54 +447,16 @@ void SensorManager::begin() {
         Serial.println("MPU not detected on 0x68 or 0x69.");
     }
 
+    // 30ms power stabilization delay for magnetometer oscillator & charge pump
+    delay(30);
+
     // Magnetometer Multi-Chip Auto-Detection (QMC5883P: 0x2C, QMC5883L: 0x0D, HMC5883L: 0x1E)
-    mag_ok = false;
-    mag_type = MagChipType::NONE;
-
-    // 1. Try QMC5883P (0x2C)
-    Wire.beginTransmission(QMC5883P_ADDR);
-    if (Wire.endTransmission() == 0) {
-        mag_i2c_addr = QMC5883P_ADDR;
-        mag_type = MagChipType::QMC5883P;
-        writeRegister(mag_i2c_addr, QMC5883P_CONFIG, 0x08); // Set/Reset, 8G
+    if (!probeMagnetometer()) {
+        recoverI2CBus();
         delay(10);
-        writeRegister(mag_i2c_addr, QMC5883P_MODE, 0xCF);   // Continuous, 200Hz, 8G, OSR=512
-        mag_ok = true;
-        Serial.println("QMC5883P Magnetometer Ready at 0x2C.");
-    }
-
-    // 2. Try QMC5883L (0x0D)
-    if (!mag_ok) {
-        Wire.beginTransmission(QMC5883L_ADDR);
-        if (Wire.endTransmission() == 0) {
-            mag_i2c_addr = QMC5883L_ADDR;
-            mag_type = MagChipType::QMC5883L;
-            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_2, 0x80); // Soft reset
-            delay(10);
-            writeRegister(mag_i2c_addr, QMC5883L_SET_RESET, 0x01); // SET/RESET period
-            delay(5);
-            writeRegister(mag_i2c_addr, QMC5883L_CONFIG_1, 0x1D); // Continuous, 200Hz, 8G, OSR=512
-            mag_ok = true;
-            Serial.println("QMC5883L Magnetometer Ready at 0x0D.");
+        if (!probeMagnetometer()) {
+            Serial.println("No Magnetometer detected at 0x2C, 0x0D, or 0x1E.");
         }
-    }
-
-    // 3. Try HMC5883L (0x1E)
-    if (!mag_ok) {
-        Wire.beginTransmission(HMC5883L_ADDR);
-        if (Wire.endTransmission() == 0) {
-            mag_i2c_addr = HMC5883L_ADDR;
-            mag_type = MagChipType::HMC5883L;
-            writeRegister(mag_i2c_addr, HMC5883L_CONFIG_A, 0x78); // 8 samples average, 75Hz
-            writeRegister(mag_i2c_addr, HMC5883L_CONFIG_B, 0x20); // Gain 1.3 Gauss
-            writeRegister(mag_i2c_addr, HMC5883L_MODE, 0x00);     // Continuous measurement
-            mag_ok = true;
-            Serial.println("HMC5883L Magnetometer Ready at 0x1E.");
-        }
-    }
-
-    if (!mag_ok) {
-        Serial.println("No Magnetometer detected at 0x2C, 0x0D, or 0x1E.");
     }
 }
 
@@ -593,6 +659,9 @@ void SensorManager::readMpu() {
 void SensorManager::readMag() {
     if (!mag_ok) return;
 
+    bool read_success = false;
+    int16_t in_mx = 0, in_my = 0, in_mz = 0;
+
     if (mag_type == MagChipType::QMC5883P || mag_type == MagChipType::QMC5883L) {
         uint8_t start_reg = (mag_type == MagChipType::QMC5883P) ? QMC5883P_DATA_START : QMC5883L_DATA_START;
         Wire.beginTransmission(mag_i2c_addr);
@@ -605,9 +674,10 @@ void SensorManager::readMag() {
             uint8_t yl = Wire.read(); uint8_t yh = Wire.read();
             uint8_t zl = Wire.read(); uint8_t zh = Wire.read();
 
-            raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
-            raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
-            raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
+            in_mx = (int16_t)((uint16_t)xh << 8 | xl);
+            in_my = (int16_t)((uint16_t)yh << 8 | yl);
+            in_mz = (int16_t)((uint16_t)zh << 8 | zl);
+            read_success = true;
         }
     } else if (mag_type == MagChipType::HMC5883L) {
         Wire.beginTransmission(mag_i2c_addr);
@@ -621,10 +691,108 @@ void SensorManager::readMag() {
             uint8_t zh = Wire.read(); uint8_t zl = Wire.read();
             uint8_t yh = Wire.read(); uint8_t yl = Wire.read();
 
-            raw_data.mx = (int16_t)((uint16_t)xh << 8 | xl);
-            raw_data.my = (int16_t)((uint16_t)yh << 8 | yl);
-            raw_data.mz = (int16_t)((uint16_t)zh << 8 | zl);
+            in_mx = (int16_t)((uint16_t)xh << 8 | xl);
+            in_my = (int16_t)((uint16_t)yh << 8 | yl);
+            in_mz = (int16_t)((uint16_t)zh << 8 | zl);
+            read_success = true;
         }
+    }
+
+    if (!read_success) {
+        mag_error_count++;
+        if (mag_error_count >= 15) {
+            mag_ok = false;
+            mag_error_count = 0;
+        }
+        return;
+    }
+    mag_error_count = 0;
+
+    // Discard saturated anomalous readings
+    if (abs(in_mx) >= 32000 || abs(in_my) >= 32000 || abs(in_mz) >= 32000) {
+        return;
+    }
+
+    // Median helper
+    auto calc_median3 = [](int16_t a, int16_t b, int16_t c) -> int16_t {
+        if (a > b) {
+            if (b > c) return b;
+            return (a > c) ? c : a;
+        } else {
+            if (a > c) return a;
+            return (b > c) ? c : b;
+        }
+    };
+
+    int16_t raw_in[3] = { in_mx, in_my, in_mz };
+    if (mag_hist_count < 3) {
+        for (int i = 0; i < 3; i++) {
+            mag_history[i][0] = raw_in[i];
+            mag_history[i][1] = raw_in[i];
+            mag_history[i][2] = raw_in[i];
+        }
+        mag_hist_count = 3;
+    } else {
+        for (int i = 0; i < 3; i++) {
+            mag_history[i][mag_hist_idx] = raw_in[i];
+        }
+        mag_hist_idx = (mag_hist_idx + 1) % 3;
+    }
+
+    int16_t med_x = calc_median3(mag_history[0][0], mag_history[0][1], mag_history[0][2]);
+    int16_t med_y = calc_median3(mag_history[1][0], mag_history[1][1], mag_history[1][2]);
+    int16_t med_z = calc_median3(mag_history[2][0], mag_history[2][1], mag_history[2][2]);
+
+    if (mag_filter_mode == MagFilterMode::RAW) {
+        raw_data.mx = in_mx;
+        raw_data.my = in_my;
+        raw_data.mz = in_mz;
+    } else if (mag_filter_mode == MagFilterMode::MEDIAN) {
+        raw_data.mx = med_x;
+        raw_data.my = med_y;
+        raw_data.mz = med_z;
+    } else if (mag_filter_mode == MagFilterMode::VECTOR_LPF) {
+        __attribute__((aligned(16))) int16_t raw_vec[4] = { in_mx, in_my, in_mz, 0 };
+        if (mag_filtered_vec[0] == 0 && mag_filtered_vec[1] == 0 && mag_filtered_vec[2] == 0) {
+            memcpy(mag_filtered_vec, raw_vec, sizeof(mag_filtered_vec));
+        } else {
+            simd_filter_mag_3d(mag_filtered_vec, raw_vec, mag_filter_alpha_q15);
+        }
+        raw_data.mx = mag_filtered_vec[0];
+        raw_data.my = mag_filtered_vec[1];
+        raw_data.mz = mag_filtered_vec[2];
+    } else if (mag_filter_mode == MagFilterMode::HYBRID) {
+        // Stage 1: Median spike rejection -> Stage 2: 4-Lane SIMD Vector LPF
+        __attribute__((aligned(16))) int16_t med_vec[4] = { med_x, med_y, med_z, 0 };
+        if (mag_filtered_vec[0] == 0 && mag_filtered_vec[1] == 0 && mag_filtered_vec[2] == 0) {
+            memcpy(mag_filtered_vec, med_vec, sizeof(mag_filtered_vec));
+        } else {
+            simd_filter_mag_3d(mag_filtered_vec, med_vec, mag_filter_alpha_q15);
+        }
+        raw_data.mx = mag_filtered_vec[0];
+        raw_data.my = mag_filtered_vec[1];
+        raw_data.mz = mag_filtered_vec[2];
+    } else if (mag_filter_mode == MagFilterMode::KALMAN) {
+        if (!mag_kalman_init) {
+            for (int i = 0; i < 3; i++) {
+                mag_kalman_x[i] = (float)raw_in[i];
+                mag_kalman_p[i] = 1.0f;
+            }
+            mag_kalman_init = true;
+        }
+        for (int i = 0; i < 3; i++) {
+            mag_kalman_p[i] += mag_kalman_q;
+            float k = mag_kalman_p[i] / (mag_kalman_p[i] + mag_kalman_r);
+            mag_kalman_x[i] += k * ((float)raw_in[i] - mag_kalman_x[i]);
+            mag_kalman_p[i] *= (1.0f - k);
+        }
+        raw_data.mx = (int16_t)mag_kalman_x[0];
+        raw_data.my = (int16_t)mag_kalman_x[1];
+        raw_data.mz = (int16_t)mag_kalman_x[2];
+    } else if (mag_filter_mode == MagFilterMode::MADGWICK_MARG) {
+        raw_data.mx = med_x;
+        raw_data.my = med_y;
+        raw_data.mz = med_z;
     }
 }
 
@@ -910,48 +1078,56 @@ void SensorManager::computeEulerAngles() {
     float mag_norm_sq = mx * mx + my * my + mz * mz;
 
     if (mag_ok && mag_norm_sq > 1e-4f) {
-        // Down unit vector from body accelerometer
-        float ax = cal_data.ax, ay = cal_data.ay, az = cal_data.az;
-        float a_norm = sqrtf(ax * ax + ay * ay + az * az);
-        float gx = (a_norm > 1e-4f) ? (ax / a_norm) : 0.0f;
-        float gy = (a_norm > 1e-4f) ? (ay / a_norm) : 0.0f;
-        float gz = (a_norm > 1e-4f) ? (az / a_norm) : 1.0f;
-
-        // Forward reference vector:
-        // Flat/Normal: +Y is 12 o'clock (top edge of watch face)
-        // Tilted Z Mode: when watch is held upright facing horizon, forward vector is -Z (line of sight through watch)
-        float fx = 0.0f;
-        float fy = tilted_z_mode ? 0.0f : 1.0f;
-        float fz = tilted_z_mode ? (orientation.pitch > 0.0f ? -1.0f : 1.0f) : 0.0f;
-
-        // Project forward reference onto horizontal plane: f_h = f - (f . g) g
-        float f_dot_g = fx * gx + fy * gy + fz * gz;
-        float fh_x = fx - f_dot_g * gx;
-        float fh_y = fy - f_dot_g * gy;
-        float fh_z = fz - f_dot_g * gz;
-        float fh_norm = sqrtf(fh_x * fh_x + fh_y * fh_y + fh_z * fh_z);
-
-        if (fh_norm > 1e-4f) {
-            fh_x /= fh_norm;
-            fh_y /= fh_norm;
-            fh_z /= fh_norm;
+        if (mag_filter_mode == MagFilterMode::MADGWICK_MARG) {
+            // True 9-DOF MARG Orientation Quaternion Yaw
+            float q_yaw = atan2f(2.0f * (q1 * q2 + q0 * q3), q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3) * 57.29578f;
+            target_yaw = q_yaw + 90.0f + mag_cal.declination;
+            while (target_yaw < 0.0f) target_yaw += 360.0f;
+            while (target_yaw >= 360.0f) target_yaw -= 360.0f;
         } else {
-            fh_x = fx; fh_y = fy; fh_z = fz;
+            // Down unit vector from body accelerometer
+            float ax = cal_data.ax, ay = cal_data.ay, az = cal_data.az;
+            float a_norm = sqrtf(ax * ax + ay * ay + az * az);
+            float gx = (a_norm > 1e-4f) ? (ax / a_norm) : 0.0f;
+            float gy = (a_norm > 1e-4f) ? (ay / a_norm) : 0.0f;
+            float gz = (a_norm > 1e-4f) ? (az / a_norm) : 1.0f;
+
+            // Forward reference vector:
+            // Flat/Normal: +Y is 12 o'clock (top edge of watch face)
+            // Tilted Z Mode: when watch is held upright facing horizon, forward vector is -Z (line of sight through watch)
+            float fx = 0.0f;
+            float fy = tilted_z_mode ? 0.0f : 1.0f;
+            float fz = tilted_z_mode ? (orientation.pitch > 0.0f ? -1.0f : 1.0f) : 0.0f;
+
+            // Project forward reference onto horizontal plane: f_h = f - (f . g) g
+            float f_dot_g = fx * gx + fy * gy + fz * gz;
+            float fh_x = fx - f_dot_g * gx;
+            float fh_y = fy - f_dot_g * gy;
+            float fh_z = fz - f_dot_g * gz;
+            float fh_norm = sqrtf(fh_x * fh_x + fh_y * fh_y + fh_z * fh_z);
+
+            if (fh_norm > 1e-4f) {
+                fh_x /= fh_norm;
+                fh_y /= fh_norm;
+                fh_z /= fh_norm;
+            } else {
+                fh_x = fx; fh_y = fy; fh_z = fz;
+            }
+
+            // Horizontal Right unit vector: r_h = g x f_h
+            float rh_x = gy * fh_z - gz * fh_y;
+            float rh_y = gz * fh_x - gx * fh_z;
+            float rh_z = gx * fh_y - gy * fh_x;
+
+            // Projected horizontal magnetic components
+            float X_h = mx * fh_x + my * fh_y + mz * fh_z;
+            float Y_h = mx * rh_x + my * rh_y + mz * rh_z;
+
+            float heading = atan2f(-Y_h, X_h) * 57.29578f + mag_cal.declination;
+            while (heading < 0.0f) heading += 360.0f;
+            while (heading >= 360.0f) heading -= 360.0f;
+            target_yaw = heading;
         }
-
-        // Horizontal Right unit vector: r_h = g x f_h
-        float rh_x = gy * fh_z - gz * fh_y;
-        float rh_y = gz * fh_x - gx * fh_z;
-        float rh_z = gx * fh_y - gy * fh_x;
-
-        // Projected horizontal magnetic components
-        float X_h = mx * fh_x + my * fh_y + mz * fh_z;
-        float Y_h = mx * rh_x + my * rh_y + mz * rh_z;
-
-        float heading = atan2f(-Y_h, X_h) * 57.29578f + mag_cal.declination;
-        while (heading < 0.0f) heading += 360.0f;
-        while (heading >= 360.0f) heading -= 360.0f;
-        target_yaw = heading;
     } else {
         // Fallback to 6-DOF IMU yaw
         float yaw_math = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3) * 57.29578f;
@@ -1068,6 +1244,11 @@ void SensorManager::loop() {
             readMag();
             updateMagCalibration();
             last_mag_update = now;
+        }
+
+        if (!mag_ok && (now - last_mag_probe_retry >= 4000)) {
+            last_mag_probe_retry = now;
+            probeMagnetometer();
         }
 
         if (now - last_bme_update >= 1000) {

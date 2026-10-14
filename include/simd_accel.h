@@ -65,6 +65,10 @@ void simd_generate_wipe_mask(uint8_t* mask, uint8_t progress_pct, uint8_t direct
 // Filters packed [ax, ay, az, 0, gx, gy, gz, 0] across 8 parallel lanes using Q15 alpha
 void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15);
 
+// 3D Magnetometer 128-bit Parallel Vector Low-Pass Filter
+// Filters packed [mx, my, mz, 0] across 4 parallel lanes using Q15 alpha
+void simd_filter_mag_3d(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15);
+
 // Candidate 5: TinyML INT8 Dot-Product & ReLU Neural Network Layer
 // Evaluates dense layer with num_inputs (16-byte aligned) and num_neurons:
 // output[n] = relu((bias[n] + sum(inputs[i] * weights[n * num_inputs + i])) >> 4)

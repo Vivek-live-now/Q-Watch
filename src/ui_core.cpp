@@ -1669,7 +1669,7 @@ void UICore::handleMainMenuInput() {
                 clock_scroll_offset = 0;
                 break;
             case 2: current_state = UIState::APP_WEATHER; weather_page = 0; break;
-            case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; break;
+            case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; if (!sensors.isMagOk()) sensors.probeMagnetometer(); break;
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
             case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
             case 6: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
@@ -3256,10 +3256,14 @@ void UICore::handleCompassInput() {
                 cal.invert_z = !cal.invert_z;
                 sensors.saveMagCalibration(cal);
             } else if (compass_menu_selection == 3) {
-                compass_state = CompassState::CAL_DECLINATION;
+                int next_mode = ((int)sensors.getMagFilterMode() + 1) % 6;
+                sensors.setMagFilterMode((MagFilterMode)next_mode);
+                showToast(sensors.getMagFilterModeName());
             } else if (compass_menu_selection == 4) {
-                compass_state = CompassState::CAL_TELEMETRY;
+                compass_state = CompassState::CAL_DECLINATION;
             } else if (compass_menu_selection == 5) {
+                compass_state = CompassState::CAL_TELEMETRY;
+            } else if (compass_menu_selection == 6) {
                 sensors.factoryResetCalibration();
             }
             needs_redraw = true;
@@ -3308,7 +3312,17 @@ void UICore::handleCompassInput() {
         }
     } else if (compass_state == CompassState::CAL_TELEMETRY) {
         if (ok_evt == BTN_EVT_SHORT_PRESS) {
-            compass_state = CompassState::PAGE_CAL_MENU;
+            if (!sensors.isMagOk()) {
+                if (sensors.probeMagnetometer()) {
+                    showToast("MAG CONNECTED");
+                    soundManager.playNavSelect();
+                } else {
+                    showToast("PROBE FAILED");
+                    soundManager.playNavBack();
+                }
+            } else {
+                compass_state = CompassState::PAGE_CAL_MENU;
+            }
             needs_redraw = true;
         }
         needs_redraw = true;
