@@ -17,7 +17,7 @@ static File uploadFile;
 static String s_portal_upload_path;
 static bool s_portal_upload_ok = true;
 
-WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), portal_start_time(0), scan_in_progress(false), scanned_count(0) {}
+WifiPortal::WifiPortal() : server(80), state(WifiState::OFF), connect_start_time(0), last_reconnect_attempt(0), portal_start_time(0), scan_in_progress(false), reboot_pending(false), reboot_target_time(0), scanned_count(0) {}
 
 void WifiPortal::begin() {
     configManager.load();
@@ -198,6 +198,11 @@ void WifiPortal::setupRoutes() {
 }
 
 void WifiPortal::loop() {
+    if (reboot_pending) {
+        if (millis() >= reboot_target_time) {
+            ESP.restart();
+        }
+    }
     if (scan_in_progress) {
         int n = WiFi.scanComplete();
         if (n >= 0) {
@@ -409,8 +414,8 @@ void WifiPortal::handleSave() {
     configManager.save();
 
     server.send(200, "text/html", "<html><body><h1>Settings Saved! Rebooting...</h1></body></html>");
-    delay(1000);
-    ESP.restart();
+    reboot_pending = true;
+    reboot_target_time = millis() + 1000;
 }
 
 static const char DASHBOARD_HTML_TEMPLATE[] PROGMEM = R"rawliteral(<!DOCTYPE html>
