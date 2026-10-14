@@ -143,7 +143,7 @@ void PolySynth::stopAll() {
     for (size_t ch = 0; ch < NUM_CHANNELS; ch++) {
         noteOff(ch);
     }
-    soundManager.stop();
+    soundManager.setToneDuty(0, 0);
 }
 
 void PolySynth::setWaveType(uint8_t ch, WaveType wave) {
@@ -203,6 +203,15 @@ uint8_t PolySynth::getChannelVolume(uint8_t ch) const {
 bool PolySynth::isChannelActive(uint8_t ch) const {
     if (ch < NUM_CHANNELS) {
         return voices[ch].active && !voices[ch].muted;
+    }
+    return false;
+}
+
+bool PolySynth::isAnyVoiceActive() const {
+    for (size_t ch = 0; ch < NUM_CHANNELS; ch++) {
+        if (voices[ch].active && !voices[ch].muted && voices[ch].freq_hz > 0) {
+            return true;
+        }
     }
     return false;
 }
@@ -355,42 +364,77 @@ void PolySynth::renderBuffer(uint8_t* out_mix, size_t len) {
 }
 
 void PolySynth::driveBuzzerHardware() {
+    // 1. Never touch hardware if PolySynth is idle
+    if (!song_playing && !isAnyVoiceActive()) {
+        return;
+    }
+
+    // 2. Check master switch & master volume
+    if (!soundManager.isMasterSwitchOn() || soundManager.getVolumePct() == 0) {
+        soundManager.setToneDuty(0, 0);
+        return;
+    }
+
+    // 3. If SoundManager is playing a priority system sound (nav click, boot, alert, etc.), yield buzzer
+    if (soundManager.isPlaying()) {
+        return;
+    }
+
     uint32_t now = millis();
+    uint8_t play_ch = 0xFF;
 
-    // Fast frequency interleaving multiplexer for hardware piezo buzzer (~12ms per voice)
-    if (now - last_buzzer_toggle_ms >= 12) {
-        last_buzzer_toggle_ms = now;
+    if (song_playing) {
+        uint32_t step_elapsed = now - last_step_ms;
 
-        // Find active voices
-        uint8_t active_indices[NUM_CHANNELS];
-        uint8_t active_count = 0;
-        for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-            if (voices[i].active && !voices[i].muted && voices[i].freq_hz > 0) {
-                active_indices[active_count++] = i;
+        // If percussion voice is active, play percussion transient for first 25ms of step
+        if (voices[3].active && !voices[3].muted && voices[3].freq_hz > 0 && step_elapsed < 25) {
+            play_ch = 3;
+        } else {
+            // Melodic priority: Lead (0), Harmony (1), Bass (2)
+            if (voices[0].active && !voices[0].muted && voices[0].freq_hz > 0) {
+                play_ch = 0;
+            } else if (voices[1].active && !voices[1].muted && voices[1].freq_hz > 0) {
+                play_ch = 1;
+            } else if (voices[2].active && !voices[2].muted && voices[2].freq_hz > 0) {
+                play_ch = 2;
+            } else if (voices[3].active && !voices[3].muted && voices[3].freq_hz > 0) {
+                play_ch = 3;
             }
         }
-
-        if (active_count == 0) {
-            soundManager.stop();
-            return;
+    } else {
+        // Manual note playback: pick first active non-muted voice
+        for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
+            if (voices[i].active && !voices[i].muted && voices[i].freq_hz > 0) {
+                play_ch = i;
+                break;
+            }
         }
-
-        current_buzzer_voice = (current_buzzer_voice + 1) % active_count;
-        uint8_t ch = active_indices[current_buzzer_voice];
-        uint16_t freq = voices[ch].freq_hz;
-        uint8_t vol = voices[ch].volume; // 0..15
-
-        // Map volume to duty cycle (15% to 50%)
-        uint8_t duty = (uint8_t)((vol * 50) / 15);
-        if (duty < 5) duty = 5;
-
-        soundManager.setToneDuty(freq, duty);
     }
+
+    if (play_ch == 0xFF) {
+        soundManager.setToneDuty(0, 0);
+        return;
+    }
+
+    uint16_t freq = voices[play_ch].freq_hz;
+    uint8_t vol = voices[play_ch].volume; // 0..15
+    int master_vol = soundManager.getVolumePct(); // 0..100
+
+    uint8_t duty = (uint8_t)(((uint32_t)vol * master_vol * 50) / (15 * 100));
+    if (duty < 1 && vol > 0 && master_vol > 0) duty = 1;
+    if (duty > 50) duty = 50;
+
+    soundManager.setToneDuty(freq, duty);
 }
 
 void PolySynth::loop() {
     if (!soundManager.isMasterSwitchOn()) {
         if (song_playing) stopSong();
+        return;
+    }
+
+    // If PolySynth is idle, do not burn cycles or touch buzzer
+    if (!song_playing && !isAnyVoiceActive()) {
         return;
     }
 

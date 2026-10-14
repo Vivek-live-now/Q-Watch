@@ -53,6 +53,7 @@ public:
     uint16_t getChannelFreq(uint8_t ch) const;
     uint8_t getChannelVolume(uint8_t ch) const;
     bool isChannelActive(uint8_t ch) const;
+    bool isAnyVoiceActive() const;
 
     // Buffer Synthesis (SIMD Accelerated)
     void renderBuffer(uint8_t* out_mix, size_t len);
