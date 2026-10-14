@@ -395,3 +395,115 @@ void simd_mix_audio_8bit(uint8_t* dst, const uint8_t* ch1, const uint8_t* ch2, c
     }
 }
 
+// Fast Q14 sine lookup table (0..90 deg, scale 16384)
+static const int16_t s_sin_lut_q14[91] = {
+    0, 286, 572, 857, 1143, 1428, 1713, 1997, 2280, 2563,
+    2845, 3126, 3406, 3686, 3964, 4240, 4516, 4790, 5063, 5334,
+    5604, 5872, 6138, 6402, 6664, 6924, 7182, 7438, 7692, 7943,
+    8192, 8438, 8682, 8923, 9162, 9397, 9630, 9860, 10087, 10311,
+    10531, 10749, 10963, 11174, 11381, 11585, 11785, 11982, 12175, 12365,
+    12551, 12733, 12911, 13085, 13255, 13421, 13583, 13741, 13894, 14043,
+    14188, 14328, 14463, 14594, 14720, 14842, 14959, 15071, 15179, 15281,
+    15379, 15472, 15560, 15643, 15721, 15794, 15862, 15925, 15983, 16036,
+    16084, 16127, 16165, 16198, 16225, 16248, 16265, 16277, 16284, 16285,
+    16384
+};
+
+static int16_t sin_deg_q14(int16_t deg) {
+    deg = deg % 360;
+    if (deg < 0) deg += 360;
+
+    if (deg <= 90) return s_sin_lut_q14[deg];
+    if (deg <= 180) return s_sin_lut_q14[180 - deg];
+    if (deg <= 270) return -s_sin_lut_q14[deg - 180];
+    return -s_sin_lut_q14[360 - deg];
+}
+
+static int16_t cos_deg_q14(int16_t deg) {
+    return sin_deg_q14(deg + 90);
+}
+
+void simd_compute_rotation_matrix_q14(int16_t* matrix_9, int16_t pitch_deg, int16_t roll_deg, int16_t yaw_deg) {
+    if (!matrix_9) return;
+
+    int32_t cx = cos_deg_q14(pitch_deg);
+    int32_t sx = sin_deg_q14(pitch_deg);
+    int32_t cy = cos_deg_q14(roll_deg);
+    int32_t sy = sin_deg_q14(roll_deg);
+    int32_t cz = cos_deg_q14(yaw_deg);
+    int32_t sz = sin_deg_q14(yaw_deg);
+
+    // R = Rz(yaw) * Ry(roll) * Rx(pitch)
+    // Row 0
+    matrix_9[0] = (int16_t)((cy * cz) >> 14);
+    matrix_9[1] = (int16_t)((((sx * sy) >> 14) * cz - cx * sz) >> 14);
+    matrix_9[2] = (int16_t)((((cx * sy) >> 14) * cz + sx * sz) >> 14);
+
+    // Row 1
+    matrix_9[3] = (int16_t)((cy * sz) >> 14);
+    matrix_9[4] = (int16_t)((((sx * sy) >> 14) * sz + cx * cz) >> 14);
+    matrix_9[5] = (int16_t)((((cx * sy) >> 14) * sz - sx * cz) >> 14);
+
+    // Row 2
+    matrix_9[6] = (int16_t)(-sy);
+    matrix_9[7] = (int16_t)((sx * cy) >> 14);
+    matrix_9[8] = (int16_t)((cx * cy) >> 14);
+}
+
+void simd_transform_3d_vertices(Point2D* out_2d, const Point3D* in_3d, size_t num_vertices, const int16_t* rot_matrix_q14, int16_t cam_dist, int16_t screen_cx, int16_t screen_cy) {
+    if (!out_2d || !in_3d || !rot_matrix_q14 || num_vertices == 0) return;
+
+    int32_t r00 = rot_matrix_q14[0];
+    int32_t r01 = rot_matrix_q14[1];
+    int32_t r02 = rot_matrix_q14[2];
+    int32_t r10 = rot_matrix_q14[3];
+    int32_t r11 = rot_matrix_q14[4];
+    int32_t r12 = rot_matrix_q14[5];
+    int32_t r20 = rot_matrix_q14[6];
+    int32_t r21 = rot_matrix_q14[7];
+    int32_t r22 = rot_matrix_q14[8];
+
+    size_t chunks = num_vertices / 4;
+    size_t remainder = num_vertices % 4;
+
+    for (size_t c = 0; c < chunks; c++) {
+        size_t off = c * 4;
+        #pragma GCC unroll 4
+        for (size_t i = 0; i < 4; i++) {
+            const Point3D& pt = in_3d[off + i];
+            int32_t x = pt.x;
+            int32_t y = pt.y;
+            int32_t z = pt.z;
+
+            int32_t rx = (r00 * x + r01 * y + r02 * z) >> 14;
+            int32_t ry = (r10 * x + r11 * y + r12 * z) >> 14;
+            int32_t rz = (r20 * x + r21 * y + r22 * z) >> 14;
+
+            int32_t z_eff = rz + cam_dist;
+            if (z_eff < 10) z_eff = 10;
+
+            out_2d[off + i].x = (int16_t)(screen_cx + (rx * cam_dist) / z_eff);
+            out_2d[off + i].y = (int16_t)(screen_cy - (ry * cam_dist) / z_eff);
+        }
+    }
+
+    size_t rem_start = chunks * 4;
+    for (size_t i = 0; i < remainder; i++) {
+        const Point3D& pt = in_3d[rem_start + i];
+        int32_t x = pt.x;
+        int32_t y = pt.y;
+        int32_t z = pt.z;
+
+        int32_t rx = (r00 * x + r01 * y + r02 * z) >> 14;
+        int32_t ry = (r10 * x + r11 * y + r12 * z) >> 14;
+        int32_t rz = (r20 * x + r21 * y + r22 * z) >> 14;
+
+        int32_t z_eff = rz + cam_dist;
+        if (z_eff < 10) z_eff = 10;
+
+        out_2d[rem_start + i].x = (int16_t)(screen_cx + (rx * cam_dist) / z_eff);
+        out_2d[rem_start + i].y = (int16_t)(screen_cy - (ry * cam_dist) / z_eff);
+    }
+}
+
+

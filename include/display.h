@@ -80,6 +80,7 @@ private:
     void drawAppGestureAi();
     void drawAppGestureAiHud();
     void drawAppGestureAiSettings();
+    void drawAppWireframe3D();
     void drawAppIR();
     void drawAppBme();
     void drawBmePage1Pressure();

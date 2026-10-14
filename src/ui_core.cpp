@@ -684,7 +684,7 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT || sound_submenu == SoundSubmenu::POLY_SYNTH)))) {
+        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT || sound_submenu == SoundSubmenu::POLY_SYNTH)) && !(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_WIREFRAME_3D))) {
             if (cancel_evt == BTN_EVT_LONG_PRESS) {
                 btnManager.getEvent(BTN_ID_CANCEL);
             } else {
@@ -3358,10 +3358,12 @@ void UICore::handleMotionInput() {
             } else if (imu_subapp_selection == 2) {
                 imu_subapp = Imu6500SubApp::SUBAPP_MOUSE_SETTINGS;
                 mouse_settings_selection = 0;
-            } else {
+            } else if (imu_subapp_selection == 3) {
                 imu_subapp = Imu6500SubApp::SUBAPP_GESTURE_AI;
                 gesture_ai_selection = 0;
                 gesture_ai_view_mode = 0;
+            } else {
+                imu_subapp = Imu6500SubApp::SUBAPP_WIREFRAME_3D;
             }
             needs_redraw = true;
         }
@@ -3380,6 +3382,11 @@ void UICore::handleMotionInput() {
 
     if (imu_subapp == Imu6500SubApp::SUBAPP_GESTURE_AI) {
         handleGestureAiInput();
+        return;
+    }
+
+    if (imu_subapp == Imu6500SubApp::SUBAPP_WIREFRAME_3D) {
+        handleWireframe3dInput();
         return;
     }
 
@@ -3849,6 +3856,40 @@ void UICore::dispatchGestureAction(GestureAction action) {
         showToast("[SELECT]", 700);
     }
     needs_redraw = true;
+}
+
+void UICore::handleWireframe3dInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS || cancel_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavBack();
+        imu_subapp = Imu6500SubApp::SUBAPP_MENU;
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        wireframe3d.prevModel();
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        wireframe3d.nextModel();
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        wireframe3d.toggleControlMode();
+        soundManager.playNavSelect();
+        showToast(wireframe3d.getControlMode() == WireframeControlMode::IMU_TILT ? "[IMU TILT MODE]" : "[AUTO SPIN MODE]", 1000);
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        wireframe3d.toggleFpsDisplay();
+        soundManager.playNavSelect();
+        showToast(wireframe3d.isFpsDisplayEnabled() ? "[METRICS ON]" : "[METRICS OFF]", 1000);
+        needs_redraw = true;
+    }
 }
 
 void UICore::handleFileServerDetailsInput() {

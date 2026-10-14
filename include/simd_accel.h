@@ -75,6 +75,29 @@ void simd_nn_dense_layer_int8(const int8_t* inputs, const int8_t* weights, const
 // dst[i] = min(255, ch1[i] + ch2[i] + ch3[i] + ch4[i])
 void simd_mix_audio_8bit(uint8_t* dst, const uint8_t* ch1, const uint8_t* ch2, const uint8_t* ch3, const uint8_t* ch4, size_t len);
 
+// Candidate 3: 3D Wireframe Vector Graphics Engine (SIMD 3D Math & Perspective Projection)
+typedef struct {
+    int16_t x;
+    int16_t y;
+    int16_t z;
+} Point3D;
+
+typedef struct {
+    int16_t x;
+    int16_t y;
+} Point2D;
+
+// Computes 3x3 Tait-Bryan rotation matrix in Q14 fixed-point (scale 16384) from pitch, roll, yaw angles (in degrees):
+// matrix_9 = [r00, r01, r02, r10, r11, r12, r20, r21, r22]
+void simd_compute_rotation_matrix_q14(int16_t* matrix_9, int16_t pitch_deg, int16_t roll_deg, int16_t yaw_deg);
+
+// Transforms an array of 3D vertices using rot_matrix_q14 and projects to 2D screen coordinates:
+// in_3d: array of Point3D (16-byte aligned vector blocks)
+// out_2d: array of Point2D
+// cam_dist: camera perspective distance (e.g. 100..200)
+// screen_cx, screen_cy: screen center coordinates (e.g. 64, 32 for 128x64 display)
+void simd_transform_3d_vertices(Point2D* out_2d, const Point3D* in_3d, size_t num_vertices, const int16_t* rot_matrix_q14, int16_t cam_dist, int16_t screen_cx, int16_t screen_cy);
+
 #ifdef __cplusplus
 }
 #endif

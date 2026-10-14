@@ -24,6 +24,7 @@
 #include "vibration_manager.h"
 #include "gesture_ai.h"
 #include "poly_synth.h"
+#include "wireframe_3d.h"
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI oled(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
@@ -1751,6 +1752,8 @@ void DisplayManager::drawAppMotion() {
         drawAppMouseSettings();
     } else if (sub == Imu6500SubApp::SUBAPP_GESTURE_AI) {
         drawAppGestureAi();
+    } else if (sub == Imu6500SubApp::SUBAPP_WIREFRAME_3D) {
+        drawAppWireframe3D();
     } else {
         MotionState s = ui.getMotionState();
         if (s == MotionState::PAGE_LEVEL) {
@@ -2096,6 +2099,50 @@ void DisplayManager::drawAppMotionOrientation3D() {
     oled.drawHLine(0, 55, 128);
     oled.drawStr(2, 63, "[OK]APPLY");
     oled.drawStr(68, 63, "[UP/DN]CYCLE");
+}
+
+void DisplayManager::drawAppWireframe3D() {
+    // 1. Header Banner
+    oled.setFont(u8g2_font_5x7_tf);
+    char hdr[32];
+    snprintf(hdr, sizeof(hdr), "3D: %s", wireframe3d.getModelName(wireframe3d.getModel()));
+    oled.drawStr(2, 8, hdr);
+
+    const char* modeStr = (wireframe3d.getControlMode() == WireframeControlMode::IMU_TILT) ? "[IMU TILT]" : "[AUTO SPIN]";
+    oled.drawStr(72, 8, modeStr);
+    oled.drawLine(0, 10, 128, 10);
+
+    // 2. Render 3D Wireframe Model Lines
+    const Point2D* verts = wireframe3d.getProjectedVertices();
+    const WireframeEdge* edges = wireframe3d.getEdges();
+    size_t edge_count = wireframe3d.getEdgeCount();
+    size_t vert_count = wireframe3d.getVertexCount();
+
+    if (verts && edges && vert_count > 0) {
+        for (size_t i = 0; i < edge_count; i++) {
+            uint8_t v1 = edges[i].v1;
+            uint8_t v2 = edges[i].v2;
+            if (v1 < vert_count && v2 < vert_count) {
+                oled.drawLine(verts[v1].x, verts[v1].y, verts[v2].x, verts[v2].y);
+            }
+        }
+    }
+
+    // 3. Telemetry Overlay (Euler Angles or Performance metrics)
+    oled.drawLine(0, 54, 128, 54);
+    oled.setFont(u8g2_font_4x6_tr);
+
+    if (wireframe3d.isFpsDisplayEnabled()) {
+        char perf[32];
+        snprintf(perf, sizeof(perf), "%uus | %.0f FPS", wireframe3d.getRenderTimeUs(), wireframe3d.getFps());
+        oled.drawStr(2, 62, perf);
+    } else {
+        char ang[32];
+        snprintf(ang, sizeof(ang), "P:%+d R:%+d Y:%+d", wireframe3d.getPitch(), wireframe3d.getRoll(), wireframe3d.getYaw());
+        oled.drawStr(2, 62, ang);
+    }
+
+    oled.drawStr(66, 62, "OK:MODE UP/DN:MDL");
 }
 
 

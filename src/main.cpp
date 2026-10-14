@@ -21,6 +21,7 @@
 #include "qlink.h"
 #include "gesture_ai.h"
 #include "poly_synth.h"
+#include "wireframe_3d.h"
 
 // Hardware RTC memory boot loop detector & recovery guard
 #ifdef ARDUINO
@@ -95,6 +96,7 @@ void setup() {
   airMouse.begin();
   gestureAi.begin();
   polySynth.begin();
+  wireframe3d.begin();
 #ifdef ARDUINO
   if (!s_safe_mode_active) {
     qlink.begin();
@@ -150,6 +152,9 @@ void loop() {
   timekeeping.loop();
   airMouse.loop();
   polySynth.loop();
+  if (ui.getState() == UIState::APP_MOTION && ui.getImuSubApp() == Imu6500SubApp::SUBAPP_WIREFRAME_3D) {
+      wireframe3d.update();
+  }
 
   // Energy Efficiency & UI Updates
   int current_sec = qclock.getSecond();

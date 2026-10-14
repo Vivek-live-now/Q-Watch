@@ -10,13 +10,15 @@
 #include "mochi_pet.h"
 #include "gesture_ai.h"
 #include "poly_synth.h"
+#include "wireframe_3d.h"
 
 enum class Imu6500SubApp {
     SUBAPP_MENU,
     SUBAPP_ALTIMETER,
     SUBAPP_AIRMOUSE,
     SUBAPP_MOUSE_SETTINGS,
-    SUBAPP_GESTURE_AI
+    SUBAPP_GESTURE_AI,
+    SUBAPP_WIREFRAME_3D
 };
 
 enum class SettingsSubmenu {
@@ -279,9 +281,9 @@ public:
         "Zero Altitude", "Zero Level IMU", "Calibrate Gyro", "Calibrate Accel", "3D Mount Orient", "Swap X/Y", "Invert X", "Invert Z"
     };
 
-    static const int IMU_SUBAPP_COUNT = 4;
+    static const int IMU_SUBAPP_COUNT = 5;
     const char* imu_subapp_items[IMU_SUBAPP_COUNT] = {
-        "IMU / HORIZON", "AIR MOUSE", "MOUSE SETTINGS", "GESTURE AI"
+        "IMU / HORIZON", "AIR MOUSE", "MOUSE SETTINGS", "GESTURE AI", "3D WIREFRAME"
     };
 
     static const int CLOCK_MENU_ITEM_COUNT = 8;
@@ -559,6 +561,7 @@ public:
     void handleAirMouseInput();
     void handleMouseSettingsInput();
     void handleGestureAiInput();
+    void handleWireframe3dInput();
 
     void handleSettingsMainInput();
     void handleConnectivityInput();

@@ -2253,7 +2253,7 @@ def test_compass_games_airmouse_overhaul():
     with open(ui_h, "r", encoding="utf-8") as f:
         uh = f.read()
     assert "SUBAPP_MOUSE_SETTINGS" in uh, "ui_core.h must declare SUBAPP_MOUSE_SETTINGS"
-    assert ("IMU_SUBAPP_COUNT = 3" in uh or "IMU_SUBAPP_COUNT = 4" in uh), "IMU_SUBAPP_COUNT must be at least 3"
+    assert ("IMU_SUBAPP_COUNT = 3" in uh or "IMU_SUBAPP_COUNT = 4" in uh or "IMU_SUBAPP_COUNT = 5" in uh), "IMU_SUBAPP_COUNT must be at least 3"
     assert '"MOUSE SETTINGS"' in uh, "imu_subapp_items must include MOUSE SETTINGS"
     assert "handleMouseSettingsInput()" in uh, "ui_core.h must declare handleMouseSettingsInput()"
 
@@ -3895,6 +3895,99 @@ def test_poly_synth_and_simd_mixing():
     assert "synth_active" in mc
     print("  [PASS] 4. Sound App submenu integration, interactive HUD, telemetry meters & main loop verified.")
 
+def test_wireframe_3d_and_simd_transform():
+    print("\n--- 54. 3D Wireframe Vector Graphics Engine & SIMD 3D Transform ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+
+    # 1. SIMD 3D Math Declarations & Matrix Pipeline
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "Point3D" in sh and "Point2D" in sh
+    assert "void simd_compute_rotation_matrix_q14(" in sh
+    assert "void simd_transform_3d_vertices(" in sh
+
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "void simd_compute_rotation_matrix_q14(" in sc
+    assert "void simd_transform_3d_vertices(" in sc
+    assert "#pragma GCC unroll 4" in sc, "simd_transform_3d_vertices must unroll 4-vertex vector chunk"
+    assert "s_sin_lut_q14" in sc, "simd_accel.cpp must include Q14 sine lookup table"
+    print("  [PASS] 1. SIMD 3D math declarations and 4-way unrolled vertex pipeline verified.")
+
+    # 2. Host C++ Binary Compilation & Direct 3D Transform Execution
+    test_src = os.path.join(base_dir, "tests", "test_wireframe_3d_host.cpp")
+    test_bin = os.path.join(base_dir, "test_wireframe_3d_host_bin")
+    compile_cmd = [
+        "g++", "-std=c++17", "-O2", "-Iinclude",
+        test_src, simd_cpp,
+        "-o", test_bin
+    ]
+    res_cmp = subprocess.run(compile_cmd, cwd=base_dir, capture_output=True, text=True)
+    assert res_cmp.returncode == 0, f"Failed to compile test_wireframe_3d_host:\n{res_cmp.stderr}"
+
+    res_run = subprocess.run([test_bin], cwd=base_dir, capture_output=True, text=True)
+    assert res_run.returncode == 0, f"Host C++ 3D unit test failed:\n{res_run.stderr}"
+    assert "[PASS]" in res_run.stdout
+    if os.path.exists(test_bin):
+        os.remove(test_bin)
+    print("  [PASS] 2. Host C++ direct execution verified with identity, 90-degree yaw & perspective projection.")
+
+    # 3. 3D Wireframe Engine & Geometric Models
+    wire_h = os.path.join(base_dir, "include", "wireframe_3d.h")
+    wire_cpp = os.path.join(base_dir, "src", "wireframe_3d.cpp")
+
+    with open(wire_h, "r", encoding="utf-8") as f:
+        wh = f.read()
+    assert "class Wireframe3D" in wh
+    assert "enum class WireframeModel" in wh
+    assert "CUBE" in wh and "PYRAMID" in wh and "DIAMOND" in wh and "ARROW" in wh and "PRISM" in wh
+    assert "enum class WireframeControlMode" in wh
+    assert "IMU_TILT" in wh and "AUTO_SPIN" in wh
+
+    with open(wire_cpp, "r", encoding="utf-8") as f:
+        wc = f.read()
+    assert "simd_compute_rotation_matrix_q14(" in wc
+    assert "simd_transform_3d_vertices(" in wc
+    assert "sensors.getOrientation()" in wc, "wireframe_3d.cpp must read IMU pitch/roll/yaw in IMU_TILT mode"
+    print("  [PASS] 3. 3D Wireframe engine, 5 geometric models, and IMU tilt tracking verified.")
+
+    # 4. IMU6500 Sub-App Integration & Display Rendering
+    ui_h = os.path.join(base_dir, "include", "ui_core.h")
+    with open(ui_h, "r", encoding="utf-8") as f:
+        uh = f.read()
+    assert "SUBAPP_WIREFRAME_3D" in uh
+    assert "IMU_SUBAPP_COUNT = 5" in uh
+    assert '"3D WIREFRAME"' in uh
+    assert "handleWireframe3dInput()" in uh
+
+    ui_cpp = os.path.join(base_dir, "src", "ui_core.cpp")
+    with open(ui_cpp, "r", encoding="utf-8") as f:
+        uc = f.read()
+    assert "Imu6500SubApp::SUBAPP_WIREFRAME_3D" in uc
+    assert "handleWireframe3dInput()" in uc
+
+    disp_h = os.path.join(base_dir, "include", "display.h")
+    with open(disp_h, "r", encoding="utf-8") as f:
+        dh = f.read()
+    assert "void drawAppWireframe3D();" in dh
+
+    disp_cpp = os.path.join(base_dir, "src", "display.cpp")
+    with open(disp_cpp, "r", encoding="utf-8") as f:
+        dc = f.read()
+    assert "Imu6500SubApp::SUBAPP_WIREFRAME_3D" in dc
+    assert "drawAppWireframe3D();" in dc
+    assert "void DisplayManager::drawAppWireframe3D()" in dc
+
+    main_cpp = os.path.join(base_dir, "src", "main.cpp")
+    with open(main_cpp, "r", encoding="utf-8") as f:
+        mc = f.read()
+    assert "wireframe3d.begin();" in mc
+    assert "wireframe3d.update();" in mc
+    print("  [PASS] 4. IMU6500 sub-app routing, real-time OLED wireframe renderer & main loop verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3940,6 +4033,7 @@ if __name__ == "__main__":
     test_imu_vector_filter_and_sensors()
     test_gesture_ai_subapp_and_simd()
     test_poly_synth_and_simd_mixing()
+    test_wireframe_3d_and_simd_transform()
     print("\nAll self-test verifications PASSED!")
 
 
