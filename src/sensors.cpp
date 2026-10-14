@@ -254,7 +254,7 @@ void SensorManager::calibrateAccel() {
         ax_sum += raw_data.ax;
         ay_sum += raw_data.ay;
         az_sum += raw_data.az;
-        delay(5);
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     // Z is gravity (1G), which is 4096 in 8G range
@@ -470,7 +470,7 @@ void SensorManager::calibrateGyro() {
         gx_sum += raw_data.gx;
         gy_sum += raw_data.gy;
         gz_sum += raw_data.gz;
-        delay(5); // 5ms * 200 = 1 second calibration routine during boot
+        vTaskDelay(pdMS_TO_TICKS(5)); // 5ms * 200 = 1 second calibration routine during boot
     }
 
     // Store the raw bias average
