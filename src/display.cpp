@@ -1652,9 +1652,9 @@ void DisplayManager::drawAppGestureAiHud() {
     // Inferences count & Action
     char stat2[32];
     snprintf(stat2, sizeof(stat2), "INF: %lu  SENS: %s", (unsigned long)gestureAi.getInferenceCount(),
-             gestureAi.getSensitivity() == GestureSensitivity::LOW ? "LOW" :
-             gestureAi.getSensitivity() == GestureSensitivity::MEDIUM ? "MED" :
-             gestureAi.getSensitivity() == GestureSensitivity::HIGH ? "HIGH" : "ULTRA");
+             gestureAi.getSensitivity() == GestureSensitivity::SENS_LOW ? "LOW" :
+             gestureAi.getSensitivity() == GestureSensitivity::SENS_MEDIUM ? "MED" :
+             gestureAi.getSensitivity() == GestureSensitivity::SENS_HIGH ? "HIGH" : "ULTRA");
     oled.drawStr(4, 55, stat2);
 
     // Footer

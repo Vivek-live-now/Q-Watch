@@ -15,10 +15,10 @@ enum class GestureType : uint8_t {
 };
 
 enum class GestureSensitivity : uint8_t {
-    LOW = 0,     // 75% confidence threshold (strict)
-    MEDIUM = 1,  // 55% confidence threshold (balanced)
-    HIGH = 2,    // 40% confidence threshold (responsive)
-    ULTRA = 3,   // 30% confidence threshold (instant)
+    SENS_LOW = 0,     // 75% confidence threshold (strict)
+    SENS_MEDIUM = 1,  // 55% confidence threshold (balanced)
+    SENS_HIGH = 2,    // 40% confidence threshold (responsive)
+    SENS_ULTRA = 3,   // 30% confidence threshold (instant)
     SENSITIVITY_COUNT = 4
 };
 

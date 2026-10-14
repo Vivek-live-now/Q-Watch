@@ -40,7 +40,7 @@ static const int32_t s_gesture_bias[5] = {
 
 GestureAI::GestureAI()
     : enabled(true),
-      sensitivity(GestureSensitivity::MEDIUM),
+      sensitivity(GestureSensitivity::SENS_MEDIUM),
       ring_idx(0),
       sample_count(0),
       last_gesture(GestureType::NONE),
@@ -76,7 +76,7 @@ void GestureAI::begin() {
     SettingsData& s = settingsManager.get();
     enabled = s.gesture_ai_enabled;
     sensitivity = (GestureSensitivity)s.gesture_sensitivity_idx;
-    if (sensitivity >= GestureSensitivity::SENSITIVITY_COUNT) sensitivity = GestureSensitivity::MEDIUM;
+    if (sensitivity >= GestureSensitivity::SENSITIVITY_COUNT) sensitivity = GestureSensitivity::SENS_MEDIUM;
 
     gesture_enabled[static_cast<size_t>(GestureType::RAISE_WAKE)] = s.gesture_wake_enabled;
     gesture_enabled[static_cast<size_t>(GestureType::WRIST_FLICK)] = s.gesture_flick_enabled;
@@ -110,11 +110,11 @@ void GestureAI::cycleSensitivity() {
 
 const char* GestureAI::getSensitivityName() const {
     switch (sensitivity) {
-        case GestureSensitivity::LOW:    return "LOW (75%)";
-        case GestureSensitivity::MEDIUM: return "MED (55%)";
-        case GestureSensitivity::HIGH:   return "HIGH (40%)";
-        case GestureSensitivity::ULTRA:  return "ULTRA (30%)";
-        default:                         return "MED";
+        case GestureSensitivity::SENS_LOW:    return "LOW (75%)";
+        case GestureSensitivity::SENS_MEDIUM: return "MED (55%)";
+        case GestureSensitivity::SENS_HIGH:   return "HIGH (40%)";
+        case GestureSensitivity::SENS_ULTRA:  return "ULTRA (30%)";
+        default:                              return "MED";
     }
 }
 
@@ -173,7 +173,7 @@ void GestureAI::cycleGestureAction(GestureType g) {
 
 void GestureAI::resetDefaults() {
     enabled = true;
-    sensitivity = GestureSensitivity::MEDIUM;
+    sensitivity = GestureSensitivity::SENS_MEDIUM;
     gesture_enabled[static_cast<size_t>(GestureType::RAISE_WAKE)]  = true;
     gesture_enabled[static_cast<size_t>(GestureType::WRIST_FLICK)] = true;
     gesture_enabled[static_cast<size_t>(GestureType::DOUBLE_TAP)]  = true;
@@ -371,9 +371,9 @@ void GestureAI::classifyAndDispatch() {
 
     // Check sensitivity threshold
     uint8_t threshold = 55; // MEDIUM
-    if (sensitivity == GestureSensitivity::LOW)    threshold = 75;
-    else if (sensitivity == GestureSensitivity::HIGH)   threshold = 40;
-    else if (sensitivity == GestureSensitivity::ULTRA)  threshold = 30;
+    if (sensitivity == GestureSensitivity::SENS_LOW)         threshold = 75;
+    else if (sensitivity == GestureSensitivity::SENS_HIGH)  threshold = 40;
+    else if (sensitivity == GestureSensitivity::SENS_ULTRA) threshold = 30;
 
     if (best_class == 0 || conf < threshold) {
         last_gesture = GestureType::NONE;
@@ -406,8 +406,8 @@ void GestureAI::classifyAndDispatch() {
         ui.showToast(ledManager.isMasterSwitchOn() ? "[TORCH ON]" : "[TORCH OFF]", 1000);
         soundManager.playNavSelect();
     } else if (act == GestureAction::ACTION_MUTE_SOUND) {
-        soundManager.setMasterOn(!soundManager.isMasterOn());
-        ui.showToast(soundManager.isMasterOn() ? "[SOUND ON]" : "[MUTED]", 1000);
+        soundManager.setMasterSwitch(!soundManager.isMasterSwitchOn());
+        ui.showToast(soundManager.isMasterSwitchOn() ? "[SOUND ON]" : "[MUTED]", 1000);
     } else {
         ui.dispatchGestureAction(act);
     }
