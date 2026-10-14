@@ -333,3 +333,15 @@ void simd_generate_wipe_mask(uint8_t* mask, uint8_t progress_pct, uint8_t direct
         }
     }
 }
+
+void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15) {
+    if (!filtered_y || !raw_x) return;
+
+    int32_t a = (int32_t)alpha_q15;
+    // 8-lane parallel execution (6 DOF: ax, ay, az, 0, gx, gy, gz, 0)
+    #pragma GCC unroll 8
+    for (int j = 0; j < 8; j++) {
+        int32_t diff = (int32_t)raw_x[j] - (int32_t)filtered_y[j];
+        filtered_y[j] = (int16_t)(filtered_y[j] + ((diff * a) >> 15));
+    }
+}

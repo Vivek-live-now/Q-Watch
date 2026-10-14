@@ -53,6 +53,10 @@ void simd_generate_dither_mask(uint8_t* mask, uint8_t step, size_t len);
 // Generates a wipe mask for progress (0..100) (direction: 0=horizontal, 1=vertical)
 void simd_generate_wipe_mask(uint8_t* mask, uint8_t progress_pct, uint8_t direction, size_t len);
 
+// Candidate 4: 6-DOF IMU 128-bit Parallel Vector Low-Pass Filter
+// Filters packed [ax, ay, az, 0, gx, gy, gz, 0] across 8 parallel lanes using Q15 alpha
+void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15);
+
 #ifdef __cplusplus
 }
 #endif

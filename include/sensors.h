@@ -149,6 +149,12 @@ public:
     bool isMagActive() const { return mag_active; }
     bool isGyroActive() const { return gyro_active; }
 
+    // 6-DOF IMU Parallel Vector Filter (Xtensa LX7 SIMD)
+    void setImuFilterEnabled(bool en) { imu_filter_enabled = en; }
+    bool isImuFilterEnabled() const { return imu_filter_enabled; }
+    void setImuFilterAlpha(uint16_t alpha_q15) { imu_filter_alpha_q15 = alpha_q15; }
+    uint16_t getImuFilterAlpha() const { return imu_filter_alpha_q15; }
+
     // For Telemetry
     RawSensorData getRawData() const { return raw_data; }
     CalibratedSensorData getCalData() const { return cal_data; }
@@ -192,6 +198,9 @@ private:
     bool sensors_sleeping;
     bool mag_active;
     bool gyro_active;
+    int16_t imu_filtered_vec[8] __attribute__((aligned(16)));
+    bool imu_filter_enabled;
+    uint16_t imu_filter_alpha_q15;
 
     Adafruit_BME280 bme;
     EnvironmentData env_data;

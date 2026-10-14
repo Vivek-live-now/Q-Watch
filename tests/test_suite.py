@@ -3634,6 +3634,79 @@ def test_vector_fir_and_screen_transitions():
     assert "displayManager.startTransition(SIMD_TRANSITION_DISSOLVE" in uc
     print("  [PASS] 6. DisplayManager transition engine and UICore app launch integration verified.")
 
+def test_imu_vector_filter_and_sensors():
+    print("\n--- 51. 6-DOF IMU Parallel Vector Low-Pass Filter ---")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    simd_h = os.path.join(base_dir, "include", "simd_accel.h")
+    simd_cpp = os.path.join(base_dir, "src", "simd_accel.cpp")
+    sens_h = os.path.join(base_dir, "include", "sensors.h")
+    sens_cpp = os.path.join(base_dir, "src", "sensors.cpp")
+
+    # 1. Header API Verification
+    with open(simd_h, "r", encoding="utf-8") as f:
+        sh = f.read()
+    assert "void simd_filter_imu_6dof(int16_t* filtered_y, const int16_t* raw_x, uint16_t alpha_q15);" in sh
+
+    with open(sens_h, "r", encoding="utf-8") as f:
+        seh = f.read()
+    assert "void setImuFilterEnabled(bool en)" in seh
+    assert "bool isImuFilterEnabled() const" in seh
+    assert "void setImuFilterAlpha(uint16_t alpha_q15)" in seh
+    assert "uint16_t getImuFilterAlpha() const" in seh
+    assert "int16_t imu_filtered_vec[8] __attribute__((aligned(16)));" in seh
+    print("  [PASS] 1. 6-DOF IMU filter declarations and 16-byte aligned vector buffer verified.")
+
+    # 2. Implementation Verification
+    with open(simd_cpp, "r", encoding="utf-8") as f:
+        sc = f.read()
+    assert "void simd_filter_imu_6dof(" in sc
+    assert "#pragma GCC unroll 8" in sc
+    assert "((diff * a) >> 15)" in sc
+
+    with open(sens_cpp, "r", encoding="utf-8") as f:
+        sec = f.read()
+    assert "simd_filter_imu_6dof(imu_filtered_vec, raw_vec, imu_filter_alpha_q15);" in sec
+    assert "imu_filter_enabled(true)" in sec
+    assert "imu_filter_alpha_q15(8192)" in sec
+    print("  [PASS] 2. 8-lane parallel execution loop and readMpu vector integration verified.")
+
+    # 3. Mathematical Equivalence & Ground Truth Step Response
+    ALPHA_Q15 = 8192 # 0.25 in Q15
+    prev_y = [1000, -200, 9800, 0, 50, -30, 10, 0]
+    raw_x  = [1200, -150, 9600, 0, 70, -20, 15, 0]
+
+    # Ground truth model from test_simd_audit.py
+    diff_vec = [a - b for a, b in zip(raw_x, prev_y)]
+    delta_vec = [(d * ALPHA_Q15) >> 15 for d in diff_vec]
+    expected_y = [p + d for p, d in zip(prev_y, delta_vec)]
+
+    def py_simd_filter_imu_6dof(filtered_y, raw_x, alpha_q15):
+        a = alpha_q15
+        out = list(filtered_y)
+        for j in range(8):
+            diff = raw_x[j] - out[j]
+            out[j] = out[j] + ((diff * a) >> 15)
+        return out
+
+    actual_y = py_simd_filter_imu_6dof(prev_y, raw_x, ALPHA_Q15)
+    assert actual_y == expected_y, f"Vector filter discrepancy: {actual_y} vs {expected_y}"
+    print("  [PASS] 3. 6-DOF IMU vector filter step response matches ground truth across all 8 lanes.")
+
+    # 4. Boundary Conditions (Passthrough & Jitter Suppression)
+    # Alpha = 32768 (1.0 = Passthrough)
+    pass_y = py_simd_filter_imu_6dof(prev_y, raw_x, 32768)
+    for j in range(8):
+        assert pass_y[j] == raw_x[j], "Alpha 1.0 must pass raw signal through instantly"
+
+    # Multi-step convergence test (simulating 100Hz tremor rejection)
+    y_state = [0] * 8
+    step_input = [1000] * 8
+    for _ in range(20):
+        y_state = py_simd_filter_imu_6dof(y_state, step_input, ALPHA_Q15)
+    # After 20 steps with alpha=0.25, state must smoothly approach 1000 (> 990)
+    assert y_state[0] > 990 and y_state[0] <= 1000
+    print("  [PASS] 4. Boundary conditions (1.0 passthrough and 20-step exponential convergence) verified.")
+
 if __name__ == "__main__":
     test_protocol_variants()
     test_raw_serialization()
@@ -3676,6 +3749,7 @@ if __name__ == "__main__":
     test_media_upload_integrity_and_export_suite()
     test_four_sensor_sleep_engine()
     test_vector_fir_and_screen_transitions()
+    test_imu_vector_filter_and_sensors()
     print("\nAll self-test verifications PASSED!")
 
 

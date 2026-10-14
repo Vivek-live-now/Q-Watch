@@ -2,6 +2,7 @@
 #include "settings_data.h"
 #include "sensors.h"
 #include "hw_config.h"
+#include "simd_accel.h"
 #include <math.h>
 
 SensorManager sensors;
@@ -52,7 +53,8 @@ SensorManager sensors;
 // Madgwick Beta (Gain)
 #define MADGWICK_BETA 0.1f
 
-SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0), sensors_sleeping(false), mag_active(true), gyro_active(true) {
+SensorManager::SensorManager() : mpu_ok(false), mag_ok(false), bme_ok(false), mag_type(MagChipType::NONE), mag_i2c_addr(0x2C), mpu_i2c_addr(0x68), reference_pressure(1013.25f), last_bme_update(0), last_bme_log(0), height_state(BmeHeightState::OFF), history_count(0), last_fusion_micros(0), filt_pitch(0.0f), filt_roll(0.0f), stat_sample_count(0), stat_gyro_sum_x(0.0f), stat_gyro_sum_y(0.0f), stat_gyro_sum_z(0.0f), last_fusion_update(0), last_mag_update(0), yaw_initialized(false), tilted_z_mode(false), cal_state(MagCalState::IDLE), last_alt_zero_time(0), sensors_sleeping(false), mag_active(true), gyro_active(true), imu_filter_enabled(true), imu_filter_alpha_q15(8192) {
+    memset(imu_filtered_vec, 0, sizeof(imu_filtered_vec));
     q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
     orientation.roll = 0; orientation.pitch = 0; orientation.yaw = 0;
     offsets.gyro_bias_x = 0; offsets.gyro_bias_y = 0; offsets.gyro_bias_z = 0;
@@ -552,13 +554,38 @@ void SensorManager::readMpu() {
     Wire.requestFrom((uint8_t)mpu_i2c_addr, (uint8_t)14);
 
     if (Wire.available() == 14) {
-        raw_data.ax = (Wire.read() << 8) | Wire.read();
-        raw_data.ay = (Wire.read() << 8) | Wire.read();
-        raw_data.az = (Wire.read() << 8) | Wire.read();
+        int16_t in_ax = (Wire.read() << 8) | Wire.read();
+        int16_t in_ay = (Wire.read() << 8) | Wire.read();
+        int16_t in_az = (Wire.read() << 8) | Wire.read();
         Wire.read(); Wire.read(); // skip temp
-        raw_data.gx = (Wire.read() << 8) | Wire.read();
-        raw_data.gy = (Wire.read() << 8) | Wire.read();
-        raw_data.gz = (Wire.read() << 8) | Wire.read();
+        int16_t in_gx = (Wire.read() << 8) | Wire.read();
+        int16_t in_gy = (Wire.read() << 8) | Wire.read();
+        int16_t in_gz = (Wire.read() << 8) | Wire.read();
+
+        if (imu_filter_enabled) {
+            int16_t raw_vec[8] ALIGNED16 = {
+                in_ax, in_ay, in_az, 0,
+                in_gx, in_gy, in_gz, 0
+            };
+            if (imu_filtered_vec[0] == 0 && imu_filtered_vec[1] == 0 && imu_filtered_vec[2] == 0) {
+                memcpy(imu_filtered_vec, raw_vec, sizeof(imu_filtered_vec));
+            } else {
+                simd_filter_imu_6dof(imu_filtered_vec, raw_vec, imu_filter_alpha_q15);
+            }
+            raw_data.ax = imu_filtered_vec[0];
+            raw_data.ay = imu_filtered_vec[1];
+            raw_data.az = imu_filtered_vec[2];
+            raw_data.gx = imu_filtered_vec[4];
+            raw_data.gy = imu_filtered_vec[5];
+            raw_data.gz = imu_filtered_vec[6];
+        } else {
+            raw_data.ax = in_ax;
+            raw_data.ay = in_ay;
+            raw_data.az = in_az;
+            raw_data.gx = in_gx;
+            raw_data.gy = in_gy;
+            raw_data.gz = in_gz;
+        }
     }
 }
 
@@ -1124,6 +1151,7 @@ void SensorManager::enterSleep(bool keep_wom_active) {
     }
 
     sensors_sleeping = true;
+    memset(imu_filtered_vec, 0, sizeof(imu_filtered_vec));
 }
 
 void SensorManager::wakeFromSleep() {
@@ -1172,6 +1200,7 @@ void SensorManager::wakeFromSleep() {
     }
 
     sensors_sleeping = false;
+    memset(imu_filtered_vec, 0, sizeof(imu_filtered_vec));
     last_fusion_update = millis();
     last_mag_update = millis();
     last_bme_update = millis();
