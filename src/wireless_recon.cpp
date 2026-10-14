@@ -151,7 +151,9 @@ void WirelessRecon::stopBleScan() {
 }
 
 void WirelessRecon::testInjectBleTarget(const char* name, const char* mac, int8_t rssi) {
-    if (!mac || strlen(mac) == 0) return;
+    if (!mac || mac[0] == '\0') return;
+
+    bool has_name = (name && name[0] != '\0');
 
     // Check if target already exists
     for (int i = 0; i < ble_target_count; i++) {
@@ -159,7 +161,7 @@ void WirelessRecon::testInjectBleTarget(const char* name, const char* mac, int8_
             ble_targets[i].rssi = rssi;
             ble_targets[i].last_seen = millis();
             ble_targets[i].active = true;
-            if (name && strlen(name) > 0 && strcmp(ble_targets[i].name, "UNKNOWN") == 0) {
+            if (has_name && strcmp(ble_targets[i].name, "UNKNOWN") == 0) {
                 strncpy(ble_targets[i].name, name, sizeof(ble_targets[i].name) - 1);
                 ble_targets[i].name[sizeof(ble_targets[i].name) - 1] = '\0';
             }
@@ -170,7 +172,7 @@ void WirelessRecon::testInjectBleTarget(const char* name, const char* mac, int8_
     // Add new target
     if (ble_target_count < MAX_BLE_TARGETS) {
         BleTarget& t = ble_targets[ble_target_count];
-        if (name && strlen(name) > 0) {
+        if (has_name) {
             strncpy(t.name, name, sizeof(t.name) - 1);
         } else {
             strncpy(t.name, "UNKNOWN", sizeof(t.name) - 1);
@@ -194,7 +196,7 @@ void WirelessRecon::testInjectBleTarget(const char* name, const char* mac, int8_
             }
         }
         BleTarget& t = ble_targets[oldest_idx];
-        if (name && strlen(name) > 0) {
+        if (has_name) {
             strncpy(t.name, name, sizeof(t.name) - 1);
         } else {
             strncpy(t.name, "UNKNOWN", sizeof(t.name) - 1);
