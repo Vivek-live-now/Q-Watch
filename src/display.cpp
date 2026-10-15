@@ -48,9 +48,9 @@ void DisplayManager::begin() {
 void DisplayManager::flushAsync() {
     if (gdma_enabled && gdmaManager.isInitialized()) {
         gdmaManager.flushAsync(oled.getBufferPtr());
-    } else {
-        oled.sendBuffer();
+        gdmaManager.waitIdle();
     }
+    oled.sendBuffer();
 }
 
 const GdmaTransferStats& DisplayManager::getGdmaStats() const {
