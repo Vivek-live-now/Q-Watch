@@ -34,6 +34,8 @@ struct SettingsData {
     bool invert_display = false;
     int ui_option_idx = 0;
     bool gdma_enabled = true;     // Hardware GDMA Asynchronous Display Refresh
+    int font_style_idx = 0;       // 0: CUTE ROUNDED, 1: PIXEL RETRO, 2: MODERN TECH
+    int font_size_idx = 1;        // 0: SMALL, 1: MEDIUM, 2: LARGE
 
     // UNIFIED AUTO DATA RECORDING & SENSORS
     bool auto_record_enabled = false;    // Unified master switch (Default: OFF -> zero periodic timer wakeups)
@@ -133,6 +135,12 @@ static const int TIMEZONE_OPTION_COUNT = 12;
 
 static const char* const UI_OPTIONS_LIST[] = {"Default", "Compact", "High Contrast"};
 static const int UI_OPTIONS_COUNT = 3;
+
+static const char* const FONT_STYLE_OPTIONS[] = {"CUTE ROUNDED", "PIXEL RETRO", "MODERN TECH"};
+static const int FONT_STYLE_COUNT = 3;
+
+static const char* const FONT_SIZE_OPTIONS[] = {"SMALL", "MEDIUM", "LARGE"};
+static const int FONT_SIZE_COUNT = 3;
 
 static const char* const SOUND_STYLE_OPTIONS[] = {"SILENT", "MODERN", "TACTICAL", "RETRO"};
 static const int SOUND_STYLE_COUNT = 4;

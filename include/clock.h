@@ -25,6 +25,7 @@ public:
     uint32_t getLastSyncTime() const { return last_sync_time; }
     uint32_t getEpoch() const { time_t now; time(&now); return (uint32_t)now; }
     void setEpoch(uint32_t epoch);
+    void setManualTime(int hour, int minute, int second, int day, int month, int year);
 
     String getTimeStr(); // HH:MM or HH:MM AM/PM based on settings
     void getTimeStr(char* buf, size_t maxLen) const;

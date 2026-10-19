@@ -34,7 +34,8 @@ enum class SettingsSubmenu {
     HEALTH_SETTINGS,
     SYSTEM,
     TIME_SYNC_STATUS,
-    RESET_CONFIRM
+    RESET_CONFIRM,
+    MANUAL_TIME_SET
 };
 
 enum class CompassState {
@@ -83,7 +84,9 @@ enum class SoundSubmenu {
     LAB,
     METRONOME,
     MORSE,
-    POLY_SYNTH
+    POLY_SYNTH,
+    TUNES,
+    BEAT_MAKER
 };
 
 enum class ClockSubmenu {
@@ -124,7 +127,8 @@ enum class UIState {
     APP_VIBRATION,
     APP_KEYBOARD,
     VALUE_EDIT,
-    SLEEPING
+    SLEEPING,
+    APP_BEAT_MAKER
 };
 
 enum class ReconSubmenu {
@@ -218,6 +222,41 @@ public:
     bool isLabSweepActive() const { return lab_sweep_active; }
     uint16_t getLabSweepFreq() const { return lab_sweep_freq; }
 
+    // Beat Maker getters & state
+    bool isBeatPlaying() const { return beat_playing; }
+    uint8_t getBeatStep() const { return beat_current_step; }
+    uint8_t getBeatBpm() const { return beat_bpm; }
+    uint8_t getBeatCursorTrack() const { return beat_cursor_track; }
+    uint8_t getBeatCursorStep() const { return beat_cursor_step; }
+    bool isPadActive(uint8_t track, uint8_t step) const {
+        if (track < 4 && step < 16) return (beat_pattern[track] & (1 << step)) != 0;
+        return false;
+    }
+    uint16_t getBeatPattern(uint8_t track) const { return (track < 4) ? beat_pattern[track] : 0; }
+    void toggleBeatPad(uint8_t track, uint8_t step);
+    void setBeatBpm(uint8_t bpm) { beat_bpm = bpm; }
+    void startBeat();
+    void stopBeat();
+    void loadBeatPreset(uint8_t preset);
+    void clearBeat();
+    void handleBeatMakerInput();
+
+    // Jukebox getters & state
+    uint8_t getJukeboxTune() const { return jukebox_selected_tune; }
+    bool isJukeboxPlaying() const { return soundManager.isPlaying(); }
+    void handleJukeboxInput();
+
+    // Manual Time Set getters & state
+    int getTimeEditField() const { return time_edit_field; }
+    int getManualHour() const { return manual_hour; }
+    int getManualMinute() const { return manual_minute; }
+    int getManualSecond() const { return manual_second; }
+    int getManualYear() const { return manual_year; }
+    int getManualMonth() const { return manual_month; }
+    int getManualDay() const { return manual_day; }
+    void initManualTimeFromClock();
+    void handleManualTimeInput();
+
     const char* getToastMessage() const { return toast_msg; }
     uint32_t getToastEndTime() const { return toast_end_time; }
     void showToast(const char* msg, uint32_t duration_ms = 1500);
@@ -308,7 +347,7 @@ public:
 
     static const int MAIN_MENU_ITEM_COUNT = 19;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
-        "HOME", "CLOCK", "WEATHER", "COMPASS", "HEALTH",
+        "CLOCK", "WEATHER", "BEAT MAKER", "COMPASS", "HEALTH",
         "IMU6500", "IR REMOTE", "SOUND", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
     };
 
@@ -365,9 +404,9 @@ public:
         "Radio", "TX Power", "Status", "SSID", "IP", "Scan"
     };
 
-    static const int TIME_ITEM_COUNT = 5;
+    static const int TIME_ITEM_COUNT = 6;
     const char* time_items[TIME_ITEM_COUNT] = {
-        "SYNC NOW", "SYNC STATUS", "AUTO SYNC", "TIMEZONE", "24 HOUR"
+        "SYNC NOW", "SYNC STATUS", "MANUAL SET", "AUTO SYNC", "TIMEZONE", "24 HOUR"
     };
 
     static const int POWER_ITEM_COUNT = 5;
@@ -375,9 +414,9 @@ public:
         "DISPLAY TIMEOUT", "SLEEP TIME", "RAISE TO WAKE", "WIFI AUTO-OFF", "LOW POWER"
     };
 
-    static const int DISPLAY_ITEM_COUNT = 3;
+    static const int DISPLAY_ITEM_COUNT = 5;
     const char* display_items[DISPLAY_ITEM_COUNT] = {
-        "CONTRAST", "INVERT", "UI OPTIONS"
+        "CONTRAST", "INVERT", "FONT STYLE", "FONT SIZE", "UI OPTIONS"
     };
 
     static const int SENSORS_ITEM_COUNT = 4;
@@ -514,6 +553,29 @@ public:
     MotionState motion_state;
 
     bool needs_redraw;
+
+    // Beat Maker state
+    uint16_t beat_pattern[4];
+    bool beat_playing;
+    uint8_t beat_current_step;
+    uint32_t beat_last_step_time;
+    uint8_t beat_bpm;
+    uint8_t beat_cursor_track;
+    uint8_t beat_cursor_step;
+    uint8_t beat_preset_idx;
+
+    // Jukebox state
+    uint8_t jukebox_selected_tune;
+    uint32_t jukebox_anim_frame;
+
+    // Manual Time Set state
+    int time_edit_field;
+    int manual_hour;
+    int manual_minute;
+    int manual_second;
+    int manual_year;
+    int manual_month;
+    int manual_day;
 
     void handleBmeInput();
     void handleHealthInput();

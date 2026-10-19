@@ -58,6 +58,8 @@ void UICore::handleSoundInput() {
         case SoundSubmenu::METRONOME: handleMetronomeInput(); break;
         case SoundSubmenu::MORSE: handleMorseInput(); break;
         case SoundSubmenu::POLY_SYNTH: handlePolySynthInput(); break;
+        case SoundSubmenu::TUNES: handleJukeboxInput(); break;
+        case SoundSubmenu::BEAT_MAKER: handleBeatMakerInput(); break;
         default: break;
     }
 }
@@ -92,7 +94,7 @@ void UICore::handleSoundMainInput() {
                 sound_selection = 0;
                 sound_scroll_offset = 0;
                 break;
-            case 3: sound_submenu = SoundSubmenu::COMPOSER; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 3: sound_submenu = SoundSubmenu::TUNES; sound_selection = 0; sound_scroll_offset = 0; break;
             case 4: sound_submenu = SoundSubmenu::LAB; sound_selection = 0; sound_scroll_offset = 0; break;
             case 5: sound_submenu = SoundSubmenu::METRONOME; sound_selection = 0; sound_scroll_offset = 0; break;
             case 6: sound_submenu = SoundSubmenu::MORSE; sound_selection = 0; sound_scroll_offset = 0; break;
@@ -429,6 +431,23 @@ void UICore::handleSoundComposerInput() {
     ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
     ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        sound_submenu = SoundSubmenu::TUNES;
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_REPEAT) {
+        if (composer_count > 0) {
+            soundManager.playSequence(composer_notes, composer_count);
+            showToast("[PLAYING TUNE ▶]", 1000);
+        }
+        needs_redraw = true;
+        return;
+    }
 
     if (up_evt == BTN_EVT_SHORT_PRESS) {
         composer_note_idx = (composer_note_idx + 1) % 8;
@@ -572,6 +591,204 @@ void UICore::handlePolySynthInput() {
         polySynth.toggleMute(mute_idx);
         mute_idx = (mute_idx + 1) % PolySynth::NUM_CHANNELS;
         soundManager.playNavSelect();
+        needs_redraw = true;
+    }
+}
+
+void UICore::toggleBeatPad(uint8_t track, uint8_t step) {
+    if (track < 4 && step < 16) {
+        beat_pattern[track] ^= (1 << step);
+        if (beat_pattern[track] & (1 << step)) {
+            if (track == 0) soundManager.playKick();
+            else if (track == 1) soundManager.playSnare();
+            else if (track == 2) soundManager.playHiHat();
+            else if (track == 3) soundManager.playSynthNote(step % 8);
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::startBeat() {
+    beat_playing = true;
+    beat_current_step = 0;
+    beat_last_step_time = millis();
+    needs_redraw = true;
+}
+
+void UICore::stopBeat() {
+    beat_playing = false;
+    soundManager.stop();
+    needs_redraw = true;
+}
+
+void UICore::clearBeat() {
+    for (int i = 0; i < 4; i++) beat_pattern[i] = 0;
+    showToast("[BEAT CLEARED (o_o)]", 1000);
+    needs_redraw = true;
+}
+
+void UICore::loadBeatPreset(uint8_t preset) {
+    beat_preset_idx = preset % 4;
+    switch (beat_preset_idx) {
+        case 0:
+            beat_pattern[0] = 0x1111; // Kick: 0, 4, 8, 12
+            beat_pattern[1] = 0x1010; // Snare: 4, 12
+            beat_pattern[2] = 0x5555; // Hi-Hat: 8ths
+            beat_pattern[3] = 0x0820; // Synth blip
+            showToast("[PRESET: POP GROOVE]", 1000);
+            break;
+        case 1:
+            beat_pattern[0] = 0x9090;
+            beat_pattern[1] = 0x0404;
+            beat_pattern[2] = 0xFFFF;
+            beat_pattern[3] = 0x6248;
+            showToast("[PRESET: CHIPTUNE]", 1000);
+            break;
+        case 2:
+            beat_pattern[0] = 0x0109;
+            beat_pattern[1] = 0x1010;
+            beat_pattern[2] = 0x5454;
+            beat_pattern[3] = 0x4082;
+            beat_bpm = 90;
+            showToast("[PRESET: LO-FI CHILL]", 1000);
+            break;
+        case 3:
+            beat_pattern[0] = 0x1111;
+            beat_pattern[1] = 0x1010;
+            beat_pattern[2] = 0xAAAA;
+            beat_pattern[3] = 0x5555;
+            beat_bpm = 125;
+            showToast("[PRESET: RETRO DISCO]", 1000);
+            break;
+    }
+    needs_redraw = true;
+}
+
+void UICore::handleBeatMakerInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        if (beat_playing) {
+            stopBeat();
+            showToast("[PAUSED]", 600);
+        } else {
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 2; // BEAT MAKER
+            menu_scroll_offset = 0;
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_LONG_PRESS) {
+        soundManager.playNavSelect();
+        if (beat_playing) {
+            stopBeat();
+            showToast("[STOPPED]", 800);
+        } else {
+            startBeat();
+            showToast("[PLAYING ▶]", 800);
+        }
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (beat_cursor_track > 0) {
+            beat_cursor_track--;
+        } else {
+            beat_cursor_track = 4; // Wrap to control bar
+        }
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavMove();
+        if (beat_cursor_track < 4) {
+            beat_cursor_track++;
+        } else {
+            beat_cursor_track = 0; // Wrap to Kick
+        }
+        needs_redraw = true;
+    } else if (up_evt == BTN_EVT_REPEAT) {
+        beat_cursor_step = (beat_cursor_step > 0) ? beat_cursor_step - 1 : 15;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_REPEAT) {
+        beat_cursor_step = (beat_cursor_step + 1) % 16;
+        soundManager.playNavMove();
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (beat_cursor_track < 4) {
+            toggleBeatPad(beat_cursor_track, beat_cursor_step);
+        } else {
+            uint8_t action = beat_cursor_step % 4;
+            if (action == 0) {
+                if (beat_playing) stopBeat();
+                else startBeat();
+            } else if (action == 1) {
+                beat_bpm += 10;
+                if (beat_bpm > 160) beat_bpm = 80;
+                showToast(("[BPM: " + String(beat_bpm) + "]").c_str(), 800);
+            } else if (action == 2) {
+                loadBeatPreset(beat_preset_idx + 1);
+            } else if (action == 3) {
+                clearBeat();
+            }
+        }
+        needs_redraw = true;
+    }
+}
+
+void UICore::handleJukeboxInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    const int JUKEBOX_ITEM_COUNT = 6;
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        soundManager.stop();
+        sound_submenu = SoundSubmenu::MAIN;
+        sound_selection = 3;
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        jukebox_selected_tune = (jukebox_selected_tune > 0) ? jukebox_selected_tune - 1 : JUKEBOX_ITEM_COUNT - 1;
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        jukebox_selected_tune = (jukebox_selected_tune + 1) % JUKEBOX_ITEM_COUNT;
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        if (jukebox_selected_tune == 5) {
+            sound_submenu = SoundSubmenu::COMPOSER;
+            composer_count = 0;
+            needs_redraw = true;
+            return;
+        }
+
+        if (soundManager.isPlaying()) {
+            soundManager.stop();
+            showToast("[STOPPED]", 800);
+        } else {
+            soundManager.playTuneByIdx(jukebox_selected_tune);
+            showToast(("[PLAY: " + String(soundManager.getTuneName(jukebox_selected_tune)) + " (^_^)]").c_str(), 1200);
+        }
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        if (jukebox_selected_tune < SoundManager::TUNE_COUNT) {
+            soundManager.playNavSelect();
+            showToast(("[SET AS FAVORITE TUNE! ♡]").c_str(), 1400);
+        }
         needs_redraw = true;
     }
 }

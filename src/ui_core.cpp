@@ -105,8 +105,29 @@ UICore::UICore() :
     lab_duty(50),
     lab_sweep_active(false),
     lab_sweep_freq(2000),
-    last_sweep_time(0) {
+    last_sweep_time(0),
+    beat_playing(false),
+    beat_current_step(0),
+    beat_last_step_time(0),
+    beat_bpm(120),
+    beat_cursor_track(0),
+    beat_cursor_step(0),
+    beat_preset_idx(0),
+    jukebox_selected_tune(0),
+    jukebox_anim_frame(0),
+    time_edit_field(0),
+    manual_hour(12),
+    manual_minute(0),
+    manual_second(0),
+    manual_year(2026),
+    manual_month(10),
+    manual_day(18) {
     toast_msg[0] = '\0';
+    // Default upbeat rhythm pattern
+    beat_pattern[0] = 0x1111; // Kick: 0, 4, 8, 12
+    beat_pattern[1] = 0x1010; // Snare: 4, 12
+    beat_pattern[2] = 0x5555; // Hi-Hat: 0, 2, 4, 6, 8, 10, 12, 14
+    beat_pattern[3] = 0x0820; // Synth: 5, 11
 }
 
 void UICore::setIrActiveRemotePath(const String& path) {
@@ -404,6 +425,19 @@ void UICore::loop() {
         needs_redraw = true;
     }
 
+    if (beat_playing) {
+        uint32_t step_interval = 60000 / (beat_bpm * 4);
+        if (millis() - beat_last_step_time >= step_interval) {
+            beat_last_step_time = millis();
+            beat_current_step = (beat_current_step + 1) % 16;
+            if (isPadActive(0, beat_current_step)) soundManager.playKick();
+            if (isPadActive(1, beat_current_step)) soundManager.playSnare();
+            if (isPadActive(2, beat_current_step)) soundManager.playHiHat();
+            if (isPadActive(3, beat_current_step)) soundManager.playSynthNote(beat_current_step % 8);
+            if (current_state == UIState::APP_BEAT_MAKER) needs_redraw = true;
+        }
+    }
+
     if (current_state == UIState::SLEEPING) return;
 
     if (current_state != UIState::APP_RUNNING && current_state != UIState::APP_KEYBOARD && !(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_AIRMOUSE)) {
@@ -518,6 +552,14 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_WEATHER) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
+            menu_selection = 1;
+            menu_scroll_offset = 0;
+            needs_redraw = true;
+            return;
+        } else if (current_state == UIState::APP_BEAT_MAKER) {
+            soundManager.playNavBack();
+            stopBeat();
+            current_state = UIState::MAIN_MENU;
             menu_selection = 2;
             menu_scroll_offset = 0;
             needs_redraw = true;
@@ -589,7 +631,7 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (clock_submenu == ClockSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 1;
+                menu_selection = 0;
                 menu_scroll_offset = 0;
             } else {
                 clock_submenu = ClockSubmenu::MAIN;
@@ -755,6 +797,7 @@ void UICore::loop() {
         case UIState::APP_HEALTH: handleHealthInput(); break;
         case UIState::APP_MOTION: handleMotionInput(); break;
         case UIState::APP_BATTERY: handleBatteryInput(); break;
+        case UIState::APP_BEAT_MAKER: handleBeatMakerInput(); break;
         default: handleGenericAppInput(); break;
     }
 }
@@ -1654,21 +1697,21 @@ void UICore::handleMainMenuInput() {
     if (ok_evt == BTN_EVT_SHORT_PRESS) {
         displayManager.captureTransitionSnapshot();
         displayManager.startTransition(SIMD_TRANSITION_DISSOLVE, 120);
-        if (menu_selection == 0) {
-            soundManager.playNavSelect();
-        } else {
-            soundManager.playAppLaunch();
-            delay(150);
-        }
+        soundManager.playAppLaunch();
+        delay(150);
         switch(menu_selection) {
-            case 0: current_state = UIState::APP_HOME; break;
-            case 1:
+            case 0:
                 current_state = UIState::APP_CLOCK;
                 clock_submenu = ClockSubmenu::MAIN;
                 clock_selection = 0;
                 clock_scroll_offset = 0;
                 break;
-            case 2: current_state = UIState::APP_WEATHER; weather_page = 0; break;
+            case 1: current_state = UIState::APP_WEATHER; weather_page = 0; break;
+            case 2:
+                current_state = UIState::APP_BEAT_MAKER;
+                beat_cursor_track = 0;
+                beat_cursor_step = 0;
+                break;
             case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; if (!sensors.isMagOk()) sensors.probeMagnetometer(); break;
             case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
             case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
@@ -1723,6 +1766,7 @@ void UICore::handleSettingsMenuInput() {
         case SettingsSubmenu::HEALTH_SETTINGS: handleHealthSettingsInput(); break;
         case SettingsSubmenu::SYSTEM: handleSystemInput(); break;
         case SettingsSubmenu::RESET_CONFIRM: handleResetConfirmInput(); break;
+        case SettingsSubmenu::MANUAL_TIME_SET: handleManualTimeInput(); break;
     }
 }
 
@@ -1950,16 +1994,109 @@ void UICore::handleTimeInput() {
         } else if (settings_selection == 1) {
             settings_submenu = SettingsSubmenu::TIME_SYNC_STATUS;
         } else if (settings_selection == 2) {
+            initManualTimeFromClock();
+            settings_submenu = SettingsSubmenu::MANUAL_TIME_SET;
+        } else if (settings_selection == 3) {
             s.auto_sync = !s.auto_sync;
             settingsManager.save();
-        } else if (settings_selection == 3) {
+        } else if (settings_selection == 4) {
             s.timezone_idx = (s.timezone_idx + 1) % TIMEZONE_OPTION_COUNT;
             settingsManager.save();
             qclock.setTimezoneIdx(s.timezone_idx);
-        } else if (settings_selection == 4) {
+        } else if (settings_selection == 5) {
             s.format_24hr = !s.format_24hr;
             settingsManager.save();
         }
+        needs_redraw = true;
+    }
+}
+
+void UICore::initManualTimeFromClock() {
+    manual_hour = qclock.getHour();
+    manual_minute = qclock.getMinute();
+    manual_second = qclock.getSecond();
+    manual_day = qclock.getDay();
+    manual_month = qclock.getMonth();
+    manual_year = qclock.getYear();
+    time_edit_field = 0;
+}
+
+void UICore::handleManualTimeInput() {
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
+
+    if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavBack();
+        settings_submenu = SettingsSubmenu::TIME;
+        settings_selection = 2;
+        settings_scroll_offset = 0;
+        needs_redraw = true;
+        return;
+    }
+
+    int max_days = 31;
+    if (manual_month == 2) {
+        bool leap = (manual_year % 4 == 0 && manual_year % 100 != 0) || (manual_year % 400 == 0);
+        max_days = leap ? 29 : 28;
+    } else if (manual_month == 4 || manual_month == 6 || manual_month == 9 || manual_month == 11) {
+        max_days = 30;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        switch (time_edit_field) {
+            case 0: manual_hour = (manual_hour + 1) % 24; break;
+            case 1: manual_minute = (manual_minute + 1) % 60; break;
+            case 2: manual_second = (manual_second + 1) % 60; break;
+            case 3: manual_year++; if (manual_year > 2038) manual_year = 2024; break;
+            case 4: manual_month = (manual_month % 12) + 1; break;
+            case 5: manual_day++; if (manual_day > max_days) manual_day = 1; break;
+            case 6:
+            case 7:
+                time_edit_field = (time_edit_field == 6) ? 7 : 6;
+                break;
+        }
+        needs_redraw = true;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
+        soundManager.playNavMove();
+        switch (time_edit_field) {
+            case 0: manual_hour = (manual_hour > 0) ? manual_hour - 1 : 23; break;
+            case 1: manual_minute = (manual_minute > 0) ? manual_minute - 1 : 59; break;
+            case 2: manual_second = (manual_second > 0) ? manual_second - 1 : 59; break;
+            case 3: manual_year--; if (manual_year < 2024) manual_year = 2038; break;
+            case 4: manual_month = (manual_month > 1) ? manual_month - 1 : 12; break;
+            case 5: manual_day = (manual_day > 1) ? manual_day - 1 : max_days; break;
+            case 6:
+            case 7:
+                time_edit_field = (time_edit_field == 6) ? 7 : 6;
+                break;
+        }
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
+        soundManager.playNavSelect();
+        if (time_edit_field == 6) {
+            qclock.setManualTime(manual_hour, manual_minute, manual_second, manual_day, manual_month, manual_year);
+            showToast("[TIME SAVED! (^_^)]", 1500);
+            settings_submenu = SettingsSubmenu::TIME;
+            settings_selection = 2;
+            settings_scroll_offset = 0;
+        } else if (time_edit_field == 7) {
+            settings_submenu = SettingsSubmenu::TIME;
+            settings_selection = 2;
+            settings_scroll_offset = 0;
+        } else {
+            time_edit_field = (time_edit_field + 1) % 8;
+        }
+        needs_redraw = true;
+    } else if (ok_evt == BTN_EVT_LONG_PRESS) {
+        qclock.setManualTime(manual_hour, manual_minute, manual_second, manual_day, manual_month, manual_year);
+        showToast("[TIME SAVED! (^_^)]", 1500);
+        soundManager.playNavSelect();
+        settings_submenu = SettingsSubmenu::TIME;
+        settings_selection = 2;
+        settings_scroll_offset = 0;
         needs_redraw = true;
     }
 }
@@ -2051,6 +2188,16 @@ void UICore::handleDisplayInput() {
             settingsManager.save();
             displayManager.applyDisplaySettings();
         } else if (settings_selection == 2) {
+            s.font_style_idx = (s.font_style_idx + 1) % FONT_STYLE_COUNT;
+            settingsManager.save();
+            displayManager.applyDisplaySettings();
+            showToast(FONT_STYLE_OPTIONS[s.font_style_idx], 800);
+        } else if (settings_selection == 3) {
+            s.font_size_idx = (s.font_size_idx + 1) % FONT_SIZE_COUNT;
+            settingsManager.save();
+            displayManager.applyDisplaySettings();
+            showToast(FONT_SIZE_OPTIONS[s.font_size_idx], 800);
+        } else if (settings_selection == 4) {
             s.ui_option_idx = (s.ui_option_idx + 1) % UI_OPTIONS_COUNT;
             settingsManager.save();
         }

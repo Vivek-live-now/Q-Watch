@@ -122,6 +122,7 @@ void DisplayManager::update() {
             case UIState::APP_BATTERY: drawAppBattery(); break;
             case UIState::APP_LED: drawAppLED(); break;
             case UIState::APP_AUDIO: drawAppAudio(); break;
+            case UIState::APP_BEAT_MAKER: drawBeatMaker(); break;
             case UIState::APP_ABOUT: drawAppAbout(); break;
             case UIState::APP_FILE_MANAGER: drawFileManager(); break;
             case UIState::APP_APPS: drawAppApps(); break;
@@ -219,8 +220,11 @@ void DisplayManager::drawAppSettings() {
         drawFileServerDetailsScreen();
     } else if (sub == SettingsSubmenu::TIME_SYNC_STATUS) {
         drawTimeSyncStatusScreen();
+    } else if (sub == SettingsSubmenu::MANUAL_TIME_SET) {
+        drawManualTimeSet();
     } else if (sub == SettingsSubmenu::TIME) {
-        const char* vals[5] = {
+        const char* vals[UICore::TIME_ITEM_COUNT] = {
+            "",
             "",
             "",
             s.auto_sync ? "ON" : "OFF",
@@ -238,10 +242,12 @@ void DisplayManager::drawAppSettings() {
         };
         drawSettingsMenuWithValues("POWER", ui.power_items, vals, UICore::POWER_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SUB_DISPLAY) {
-        const char* vals[3] = {
+        const char* vals[UICore::DISPLAY_ITEM_COUNT] = {
             CONTRAST_OPTIONS[s.contrast_idx],
             s.invert_display ? "ON" : "OFF",
-            UI_OPTIONS_LIST[s.ui_option_idx]
+            UI_OPTIONS_LIST[s.ui_option_idx],
+            FONT_STYLE_OPTIONS[s.font_style_idx],
+            FONT_SIZE_OPTIONS[s.font_size_idx]
         };
         drawSettingsMenuWithValues("DISPLAY", ui.display_items, vals, UICore::DISPLAY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SENSORS) {
@@ -293,16 +299,16 @@ void DisplayManager::drawStandardMenu(const char* title, const char** items, int
 }
 
 void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const String* values) {
-    oled.setFont(u8g2_font_5x7_tr);
+    oled.setFont(getTitleFont());
     oled.drawStr(2, 7, title);
     oled.drawLine(0, 9, 128, 9);
-    oled.setFont(u8g2_font_6x10_tr);
+    oled.setFont(getMenuFont());
 
     int y_pos = 21;
 
     for (int i = offset; i < offset + 4 && i < item_count; i++) {
         if (i == selection) {
-            oled.drawBox(2, y_pos - 9, 118, 11);
+            oled.drawRBox(2, y_pos - 9, 118, 11, 2);
             oled.setDrawColor(0);
             oled.drawStr(4, y_pos, items[i]);
             if (values && values[i].length() > 0) {
@@ -328,16 +334,16 @@ void DisplayManager::drawSettingsMenuWithValues(const char* title, const char** 
 }
 
 void DisplayManager::drawStandardMenu(const char* title, const char** items, int item_count, int selection, int offset, const char* const* values) {
-    oled.setFont(u8g2_font_5x7_tr);
+    oled.setFont(getTitleFont());
     oled.drawStr(2, 7, title);
     oled.drawLine(0, 9, 128, 9);
-    oled.setFont(u8g2_font_6x10_tr);
+    oled.setFont(getMenuFont());
 
     int y_pos = 21;
 
     for (int i = offset; i < offset + 4 && i < item_count; i++) {
         if (i == selection) {
-            oled.drawBox(2, y_pos - 9, 118, 11);
+            oled.drawRBox(2, y_pos - 9, 118, 11, 2);
             oled.setDrawColor(0);
             oled.drawStr(4, y_pos, items[i]);
             if (values && values[i] && values[i][0] != '\0') {
@@ -996,17 +1002,20 @@ void DisplayManager::drawAppWeather() {
 
     if (weather.isUpdateInProgress()) {
         oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(16, 28, "UPDATING...");
+        oled.drawStr(18, 28, "FETCHING OWM...");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(8, 42, "FETCHING OPENWEATHER");
-        oled.drawStr(8, 54, "PLEASE WAIT...");
+        oled.drawStr(10, 42, "CONNECTING TO OPENWEATHER");
+        int dots = (millis() / 300) % 4;
+        String dotStr = "PLEASE WAIT";
+        for (int i = 0; i < dots; i++) dotStr += ".";
+        oled.drawStr(10, 54, dotStr.c_str());
         return;
     }
 
     int page = ui.getWeatherPage();
     if (page == 1) {
         // Page 2: Weather & Sensor Telemetry
-        oled.setFont(u8g2_font_5x7_tr);
+        oled.setFont(getTitleFont());
         oled.drawStr(4, 18, "WEATHER TELEMETRY");
         oled.drawLine(0, 20, 128, 20);
 
@@ -1037,49 +1046,61 @@ void DisplayManager::drawAppWeather() {
         char temp_str[16];
         snprintf(temp_str, sizeof(temp_str), "%.1f%s", wd.temperature, unit_sym);
 
+        // Cute weather icon at top right
+        drawCuteWeatherIcon(104, 14, wd.condition);
+
+        // Big temperature
         oled.setFont(u8g2_font_ncenB14_tr);
         oled.drawStr(4, 28, temp_str);
 
-        oled.setFont(u8g2_font_5x7_tr);
+        // Condition and City
+        oled.setFont(u8g2_font_5x7_tf);
         String cond = wd.condition;
-        if (cond.length() > 9) cond = cond.substring(0, 9);
-        oled.drawStr(72, 21, cond.c_str());
+        if (cond.length() > 10) cond = cond.substring(0, 10);
+        oled.drawStr(4, 38, cond.c_str());
 
         String loc = cfg.owm_location.length() > 0 ? cfg.owm_location : "OWM";
-        if (loc.length() > 9) loc = loc.substring(0, 9);
-        oled.drawStr(72, 31, loc.c_str());
+        if (loc.length() > 8) loc = loc.substring(0, 8);
+        oled.drawStr(62, 38, loc.c_str());
 
+        // Environmental stats: Humidity & Wind
         char details[40];
         const char* wind_unit = (cfg.owm_units == "imperial") ? "mph" : "m/s";
         snprintf(details, sizeof(details), "HUM:%d%% WND:%.1f%s FL:%.0f%s", wd.humidity, wd.wind_speed, wind_unit, wd.feels_like, unit_sym);
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 44, details);
+        oled.drawStr(4, 48, details);
 
-        oled.drawStr(4, 59, "[OK]: SYNC OWM NOW (1/2)");
+        oled.drawStr(4, 60, "[OK] SYNC  [UP/DN] INFO  (1/2)");
     } else if (sensors.isBmeOk()) {
         EnvironmentData env = sensors.getEnvData();
-        oled.setFont(u8g2_font_5x7_tr);
-        oled.drawStr(4, 18, "OFFLINE - LOCAL BME");
+        oled.setFont(getTitleFont());
+        oled.drawStr(4, 18, "LOCAL ENVIRONMENT");
         oled.drawLine(0, 20, 128, 20);
+
+        // Draw cute icons
+        drawThermometerIcon(100, 14);
+        drawHygrometerIcon(114, 14);
 
         char temp_str[16];
         snprintf(temp_str, sizeof(temp_str), "%.1f\260C", env.temperature);
         oled.setFont(u8g2_font_ncenB14_tr);
-        oled.drawStr(4, 38, temp_str);
+        oled.drawStr(4, 36, temp_str);
 
         char details[40];
         snprintf(details, sizeof(details), "HUM: %.0f%%  P: %.0f hPa", env.humidity, env.pressure);
-        oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 49, details);
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(4, 48, details);
 
-        oled.drawStr(4, 59, "[OK]: SYNC OWM NOW (1/2)");
-    } else {
-        oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(10, 26, "NO WEATHER DATA");
-        oled.setFont(u8g2_font_5x7_tr);
-        oled.drawStr(10, 40, "CONNECT WI-FI");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(10, 56, "[OK]: SYNC OWM NOW");
+        oled.drawStr(4, 60, "[OK] SYNC OWM  (1/2)");
+    } else {
+        // Cute sleeping cloud when no data
+        drawCuteWeatherIcon(54, 14, "cloud");
+        oled.setFont(u8g2_font_6x10_tr);
+        oled.drawStr(18, 42, "NO WEATHER DATA");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(14, 52, "CONNECT WI-FI FOR OWM");
+        oled.drawStr(18, 62, "[OK]: SYNC OWM NOW");
     }
 }
 
@@ -3326,8 +3347,9 @@ void DisplayManager::drawAppBme() {
 void DisplayManager::drawBmePage1Pressure() {
     EnvironmentData env = sensors.getEnvData();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(2, 17, "PRESSURE");
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 17, "BAROMETER");
+    drawBarometerIcon(112, 14);
 
     oled.setFont(u8g2_font_ncenB12_tr);
     char buf[32];
@@ -3357,12 +3379,13 @@ void DisplayManager::drawBmePage1Pressure() {
 void DisplayManager::drawBmePage2Humidity() {
     EnvironmentData env = sensors.getEnvData();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(2, 17, "HUMIDITY");
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 17, "HYGROMETER");
+    drawHygrometerIcon(112, 14);
 
     oled.setFont(u8g2_font_ncenB12_tr);
     char buf[32];
-    snprintf(buf, sizeof(buf), "%.1f %%°RH", env.humidity);
+    snprintf(buf, sizeof(buf), "%.1f %%RH", env.humidity);
     oled.drawStr(2, 31, buf);
 
     BMEHistoryEntry history[64];
@@ -3387,12 +3410,13 @@ void DisplayManager::drawBmePage2Humidity() {
 void DisplayManager::drawBmePage3Temperature() {
     EnvironmentData env = sensors.getEnvData();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(2, 17, "TEMPERATURE");
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 17, "THERMOMETER");
+    drawThermometerIcon(112, 14);
 
     oled.setFont(u8g2_font_ncenB12_tr);
     char buf[32];
-    snprintf(buf, sizeof(buf), "%.1f °C", env.temperature);
+    snprintf(buf, sizeof(buf), "%.1f \260C", env.temperature);
     oled.drawStr(2, 31, buf);
 
     BMEHistoryEntry history[64];
@@ -3411,54 +3435,57 @@ void DisplayManager::drawBmePage3Temperature() {
         }
     }
 
-    drawBmeGraph(oled, temp_data, count, min_val, max_val, "°C");
+    drawBmeGraph(oled, temp_data, count, min_val, max_val, "\260C");
 }
 
 void DisplayManager::drawBmePage4Altitude() {
     EnvironmentData env = sensors.getEnvData();
     BmeHeightState st = sensors.getHeightState();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(2, 17, "RELATIVE HEIGHT");
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 17, "RELATIVE ALTITUDE");
+
+    // Cute twin mountain peaks graphic
+    oled.drawTriangle(86, 44, 102, 20, 118, 44);
+    oled.drawTriangle(104, 44, 116, 28, 126, 44);
+    // Summit flag
+    oled.drawVLine(102, 16, 4);
+    oled.drawPixel(103, 16);
+    oled.drawPixel(104, 17);
 
     oled.setFont(u8g2_font_logisoso16_tr);
     char buf[32];
     snprintf(buf, sizeof(buf), "%.1f m", env.altitude);
-    int w = oled.getStrWidth(buf);
-    oled.drawStr(64 - w/2, 36, buf);
+    oled.drawStr(6, 36, buf);
 
     oled.setFont(u8g2_font_5x7_tr);
     if (st == BmeHeightState::OFF) {
-        oled.drawStr(10, 52, "[OK]: SET ZERO / REF");
+        oled.drawStr(4, 52, "[OK]: SET ZERO / REF");
     } else if (st == BmeHeightState::MEASURING) {
-        oled.drawStr(10, 52, "[MEASURING] OK:PAUSE");
+        oled.drawStr(4, 52, "[MEASURING] OK:PAUSE");
     } else if (st == BmeHeightState::PAUSED) {
-        oled.drawStr(10, 52, "[PAUSED]    OK:RESUME");
+        oled.drawStr(4, 52, "[PAUSED]    OK:RESUME");
     }
 }
 
 void DisplayManager::drawBmePage5Info() {
-    oled.setFont(u8g2_font_4x6_tr);
-    oled.drawStr(2, 14, "BME280 CALIBRATION & DIAGNOSTIC");
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 14, "SENSOR TUNING");
+    oled.drawLine(0, 16, 128, 16);
 
+    oled.setFont(u8g2_font_5x7_tf);
     bool ok = sensors.isBmeOk();
-    oled.drawStr(2, 22, ("STATUS: " + String(ok ? "DETECTED" : "NOT FOUND") + " | 0x76 ID:0x60").c_str());
+    oled.drawStr(4, 26, ok ? "STATUS: BME280 ACTIVE" : "STATUS: NOT DETECTED");
 
-    EnvironmentData env = sensors.getEnvData();
     char buf[64];
-    snprintf(buf, sizeof(buf), "T:%.1fC P:%.1fhPa H:%.0f%%", env.temperature, env.pressure, env.humidity);
-    oled.drawStr(2, 30, buf);
+    snprintf(buf, sizeof(buf), "T-OFFSET : %+.1f \260C (UP/DN)", sensors.getTempOffset());
+    oled.drawStr(4, 37, buf);
 
-    snprintf(buf, sizeof(buf), "T_OFF : %+.1fC  (UP/DN: ADJUST)", sensors.getTempOffset());
-    oled.drawStr(2, 38, buf);
+    snprintf(buf, sizeof(buf), "SEA REF  : %.1f hPa", sensors.getReferencePressure());
+    oled.drawStr(4, 48, buf);
 
-    snprintf(buf, sizeof(buf), "P_REF : %.1fhPa", sensors.getReferencePressure());
-    oled.drawStr(2, 46, buf);
-
-    uint32_t last_t = sensors.getLastBmeReadingTime();
-    uint32_t age_sec = (millis() - last_t) / 1000;
-    snprintf(buf, sizeof(buf), "AGE   : %us | [OK] RESET CAL", age_sec);
-    oled.drawStr(2, 54, buf);
+    oled.setFont(u8g2_font_4x6_tr);
+    oled.drawStr(4, 60, "[UP/DN]: OFFSET  [OK]: RESET");
 }
 
 
@@ -3564,6 +3591,10 @@ void DisplayManager::drawAppAudio() {
         oled.drawStr(10, 54, "OK:   CUSTOM TEXT");
     } else if (sub == SoundSubmenu::POLY_SYNTH) {
         drawPolySynth();
+    } else if (sub == SoundSubmenu::TUNES) {
+        drawJukebox();
+    } else if (sub == SoundSubmenu::BEAT_MAKER) {
+        drawBeatMaker();
     }
 
     drawToastOverlay();
@@ -4035,4 +4066,436 @@ void DisplayManager::drawAppVibration() {
     // Right tag: Transistor driver notice
     oled.drawStr(89, 61, "2N2222A");
 }
+
+void DisplayManager::drawCuteWeatherIcon(int x, int y, const String& cond) {
+    String c = cond;
+    c.toLowerCase();
+
+    if (c.indexOf("clear") >= 0 || c.indexOf("sun") >= 0) {
+        // Cute smiling sun
+        oled.drawDisc(x + 10, y + 10, 5);
+        oled.setDrawColor(0);
+        // Eyes
+        oled.drawPixel(x + 8, y + 9);
+        oled.drawPixel(x + 12, y + 9);
+        // Smile
+        oled.drawPixel(x + 9, y + 11);
+        oled.drawPixel(x + 10, y + 12);
+        oled.drawPixel(x + 11, y + 11);
+        oled.setDrawColor(1);
+        // Cardinal rays
+        oled.drawVLine(x + 10, y + 2, 2);
+        oled.drawVLine(x + 10, y + 16, 2);
+        oled.drawHLine(x + 2, y + 10, 2);
+        oled.drawHLine(x + 16, y + 10, 2);
+        // Diagonal dots
+        oled.drawPixel(x + 4, y + 4);
+        oled.drawPixel(x + 16, y + 4);
+        oled.drawPixel(x + 4, y + 16);
+        oled.drawPixel(x + 16, y + 16);
+    } else if (c.indexOf("rain") >= 0 || c.indexOf("drizzle") >= 0) {
+        // Cute cloud with raindrops
+        oled.drawDisc(x + 6, y + 9, 4);
+        oled.drawDisc(x + 11, y + 7, 5);
+        oled.drawDisc(x + 16, y + 9, 4);
+        oled.drawBox(x + 6, y + 9, 11, 4);
+        // Raindrops
+        oled.drawLine(x + 5, y + 15, x + 3, y + 18);
+        oled.drawLine(x + 10, y + 15, x + 8, y + 18);
+        oled.drawLine(x + 15, y + 15, x + 13, y + 18);
+    } else if (c.indexOf("snow") >= 0) {
+        // Cute cloud with snowflakes
+        oled.drawDisc(x + 6, y + 9, 4);
+        oled.drawDisc(x + 11, y + 7, 5);
+        oled.drawDisc(x + 16, y + 9, 4);
+        oled.drawBox(x + 6, y + 9, 11, 4);
+        // Snow asterisks
+        oled.drawPixel(x + 5, y + 15);
+        oled.drawPixel(x + 4, y + 16);
+        oled.drawPixel(x + 6, y + 16);
+        oled.drawPixel(x + 5, y + 17);
+        oled.drawPixel(x + 13, y + 15);
+        oled.drawPixel(x + 12, y + 16);
+        oled.drawPixel(x + 14, y + 16);
+        oled.drawPixel(x + 13, y + 17);
+    } else if (c.indexOf("thunder") >= 0 || c.indexOf("storm") >= 0) {
+        // Cloud with cute lightning bolt
+        oled.drawDisc(x + 6, y + 8, 4);
+        oled.drawDisc(x + 11, y + 6, 5);
+        oled.drawDisc(x + 16, y + 8, 4);
+        oled.drawBox(x + 6, y + 8, 11, 4);
+        // Lightning bolt
+        oled.drawLine(x + 12, y + 13, x + 9, y + 16);
+        oled.drawLine(x + 9, y + 16, x + 12, y + 16);
+        oled.drawLine(x + 12, y + 16, x + 8, y + 20);
+    } else {
+        // Default: Cute fluffy cloud with smiling face
+        oled.drawDisc(x + 5, y + 11, 5);
+        oled.drawDisc(x + 11, y + 8, 6);
+        oled.drawDisc(x + 17, y + 11, 5);
+        oled.drawBox(x + 5, y + 11, 13, 5);
+        // Cute sleepy / smiling face
+        oled.setDrawColor(0);
+        oled.drawPixel(x + 9, y + 10);
+        oled.drawPixel(x + 13, y + 10);
+        oled.drawPixel(x + 10, y + 12);
+        oled.drawPixel(x + 11, y + 13);
+        oled.drawPixel(x + 12, y + 12);
+        oled.setDrawColor(1);
+    }
+}
+
+void DisplayManager::drawThermometerIcon(int x, int y) {
+    // Stem outline
+    oled.drawFrame(x + 3, y + 1, 4, 10);
+    // Bulb at bottom
+    oled.drawDisc(x + 4, y + 12, 3);
+    // Mercury level
+    oled.drawVLine(x + 4, y + 5, 6);
+    oled.drawVLine(x + 5, y + 5, 6);
+    // Graduation ticks
+    oled.drawPixel(x + 8, y + 3);
+    oled.drawPixel(x + 8, y + 6);
+    oled.drawPixel(x + 8, y + 9);
+}
+
+void DisplayManager::drawBarometerIcon(int x, int y) {
+    // Circular gauge
+    oled.drawCircle(x + 7, y + 7, 6);
+    // Dial ticks at 12, 9, 3 o'clock
+    oled.drawPixel(x + 7, y + 2);
+    oled.drawPixel(x + 2, y + 7);
+    oled.drawPixel(x + 12, y + 7);
+    // Needle pointing up-right
+    oled.drawLine(x + 7, y + 7, x + 10, y + 4);
+    // Center pivot
+    oled.drawDisc(x + 7, y + 7, 1);
+}
+
+void DisplayManager::drawHygrometerIcon(int x, int y) {
+    // Water droplet
+    oled.drawLine(x + 6, y + 1, x + 2, y + 8);
+    oled.drawLine(x + 6, y + 1, x + 10, y + 8);
+    oled.drawCircle(x + 6, y + 9, 4);
+    // Fill lower half
+    oled.drawDisc(x + 6, y + 10, 2);
+    // Shine reflection
+    oled.drawPixel(x + 5, y + 7);
+}
+
+void DisplayManager::drawBeatMaker() {
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 8, "BEAT MAKER");
+
+    // Status: Playing / Stopped
+    if (ui.isBeatPlaying()) {
+        oled.drawStr(66, 8, "\226 PLAY");
+    } else {
+        oled.drawStr(66, 8, "■ STOP");
+    }
+
+    char bpm_buf[16];
+    snprintf(bpm_buf, sizeof(bpm_buf), "%d BPM", ui.getBeatBpm());
+    oled.drawStr(96, 8, bpm_buf);
+    oled.drawHLine(0, 10, 128);
+
+    const char* trk_names[4] = {"KD", "SD", "HH", "SY"};
+    uint8_t cur_trk = ui.getBeatCursorTrack();
+    uint8_t cur_stp = ui.getBeatCursorStep();
+    uint8_t play_stp = ui.getBeatStep();
+    bool playing = ui.isBeatPlaying();
+
+    // Draw playhead tick at top
+    if (playing) {
+        int px = 18 + play_stp * 6;
+        oled.drawVLine(px + 2, 10, 2);
+    }
+
+    // 4 Tracks × 16 Steps
+    for (int t = 0; t < 4; t++) {
+        int y = 13 + t * 8;
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(2, y + 6, trk_names[t]);
+
+        for (int s = 0; s < 16; s++) {
+            int pad_x = 18 + s * 6;
+            bool active = ui.isPadActive(t, s);
+            bool is_cursor = (cur_trk == t && cur_stp == s);
+            bool is_head = (playing && play_stp == s);
+
+            if (active) {
+                oled.drawBox(pad_x, y, 5, 6);
+                if (is_head) {
+                    // Flash when hit
+                    oled.setDrawColor(0);
+                    oled.drawPixel(pad_x + 2, y + 3);
+                    oled.setDrawColor(1);
+                }
+            } else {
+                oled.drawFrame(pad_x, y, 5, 6);
+                if (s % 4 == 0) {
+                    oled.drawPixel(pad_x + 2, y + 3); // Downbeat guide dot
+                }
+            }
+
+            if (is_cursor) {
+                // Highlight outline
+                oled.drawFrame(pad_x - 1, y - 1, 7, 8);
+            }
+        }
+    }
+
+    // Bottom Control Bar (Track index 4)
+    oled.drawHLine(0, 47, 128);
+    oled.setFont(u8g2_font_4x6_tr);
+
+    uint8_t ctrl_sel = (cur_trk == 4) ? (cur_stp % 4) : 255;
+
+    // Button 0: PLAY / STOP
+    const char* b0_label = playing ? "STOP" : "PLAY";
+    if (ctrl_sel == 0) {
+        oled.drawRBox(2, 49, 28, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(6, 58, b0_label);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(2, 49, 28, 12, 2);
+        oled.drawStr(6, 58, b0_label);
+    }
+
+    // Button 1: BPM
+    char b1_label[16];
+    snprintf(b1_label, sizeof(b1_label), "%dBPM", ui.getBeatBpm());
+    if (ctrl_sel == 1) {
+        oled.drawRBox(33, 49, 29, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(36, 58, b1_label);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(33, 49, 29, 12, 2);
+        oled.drawStr(36, 58, b1_label);
+    }
+
+    // Button 2: PRESET
+    if (ctrl_sel == 2) {
+        oled.drawRBox(65, 49, 32, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(68, 58, "PRESET");
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(65, 49, 32, 12, 2);
+        oled.drawStr(68, 58, "PRESET");
+    }
+
+    // Button 3: CLEAR
+    if (ctrl_sel == 3) {
+        oled.drawRBox(100, 49, 26, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(104, 58, "CLR");
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(100, 49, 26, 12, 2);
+        oled.drawStr(104, 58, "CLR");
+    }
+}
+
+void DisplayManager::drawJukebox() {
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 7, "JUKEBOX TUNES \247");
+    oled.drawLine(0, 9, 128, 9);
+    oled.setFont(getMenuFont());
+
+    const int JUKEBOX_COUNT = 6;
+    const char* tune_names[JUKEBOX_COUNT] = {
+        "Mario Bros Theme",
+        "We Wish You Xmas",
+        "Happy Birthday",
+        "Tetris (Korobeiniki)",
+        "Star Wars March",
+        "Nokia Ringtone"
+    };
+
+    int sel = ui.getJukeboxTune();
+    int offset = 0;
+    if (sel >= 4) offset = sel - 3;
+
+    int y_pos = 21;
+    for (int i = offset; i < offset + 4 && i < JUKEBOX_COUNT; i++) {
+        bool is_selected = (i == sel);
+        if (is_selected) {
+            oled.drawRBox(2, y_pos - 9, 124, 11, 2);
+            oled.setDrawColor(0);
+        } else {
+            oled.setDrawColor(1);
+        }
+
+        if (is_selected && ui.isJukeboxPlaying()) {
+            oled.drawStr(4, y_pos, "\226");
+        } else {
+            oled.drawStr(4, y_pos, "\247");
+        }
+        oled.drawStr(14, y_pos, tune_names[i]);
+        oled.setDrawColor(1);
+        y_pos += 12;
+    }
+
+    drawScrollBar(offset, JUKEBOX_COUNT);
+}
+
+void DisplayManager::drawManualTimeSet() {
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 7, "MANUAL TIME SET");
+    oled.drawLine(0, 9, 128, 9);
+
+    int field = ui.getTimeEditField();
+    int h = ui.getManualHour();
+    int m = ui.getManualMinute();
+    int s = ui.getManualSecond();
+    int yr = ui.getManualYear();
+    int mo = ui.getManualMonth();
+    int d = ui.getManualDay();
+
+    // Time row: HH : MM : SS
+    char time_str[8];
+    oled.setFont(u8g2_font_7x14_mr);
+
+    // Hour box (field 0)
+    snprintf(time_str, sizeof(time_str), "%02d", h);
+    if (field == 0) {
+        oled.drawRBox(14, 13, 20, 16, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(17, 26, time_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(14, 13, 20, 16, 2);
+        oled.drawStr(17, 26, time_str);
+    }
+
+    oled.drawStr(37, 25, ":");
+
+    // Minute box (field 1)
+    snprintf(time_str, sizeof(time_str), "%02d", m);
+    if (field == 1) {
+        oled.drawRBox(44, 13, 20, 16, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(47, 26, time_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(44, 13, 20, 16, 2);
+        oled.drawStr(47, 26, time_str);
+    }
+
+    oled.drawStr(67, 25, ":");
+
+    // Second box (field 2)
+    snprintf(time_str, sizeof(time_str), "%02d", s);
+    if (field == 2) {
+        oled.drawRBox(74, 13, 20, 16, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(77, 26, time_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(74, 13, 20, 16, 2);
+        oled.drawStr(77, 26, time_str);
+    }
+
+    // Date row: YYYY - MM - DD
+    oled.setFont(u8g2_font_6x10_tr);
+    char date_str[8];
+
+    // Year (field 3)
+    snprintf(date_str, sizeof(date_str), "%04d", yr);
+    if (field == 3) {
+        oled.drawRBox(14, 32, 30, 13, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(17, 42, date_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(14, 32, 30, 13, 2);
+        oled.drawStr(17, 42, date_str);
+    }
+
+    oled.drawStr(47, 42, "-");
+
+    // Month (field 4)
+    snprintf(date_str, sizeof(date_str), "%02d", mo);
+    if (field == 4) {
+        oled.drawRBox(54, 32, 18, 13, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(57, 42, date_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(54, 32, 18, 13, 2);
+        oled.drawStr(57, 42, date_str);
+    }
+
+    oled.drawStr(75, 42, "-");
+
+    // Day (field 5)
+    snprintf(date_str, sizeof(date_str), "%02d", d);
+    if (field == 5) {
+        oled.drawRBox(82, 32, 18, 13, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(85, 42, date_str);
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(82, 32, 18, 13, 2);
+        oled.drawStr(85, 42, date_str);
+    }
+
+    // Action buttons: [SAVE] (field 6) and [CANCEL] (field 7)
+    oled.setFont(u8g2_font_5x7_tf);
+    if (field == 6) {
+        oled.drawRBox(22, 49, 36, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(28, 58, "SAVE");
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(22, 49, 36, 12, 2);
+        oled.drawStr(28, 58, "SAVE");
+    }
+
+    if (field == 7) {
+        oled.drawRBox(70, 49, 42, 12, 2);
+        oled.setDrawColor(0);
+        oled.drawStr(74, 58, "CANCEL");
+        oled.setDrawColor(1);
+    } else {
+        oled.drawRFrame(70, 49, 42, 12, 2);
+        oled.drawStr(74, 58, "CANCEL");
+    }
+}
+
+const uint8_t* DisplayManager::getTitleFont() const {
+    uint8_t style = settingsManager.get().font_style_idx;
+    if (style == 0) return u8g2_font_profont10_mr;
+    if (style == 1) return u8g2_font_4x6_tr;
+    return u8g2_font_5x7_tr;
+}
+
+const uint8_t* DisplayManager::getMenuFont() const {
+    uint8_t style = settingsManager.get().font_style_idx;
+    uint8_t sz = settingsManager.get().font_size_idx;
+    if (sz == 1) { // Large
+        if (style == 0) return u8g2_font_ncenB10_tr;
+        if (style == 1) return u8g2_font_6x10_tf;
+        return u8g2_font_6x10_tr;
+    } else if (sz == 2) { // Compact
+        if (style == 0) return u8g2_font_profont10_mr;
+        if (style == 1) return u8g2_font_4x6_tr;
+        return u8g2_font_5x7_tr;
+    }
+    // Regular
+    if (style == 0) return u8g2_font_profont11_mr;
+    if (style == 1) return u8g2_font_5x7_tf;
+    return u8g2_font_6x10_tr;
+}
+
+const uint8_t* DisplayManager::getSmallFont() const {
+    uint8_t style = settingsManager.get().font_style_idx;
+    if (style == 0) return u8g2_font_profont10_mr;
+    if (style == 1) return u8g2_font_4x6_tr;
+    return u8g2_font_4x6_tr;
+}
+
 

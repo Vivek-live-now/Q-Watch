@@ -104,6 +104,9 @@ private:
     void drawAppLED();
     void drawAppAudio();
     void drawPolySynth();
+    void drawBeatMaker();
+    void drawJukebox();
+    void drawManualTimeSet();
     void drawAppAbout();
     void drawFileManager();
     void drawAppApps();
@@ -145,6 +148,17 @@ private:
     void drawTopStatusBar();
     void drawTacticalOverlay();
     void drawToastOverlay();
+
+    // Dynamic Cute Font Getters
+    const uint8_t* getTitleFont() const;
+    const uint8_t* getMenuFont() const;
+    const uint8_t* getSmallFont() const;
+
+    // Cute Pixel-Art Icons
+    void drawCuteWeatherIcon(int x, int y, const String& cond);
+    void drawThermometerIcon(int x, int y);
+    void drawBarometerIcon(int x, int y);
+    void drawHygrometerIcon(int x, int y);
 
     bool display_dimmed;
     bool gdma_enabled;

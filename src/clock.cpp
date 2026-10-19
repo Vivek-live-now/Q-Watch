@@ -68,6 +68,24 @@ void Clock::setEpoch(uint32_t epoch) {
     sync_status = NtpSyncStatus::SUCCESS;
 }
 
+void Clock::setManualTime(int hour, int minute, int second, int day, int month, int year) {
+    struct tm t;
+    memset(&t, 0, sizeof(struct tm));
+    t.tm_hour = hour;
+    t.tm_min = minute;
+    t.tm_sec = second;
+    t.tm_mday = day;
+    t.tm_mon = month - 1;
+    t.tm_year = year - 1900;
+    t.tm_isdst = -1;
+    time_t epoch = mktime(&t);
+    if (epoch != (time_t)-1) {
+        setEpoch((uint32_t)epoch);
+        timeinfo = t;
+        time_set = true;
+    }
+}
+
 void Clock::syncNtp() {
     if (WiFi.status() != WL_CONNECTED) {
         sync_status = NtpSyncStatus::FAILED;

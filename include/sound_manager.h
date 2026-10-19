@@ -45,6 +45,22 @@ public:
     // Dynamic Melody Sequence Playback
     void playSequence(const SoundNote* sequence, uint8_t length);
 
+    // Iconic & Cute Tunes (Jukebox)
+    void playMario();
+    void playChristmas();
+    void playBirthday();
+    void playTetris();
+    void playStarWars();
+    void playTuneByIdx(uint8_t idx);
+    const char* getTuneName(uint8_t idx) const;
+    static const uint8_t TUNE_COUNT = 5;
+
+    // Drum Machine Synthesizer (Beat Maker)
+    void playKick();
+    void playSnare();
+    void playHiHat();
+    void playSynthNote(uint8_t note_idx);
+
     // Morse Code Playback
     void playMorse(const String& text);
 
