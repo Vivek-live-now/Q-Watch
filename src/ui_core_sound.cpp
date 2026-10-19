@@ -787,7 +787,7 @@ void UICore::handleJukeboxInput() {
     } else if (ok_evt == BTN_EVT_LONG_PRESS) {
         if (jukebox_selected_tune < SoundManager::TUNE_COUNT) {
             soundManager.playNavSelect();
-            showToast(("[SET AS FAVORITE TUNE! ♡]").c_str(), 1400);
+            showToast("[SET AS FAVORITE TUNE! <3]", 1400);
         }
         needs_redraw = true;
     }
