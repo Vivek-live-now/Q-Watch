@@ -177,11 +177,162 @@ class IrdbRepository(private val context: Context) {
             IrdbEntry("Bose_Solo_5.ir", "SoundBars", "Bose", "Solo 5 Soundbar", "", "Audio/Bose/Bose_Solo_5.ir", "Bose Solo 5 TV Sound System"),
             IrdbEntry("Sonos_Playbar.ir", "SoundBars", "Sonos", "Playbar & Arc", "", "Audio/Sonos/Sonos_Playbar.ir", "Sonos Optical & Arc Soundbar"),
             IrdbEntry("Epson_EMP.ir", "Projectors", "Epson", "PowerLite EMP Projector", "", "Projectors/Epson/Epson_EMP.ir", "Epson 3LCD Classroom Projector"),
-            IrdbEntry("Dyson_AM07.ir", "Fans", "Dyson", "Cool Tower AM07", "", "Fans/Dyson/Dyson_AM07.ir", "Dyson Bladeless Fan")
+            IrdbEntry("Dyson_AM07.ir", "Fans", "Dyson", "Cool Tower AM07", "", "Fans/Dyson/Dyson_AM07.ir", "Dyson Bladeless Fan"),
+            IrdbEntry("MagicHome_24K.ir", "LED_Lighting", "MagicHome", "24K RGB Strip", "", "LED_Lighting/MagicHome/24K.ir", "RGB LED Strip 24-Key Remote")
         )
     }
 
     private fun getSampleRemoteContent(entry: IrdbEntry): String? {
+        if (entry.brand.equals("MagicHome", ignoreCase = true) || entry.deviceType.contains("LED", ignoreCase = true) || entry.model.contains("RGB", ignoreCase = true)) {
+            return """
+Filetype: IR signals file
+Version: 1
+#
+name: Bright_up
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 00 FF 00 00
+#
+name: Bright_down
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 80 7F 00 00
+#
+name: OFF
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 40 BF 00 00
+#
+name: ON
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: C0 3F 00 00
+#
+name: Red
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 20 DF 00 00
+#
+name: Green
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: A0 5F 00 00
+#
+name: Blue
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 60 9F 00 00
+#
+name: White
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: E0 1F 00 00
+#
+name: R1
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 10 EF 00 00
+#
+name: G1
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 90 6F 00 00
+#
+name: B1
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 50 AF 00 00
+#
+name: Flash
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: D0 2F 00 00
+#
+name: R2
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 30 CF 00 00
+#
+name: G2
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: B0 4F 00 00
+#
+name: B2
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 70 8F 00 00
+#
+name: Strobe
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: F0 0F 00 00
+#
+name: R3
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 08 F7 00 00
+#
+name: G3
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 88 77 00 00
+#
+name: B3
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 48 B7 00 00
+#
+name: Fade
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: C8 37 00 00
+#
+name: R4
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 28 D7 00 00
+#
+name: G4
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: A8 57 00 00
+#
+name: B4
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: 68 97 00 00
+#
+name: Smooth
+type: parsed
+protocol: NECext
+address: 00 F7 00 00
+command: E8 17 00 00
+            """.trimIndent()
+        }
         if (entry.brand.equals("Samsung", ignoreCase = true)) {
             return """
 Filetype: IR signals file

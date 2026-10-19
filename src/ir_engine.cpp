@@ -128,6 +128,36 @@ void IREngine::togglePolarity() {
 void IREngine::ensureIrDirectory() {
     if (!fileManager.exists("/ir")) fileManager.create("/ir/.keep");
     if (!fileManager.exists("/ir/universal")) fileManager.create("/ir/universal/.keep");
+    if (!fileManager.exists("/ir/rgb_strip.ir")) {
+        fileManager.write("/ir/rgb_strip.ir",
+            "Filetype: IR library file\n"
+            "Version: 1\n#\n"
+            "name: Bright_up\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 00 FF 00 00\nnbits: 32\n#\n"
+            "name: Bright_down\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 80 7F 00 00\nnbits: 32\n#\n"
+            "name: OFF\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 40 BF 00 00\nnbits: 32\n#\n"
+            "name: ON\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: C0 3F 00 00\nnbits: 32\n#\n"
+            "name: Red\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 20 DF 00 00\nnbits: 32\n#\n"
+            "name: Green\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: A0 5F 00 00\nnbits: 32\n#\n"
+            "name: Blue\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 60 9F 00 00\nnbits: 32\n#\n"
+            "name: White\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: E0 1F 00 00\nnbits: 32\n#\n"
+            "name: R1\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 10 EF 00 00\nnbits: 32\n#\n"
+            "name: G1\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 90 6F 00 00\nnbits: 32\n#\n"
+            "name: B1\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 50 AF 00 00\nnbits: 32\n#\n"
+            "name: Flash\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: D0 2F 00 00\nnbits: 32\n#\n"
+            "name: R2\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 30 CF 00 00\nnbits: 32\n#\n"
+            "name: G2\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: B0 4F 00 00\nnbits: 32\n#\n"
+            "name: B2\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 70 8F 00 00\nnbits: 32\n#\n"
+            "name: Strobe\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: F0 0F 00 00\nnbits: 32\n#\n"
+            "name: R3\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 08 F7 00 00\nnbits: 32\n#\n"
+            "name: G3\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 88 77 00 00\nnbits: 32\n#\n"
+            "name: B3\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 48 B7 00 00\nnbits: 32\n#\n"
+            "name: Fade\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: C8 37 00 00\nnbits: 32\n#\n"
+            "name: R4\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 28 D7 00 00\nnbits: 32\n#\n"
+            "name: G4\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: A8 57 00 00\nnbits: 32\n#\n"
+            "name: B4\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: 68 97 00 00\nnbits: 32\n#\n"
+            "name: Smooth\ntype: parsed\nprotocol: NECext\naddress: 00 F7 00 00\ncommand: E8 17 00 00\nnbits: 32\n#\n"
+        );
+    }
 }
 
 void IREngine::loadDefaultTvBGoneCodes() {
@@ -316,12 +346,31 @@ bool IREngine::sendParsed(const String& protocol, uint32_t address, uint32_t com
 
     if (type == NEC) {
         uint64_t data;
-        // If address is non-zero, or command is small (<= 0xFF, e.g. from Flipper .ir file)
-        if (address != 0 || command <= 0xFF) {
-            data = irsend.encodeNEC(address, command);
-        } else {
-            // command is already the full 32-bit NEC frame (e.g. from captured results.value)
+        if (command > 0xFFFF) {
+            // Direct 24-bit or 32-bit hex frame (e.g. 0x00F700FF, 0xF700FF, 0x20DF10EF, TV-B-Gone)
             data = command;
+        } else if (p.equalsIgnoreCase("NECext") || p.equalsIgnoreCase("NEC42") || address > 0xFF || command > 0xFF) {
+            // Extended NEC (NECext) - 16-bit address and 16-bit command frame
+            // In Flipper format: address has [byte0, byte1] and command has [byte2, byte3]
+            uint32_t b0 = address & 0xFF;
+            uint32_t b1 = (address >> 8) & 0xFF;
+            uint32_t b2 = command & 0xFF;
+            uint32_t b3 = (command >> 8) & 0xFF;
+
+            // If command only provided single byte (b3 == 0), invert b2
+            if (b3 == 0 && command <= 0xFF) {
+                b3 = (~b2) & 0xFF;
+            }
+            // If address provided as logical 16-bit integer (e.g. 0x00F7 -> b0=0xF7, b1=0x00),
+            // or address omitted (0x0000) for standard 24-key RGB strips:
+            if (b1 == 0 && (b0 == 0xF7 || b0 == 0x00)) {
+                b0 = 0x00;
+                b1 = 0xF7;
+            }
+            data = ((uint64_t)b0 << 24) | ((uint64_t)b1 << 16) | ((uint64_t)b2 << 8) | b3;
+        } else {
+            // Standard NEC (8-bit address, 8-bit command)
+            data = irsend.encodeNEC(address, command);
         }
         irsend.sendNEC(data, bits, 1);
         return true;
@@ -433,8 +482,24 @@ bool IREngine::checkCapturedSignal(IrButton& out_btn) {
         if (results.decode_type != UNKNOWN) {
             out_btn.type = IrSignalType::PARSED;
             out_btn.protocol = decodeTypeToStr(results.decode_type, results.bits);
-            out_btn.command = results.value & 0xFFFFFFFF;
-            out_btn.address = results.address;
+            if (results.decode_type == NEC) {
+                uint8_t b0 = (results.value >> 24) & 0xFF;
+                uint8_t b1 = (results.value >> 16) & 0xFF;
+                uint8_t b2 = (results.value >> 8) & 0xFF;
+                uint8_t b3 = results.value & 0xFF;
+                if (b0 == (uint8_t)(~b1) && b2 == (uint8_t)(~b3)) {
+                    out_btn.protocol = "NEC";
+                    out_btn.address = results.address;
+                    out_btn.command = results.command;
+                } else {
+                    out_btn.protocol = (results.bits == 42) ? "NEC42" : "NECext";
+                    out_btn.address = b0 | (b1 << 8);
+                    out_btn.command = b2 | (b3 << 8);
+                }
+            } else {
+                out_btn.command = results.value & 0xFFFFFFFF;
+                out_btn.address = results.address;
+            }
             out_btn.nbits = results.bits;
             out_btn.frequency = 0; // 0 = unknown/unmeasured carrier
             out_btn.duty_cycle = 0.0f;
@@ -576,14 +641,27 @@ bool IREngine::saveIrFile(const String& path, const IrRemoteFile& remote) {
             out += "protocol: " + (b.protocol.length() > 0 ? b.protocol : "NECext") + "\n";
 
             char hexBuf[32];
+            uint32_t addr_val = b.address;
+            uint32_t cmd_val = b.command;
+
+            // Handle direct 24b/32b hex values stored in command for NEC/NECext
+            if (cmd_val > 0xFFFF && (b.protocol.equalsIgnoreCase("NEC") || b.protocol.equalsIgnoreCase("NECext"))) {
+                uint8_t b0 = (cmd_val >> 24) & 0xFF;
+                uint8_t b1 = (cmd_val >> 16) & 0xFF;
+                uint8_t b2 = (cmd_val >> 8) & 0xFF;
+                uint8_t b3 = cmd_val & 0xFF;
+                addr_val = b0 | (b1 << 8);
+                cmd_val = b2 | (b3 << 8);
+            }
+
             snprintf(hexBuf, sizeof(hexBuf), "%02X %02X %02X %02X",
-                     (uint8_t)(b.address & 0xFF), (uint8_t)((b.address >> 8) & 0xFF),
-                     (uint8_t)((b.address >> 16) & 0xFF), (uint8_t)((b.address >> 24) & 0xFF));
+                     (uint8_t)(addr_val & 0xFF), (uint8_t)((addr_val >> 8) & 0xFF),
+                     (uint8_t)((addr_val >> 16) & 0xFF), (uint8_t)((addr_val >> 24) & 0xFF));
             out += "address: " + String(hexBuf) + "\n";
 
             snprintf(hexBuf, sizeof(hexBuf), "%02X %02X %02X %02X",
-                     (uint8_t)(b.command & 0xFF), (uint8_t)((b.command >> 8) & 0xFF),
-                     (uint8_t)((b.command >> 16) & 0xFF), (uint8_t)((b.command >> 24) & 0xFF));
+                     (uint8_t)(cmd_val & 0xFF), (uint8_t)((cmd_val >> 8) & 0xFF),
+                     (uint8_t)((cmd_val >> 16) & 0xFF), (uint8_t)((cmd_val >> 24) & 0xFF));
             out += "command: " + String(hexBuf) + "\n";
             if (b.nbits > 0) {
                 out += "nbits: " + String(b.nbits) + "\n";
