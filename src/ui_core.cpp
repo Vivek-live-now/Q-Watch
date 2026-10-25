@@ -78,6 +78,7 @@ UICore::UICore() :
     fm_scroll_offset(0),
     fm_entry_count(0),
     fm_entries(nullptr),
+    fm_delete_confirm(false),
     app_count(0),
     app_selection(0),
     app_scroll_offset(0),
@@ -476,8 +477,8 @@ void UICore::loop() {
 
             if (ir_submenu == IrSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 6;
-                menu_scroll_offset = 4;
+                menu_selection = 5;
+                menu_scroll_offset = 3;
             } else if (ir_submenu == IrSubmenu::REMOTE_VIEW) {
                 ir_submenu = IrSubmenu::IR_FILES;
                 ir_selection = 0;
@@ -497,8 +498,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (sound_submenu == SoundSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 7;
-                menu_scroll_offset = 5;
+                menu_selection = 6;
+                menu_scroll_offset = 4;
             } else {
                 if (sound_submenu == SoundSubmenu::POLY_SYNTH) {
                     polySynth.stopSong();
@@ -513,8 +514,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (settings_submenu == SettingsSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 17;
-                menu_scroll_offset = 14;
+                menu_selection = 16;
+                menu_scroll_offset = 13;
             } else if (settings_submenu == SettingsSubmenu::WIFI_DETAILS) {
                 settings_submenu = SettingsSubmenu::CONNECTIVITY;
                 settings_selection = 0;
@@ -545,15 +546,15 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ALTIMETER) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 8;
-            menu_scroll_offset = 6;
+            menu_selection = 7;
+            menu_scroll_offset = 5;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_LED) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 10;
-            menu_scroll_offset = 8;
+            menu_selection = 9;
+            menu_scroll_offset = 7;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_WEATHER) {
@@ -566,17 +567,18 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_BEAT_MAKER) {
             soundManager.playNavBack();
             stopBeat();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 2;
-            menu_scroll_offset = 0;
+            current_state = UIState::APP_AUDIO;
+            sound_submenu = SoundSubmenu::MAIN;
+            sound_selection = 2;
+            sound_scroll_offset = 0;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_HEALTH) {
             soundManager.playNavBack();
             max30102Manager.disableSensor();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 4;
-            menu_scroll_offset = 2;
+            menu_selection = 3;
+            menu_scroll_offset = 1;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_BATTERY) {
@@ -587,8 +589,8 @@ void UICore::loop() {
                 battery_menu_scroll_offset = 0;
             } else {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 9;
-                menu_scroll_offset = 7;
+                menu_selection = 8;
+                menu_scroll_offset = 6;
             }
             needs_redraw = true;
             return;
@@ -608,8 +610,8 @@ void UICore::loop() {
                 compass_state = CompassState::PAGE_MAIN;
             } else {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 3;
-                menu_scroll_offset = 1;
+                menu_selection = 2;
+                menu_scroll_offset = 0;
             }
             needs_redraw = true;
             return;
@@ -629,8 +631,8 @@ void UICore::loop() {
                 imu_subapp = Imu6500SubApp::SUBAPP_MENU;
             } else {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 5;
-                menu_scroll_offset = 3;
+                menu_selection = 4;
+                menu_scroll_offset = 2;
             }
             needs_redraw = true;
             return;
@@ -650,8 +652,8 @@ void UICore::loop() {
         } else if (current_state == UIState::APP_ABOUT) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 18;
-            menu_scroll_offset = 15;
+            menu_selection = 17;
+            menu_scroll_offset = 14;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_MOCHI) {
@@ -660,16 +662,16 @@ void UICore::loop() {
                 mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
             } else {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 14;
-                menu_scroll_offset = 11;
+                menu_selection = 13;
+                menu_scroll_offset = 10;
             }
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_ANIM_LIST) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 13;
-            menu_scroll_offset = 11;
+            menu_selection = 12;
+            menu_scroll_offset = 10;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_ANIM_PLAYER) {
@@ -682,8 +684,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             if (recon_submenu == ReconSubmenu::MAIN) {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 15;
-                menu_scroll_offset = 12;
+                menu_selection = 14;
+                menu_scroll_offset = 11;
             } else if (recon_submenu == ReconSubmenu::BLE_RADAR) {
                 recon_submenu = ReconSubmenu::BLE_LIST;
             } else {
@@ -702,8 +704,8 @@ void UICore::loop() {
             soundManager.playNavBack();
             vibrationManager.stop();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 16;
-            menu_scroll_offset = 13;
+            menu_selection = 15;
+            menu_scroll_offset = 12;
             needs_redraw = true;
             return;
         } else if (current_state == UIState::APP_FILE_MANAGER) {
@@ -718,8 +720,8 @@ void UICore::loop() {
                 loadDirectory(fm_current_path);
             } else {
                 current_state = UIState::MAIN_MENU;
-                menu_selection = 11;
-                menu_scroll_offset = 9;
+                menu_selection = 10;
+                menu_scroll_offset = 8;
             }
             needs_redraw = true;
             return;
@@ -733,49 +735,6 @@ void UICore::loop() {
             needs_redraw = true;
             return;
         }
-        } else if (cancel_evt == BTN_EVT_LONG_PRESS || (ok_evt == BTN_EVT_LONG_PRESS && current_state != UIState::APP_HOME && current_state != UIState::APP_ANIM_LIST && current_state != UIState::APP_ANIM_PLAYER && current_state != UIState::APP_MOCHI && !(current_state == UIState::APP_AUDIO && (sound_submenu == SoundSubmenu::COMPOSER || sound_submenu == SoundSubmenu::CREATOR_EDIT || sound_submenu == SoundSubmenu::POLY_SYNTH)) && !(current_state == UIState::APP_MOTION && imu_subapp == Imu6500SubApp::SUBAPP_WIREFRAME_3D))) {
-            if (cancel_evt == BTN_EVT_LONG_PRESS) {
-                btnManager.getEvent(BTN_ID_CANCEL);
-            } else {
-                btnManager.getEvent(BTN_ID_OK);
-            }
-            soundManager.playNavBack();
-            if (current_state == UIState::APP_IR) {
-                if (irEngine.isCarrierTestActive()) irEngine.stopCarrierTest();
-                if (irEngine.isCapturing()) irEngine.stopCapture();
-                if (irEngine.isTvBGoneRunning()) irEngine.stopTvBGone();
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_AUDIO) {
-                polySynth.stopSong();
-                soundManager.stop();
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_CLOCK) {
-                clock_submenu = ClockSubmenu::MAIN;
-                clock_selection = 0;
-                clock_scroll_offset = 0;
-                current_state = UIState::APP_HOME;
-            } else if (current_state == UIState::APP_ANIM_PLAYER) {
-                animEngine.close();
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_ANIM_LIST) {
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_WIRELESS) {
-                wirelessRecon.stopBleScan();
-                wirelessRecon.stopDeauthMonitor();
-                wirelessRecon.stopPacketMonitor();
-                recon_submenu = ReconSubmenu::MAIN;
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_MOTION) {
-                airMouse.stop();
-                current_state = UIState::MAIN_MENU;
-            } else if (current_state == UIState::APP_VIBRATION) {
-                vibrationManager.stop();
-                current_state = UIState::MAIN_MENU;
-            } else {
-                current_state = UIState::APP_HOME;
-            }
-            needs_redraw = true;
-            return;
         }
     }
 
@@ -1228,18 +1187,29 @@ void UICore::handleKeyboardInput() {
 }
 
 void UICore::processNavUp() {
-    menu_selection--;
-    if (menu_selection < 0) menu_selection = 0;
-    if (menu_selection < menu_scroll_offset) menu_scroll_offset = menu_selection;
+    int max_items = (current_state == UIState::MAIN_MENU) ? MAIN_MENU_ITEM_COUNT : SETTINGS_MAIN_ITEM_COUNT;
+    if (menu_selection == 0) {
+        menu_selection = max_items - 1;
+        menu_scroll_offset = (max_items > 4) ? max_items - 4 : 0;
+        if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+    } else {
+        menu_selection--;
+        if (menu_selection < menu_scroll_offset) menu_scroll_offset = menu_selection;
+    }
     soundManager.playNavMove();
     needs_redraw = true;
 }
 
 void UICore::processNavDown() {
     int max_items = (current_state == UIState::MAIN_MENU) ? MAIN_MENU_ITEM_COUNT : SETTINGS_MAIN_ITEM_COUNT;
-    menu_selection++;
-    if (menu_selection >= max_items) menu_selection = max_items - 1;
-    if (menu_selection >= menu_scroll_offset + 4) menu_scroll_offset = menu_selection - 3;
+    if (menu_selection >= max_items - 1) {
+        menu_selection = 0;
+        menu_scroll_offset = 0;
+        if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+    } else {
+        menu_selection++;
+        if (menu_selection >= menu_scroll_offset + 4) menu_scroll_offset = menu_selection - 3;
+    }
     soundManager.playNavMove();
     needs_redraw = true;
 }
@@ -1714,45 +1684,44 @@ void UICore::handleMainMenuInput() {
                 clock_scroll_offset = 0;
                 break;
             case 1: current_state = UIState::APP_WEATHER; weather_page = 0; break;
-            case 2:
-                current_state = UIState::APP_BEAT_MAKER;
-                beat_cursor_track = 0;
-                beat_cursor_step = 0;
+            case 2: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; if (!sensors.isMagOk()) sensors.probeMagnetometer(); break;
+            case 3: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
+            case 4: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
+            case 5: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
+            case 6: current_state = UIState::APP_AUDIO; sound_submenu = SoundSubmenu::MAIN; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 7:
+                current_state = UIState::APP_ALTIMETER;
+                bme_page = 0;
+                if (sensors.isBmeOk() && sensors.getBmeHistoryCount() < 2) sensors.logBmeSample();
                 break;
-            case 3: current_state = UIState::APP_COMPASS; compass_state = CompassState::PAGE_MAIN; if (!sensors.isMagOk()) sensors.probeMagnetometer(); break;
-            case 4: current_state = UIState::APP_HEALTH; health_page = 0; max30102Manager.enableSensor(); break;
-            case 5: current_state = UIState::APP_MOTION; imu_subapp = Imu6500SubApp::SUBAPP_MENU; imu_subapp_selection = 0; break;
-            case 6: current_state = UIState::APP_IR; ir_submenu = IrSubmenu::MAIN; ir_selection = 0; ir_scroll_offset = 0; break;
-            case 7: current_state = UIState::APP_AUDIO; sound_submenu = SoundSubmenu::MAIN; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 8: current_state = UIState::APP_ALTIMETER; bme_page = 0; break;
-            case 9: current_state = UIState::APP_BATTERY; battery_page = 0; battery_menu_selection = 0; battery_menu_scroll_offset = 0; break;
-            case 10: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
-            case 11: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
-            case 12: current_state = UIState::APP_APPS; loadAppsList(); break;
-            case 13: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
-            case 14:
+            case 8: current_state = UIState::APP_BATTERY; battery_page = 0; battery_menu_selection = 0; battery_menu_scroll_offset = 0; break;
+            case 9: current_state = UIState::APP_LED; led_menu_selection = 0; led_menu_offset = 0; break;
+            case 10: current_state = UIState::APP_FILE_MANAGER; fm_current_path = "/"; loadDirectory("/"); break;
+            case 11: current_state = UIState::APP_APPS; loadAppsList(); break;
+            case 12: current_state = UIState::APP_ANIM_LIST; loadAnimList(); break;
+            case 13:
                 current_state = UIState::APP_MOCHI;
                 mochiPet.loadMochiAnims();
                 mochiPet.setSubmode(MochiSubmode::INTERACTIVE);
                 break;
-            case 15:
+            case 14:
                 current_state = UIState::APP_WIRELESS;
                 recon_submenu = ReconSubmenu::MAIN;
                 recon_selection = 0;
                 recon_scroll_offset = 0;
                 break;
-            case 16:
+            case 15:
                 current_state = UIState::APP_VIBRATION;
                 vibe_selection = 0;
                 vibe_offset = 0;
                 break;
-            case 17:
+            case 16:
                 current_state = UIState::APP_SETTINGS;
                 settings_submenu = SettingsSubmenu::MAIN;
                 settings_selection = 0;
                 settings_scroll_offset = 0;
                 break;
-            case 18: current_state = UIState::APP_ABOUT; break;
+            case 17: current_state = UIState::APP_ABOUT; break;
         }
         needs_redraw = true;
     }
@@ -2567,20 +2536,78 @@ void UICore::loadDirectory(const String& path) {
 
 void UICore::handleFileManagerInput() {
     int total_entries = fm_entry_count + (fm_current_path == "/" ? 1 : 0);
+    ButtonEvent up_evt = btnManager.getEvent(BTN_ID_UP);
+    ButtonEvent dn_evt = btnManager.getEvent(BTN_ID_DN);
+    ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
+    ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
 
-    if (btnManager.getEvent(BTN_ID_UP) == BTN_EVT_SHORT_PRESS) {
-        if (total_entries > 0 && fm_selection > 0) {
-            fm_selection--;
-            if (fm_selection < fm_scroll_offset) fm_scroll_offset = fm_selection;
+    if (fm_delete_confirm) {
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            if (fm_selection < fm_entry_count) {
+                String filename = fm_entries[fm_selection].name;
+                int lastSlash = filename.lastIndexOf('/');
+                if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
+                String fullPath = fm_current_path;
+                if (!fullPath.endsWith("/")) fullPath += "/";
+                fullPath += filename;
+                fullPath = FileManager::normalizePath(fullPath);
+#ifdef ARDUINO
+                if (fm_entries[fm_selection].isDir) {
+                    LittleFS.rmdir(fullPath.c_str());
+                } else {
+                    fileManager.remove(fullPath);
+                }
+#endif
+                soundManager.playNavSelect();
+                showToast("DELETED", 1000);
+                fm_delete_confirm = false;
+                loadDirectory(fm_current_path);
+            }
+            needs_redraw = true;
+            return;
+        } else if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+            fm_delete_confirm = false;
+            soundManager.playNavBack();
+            needs_redraw = true;
+            return;
+        }
+        return;
+    }
+
+    if (ok_evt == BTN_EVT_LONG_PRESS && fm_selection < fm_entry_count) {
+        fm_delete_confirm = true;
+        soundManager.playWarning();
+        needs_redraw = true;
+        return;
+    }
+
+    if (up_evt == BTN_EVT_SHORT_PRESS) {
+        if (total_entries > 0) {
+            if (fm_selection == 0) {
+                fm_selection = total_entries - 1;
+                fm_scroll_offset = (total_entries > 4) ? total_entries - 4 : 0;
+                if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+            } else {
+                fm_selection--;
+                if (fm_selection < fm_scroll_offset) fm_scroll_offset = fm_selection;
+            }
+            soundManager.playNavMove();
             needs_redraw = true;
         }
-    } else if (btnManager.getEvent(BTN_ID_DN) == BTN_EVT_SHORT_PRESS) {
-        if (total_entries > 0 && fm_selection < total_entries - 1) {
-            fm_selection++;
-            if (fm_selection >= fm_scroll_offset + 4) fm_scroll_offset = fm_selection - 3;
+    } else if (dn_evt == BTN_EVT_SHORT_PRESS) {
+        if (total_entries > 0) {
+            if (fm_selection >= total_entries - 1) {
+                fm_selection = 0;
+                fm_scroll_offset = 0;
+                if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+            } else {
+                fm_selection++;
+                if (fm_selection >= fm_scroll_offset + 4) fm_scroll_offset = fm_selection - 3;
+            }
+            soundManager.playNavMove();
             needs_redraw = true;
         }
-    } else if (btnManager.getEvent(BTN_ID_OK) == BTN_EVT_SHORT_PRESS) {
+    } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         if (fm_current_path == "/" && fm_selection == fm_entry_count) {
             current_state = UIState::APP_STORAGE_INFO;
         } else if (fm_selection < fm_entry_count) {
@@ -4267,17 +4294,29 @@ void UICore::handleMochiInput() {
     ButtonEvent cancel_evt = btnManager.getEvent(BTN_ID_CANCEL);
 
     if (mochiPet.isPlayingAnim()) {
-        if (cancel_evt == BTN_EVT_LONG_PRESS) {
-            mochiPet.stopAnim();
-            soundManager.playNavBack();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 14;
-            menu_scroll_offset = 11;
+        if (cancel_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.toggleHud();
+            soundManager.playNavSelect();
             needs_redraw = true;
             return;
         }
-        if (up_evt != BTN_EVT_NONE || dn_evt != BTN_EVT_NONE || ok_evt != BTN_EVT_NONE || cancel_evt != BTN_EVT_NONE) {
-            mochiPet.stopAnim();
+        if (up_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.nextEmote();
+            needs_redraw = true;
+            return;
+        }
+        if (dn_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.prevEmote();
+            needs_redraw = true;
+            return;
+        }
+        if (ok_evt == BTN_EVT_SHORT_PRESS) {
+            mochiPet.pet();
+            needs_redraw = true;
+            return;
+        }
+        if (ok_evt == BTN_EVT_LONG_PRESS) {
+            mochiPet.feed();
             needs_redraw = true;
             return;
         }
@@ -4310,18 +4349,15 @@ void UICore::handleMochiInput() {
             mochiPet.toggleHud();
             soundManager.playNavSelect();
             needs_redraw = true;
-        } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
-            soundManager.playNavBack();
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 14;
-            menu_scroll_offset = 11;
-            needs_redraw = true;
         }
     } else if (sub == MochiSubmode::STATS_HUD) {
         if (cancel_evt == BTN_EVT_SHORT_PRESS) {
-            mochiPet.toggleHud();
-            soundManager.playNavSelect();
+            soundManager.playNavBack();
+            current_state = UIState::MAIN_MENU;
+            menu_selection = 13;
+            menu_scroll_offset = 10;
             needs_redraw = true;
+            return;
         } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
             mochiPet.loadMochiAnims();
             mochiPet.setSubmode(MochiSubmode::ANIM_PICKER);
@@ -4336,8 +4372,8 @@ void UICore::handleMochiInput() {
         } else if (cancel_evt == BTN_EVT_LONG_PRESS) {
             soundManager.playNavBack();
             current_state = UIState::MAIN_MENU;
-            menu_selection = 14;
-            menu_scroll_offset = 11;
+            menu_selection = 13;
+            menu_scroll_offset = 10;
             needs_redraw = true;
         }
     } else if (sub == MochiSubmode::EMOTE_PICKER || sub == MochiSubmode::HELMET_PICKER || sub == MochiSubmode::ANIM_PICKER) {
@@ -4391,31 +4427,42 @@ void UICore::handleVibrationInput() {
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         switch (vibe_selection) {
-            case 0: // CLICK / TICK
+            case 0: // MASTER SWITCH
+            {
+                bool next = !vibrationManager.isMasterSwitchOn();
+                vibrationManager.setMasterSwitch(next);
+                SettingsData& s = settingsManager.get();
+                s.vibe_master_on = next;
+                settingsManager.save();
+                showToast(next ? "VIBE: ENABLED" : "VIBE: MUTED", 800);
+                if (next) vibrationManager.triggerHapticClick();
+                break;
+            }
+            case 1: // CLICK / TICK
                 vibrationManager.triggerPattern(VibePattern::CLICK);
                 showToast("CLICK 35ms", 800);
                 break;
-            case 1: // DOUBLE PULSE
+            case 2: // DOUBLE PULSE
                 vibrationManager.triggerPattern(VibePattern::DOUBLE_PULSE);
                 showToast("DOUBLE PULSE", 800);
                 break;
-            case 2: // TACTICAL ALERT
+            case 3: // TACTICAL ALERT
                 vibrationManager.triggerPattern(VibePattern::ALERT);
                 showToast("ALERT BUZZ", 800);
                 break;
-            case 3: // HEARTBEAT
+            case 4: // HEARTBEAT
                 vibrationManager.triggerPattern(VibePattern::HEARTBEAT);
                 showToast("HEARTBEAT", 800);
                 break;
-            case 4: // SOS MORSE
+            case 5: // SOS MORSE
                 vibrationManager.triggerPattern(VibePattern::SOS_MORSE);
                 showToast("... --- ...", 1200);
                 break;
-            case 5: // RAMP INTENSITY
+            case 6: // RAMP INTENSITY
                 vibrationManager.triggerPattern(VibePattern::RAMP_UP);
                 showToast("PWM RAMP", 800);
                 break;
-            case 6: // CONTINUOUS RUN
+            case 7: // CONTINUOUS RUN
                 if (vibrationManager.isVibrating() && vibrationManager.getCurrentPattern() == VibePattern::CONTINUOUS) {
                     vibrationManager.stop();
                     showToast("MOTOR STOPPED", 800);
@@ -4424,7 +4471,7 @@ void UICore::handleVibrationInput() {
                     showToast("CONTINUOUS (OK: stop)", 1200);
                 }
                 break;
-            case 7: // STRENGTH
+            case 8: // STRENGTH
             {
                 uint8_t cur = vibrationManager.getIntensity();
                 uint8_t next = (cur == 25) ? 50 : (cur == 50) ? 75 : (cur == 75) ? 100 : 25;
@@ -4432,7 +4479,7 @@ void UICore::handleVibrationInput() {
                 vibrationManager.triggerPulse(80, 100);
                 break;
             }
-            case 8: // BUTTON HAPTICS
+            case 9: // BUTTON HAPTICS
             {
                 bool next = !vibrationManager.isButtonHapticsEnabled();
                 vibrationManager.setButtonHaptics(next);

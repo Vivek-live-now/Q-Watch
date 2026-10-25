@@ -584,6 +584,12 @@ void SensorManager::logBmeSample() {
     last_bme_log = millis();
 }
 
+int SensorManager::getBmeHistoryCount() const {
+    if (!fileManager.exists("/bme_history.bin")) return 0;
+    size_t sz = fileManager.fileSize("/bme_history.bin");
+    return (int)(sz / sizeof(BMEHistoryEntry));
+}
+
 bool SensorManager::getBmeHistory(BMEHistoryEntry* buffer, int max_entries) const {
     if (!fileManager.exists("/bme_history.bin")) return false;
     size_t sz = fileManager.fileSize("/bme_history.bin");

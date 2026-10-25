@@ -75,6 +75,7 @@ void MochiPet::begin() {
     loadMochiAnims();
     updateMoodLed();
     triggerSound(MochiSound::HAPPY_CHIRP);
+    playAnim("happy", true);
 }
 
 bool MochiPet::playAnim(const char* name, bool loop) {
@@ -147,7 +148,16 @@ void MochiPet::nextEmote() {
     uint8_t next = (static_cast<uint8_t>(current_emote) + 1) % static_cast<uint8_t>(MochiEmote::COUNT);
     setEmote(static_cast<MochiEmote>(next));
     auto_play_timer = 0.0f;
-    stopAnim();
+    static const char* const anim_map[] = {
+        "happy", "love", "laughing", "wink", "serene",
+        "smile", "handsome", "angry", "irritated", "distracted",
+        "shy", "drowsy", "sleepy", "dizzy", "speed", "sparkle", "gundam"
+    };
+    if (next < 17) {
+        if (!playAnim(anim_map[next], true)) stopAnim();
+    } else {
+        stopAnim();
+    }
 }
 
 void MochiPet::prevEmote() {
@@ -155,7 +165,16 @@ void MochiPet::prevEmote() {
     uint8_t prev = (static_cast<uint8_t>(current_emote) + total - 1) % total;
     setEmote(static_cast<MochiEmote>(prev));
     auto_play_timer = 0.0f;
-    stopAnim();
+    static const char* const anim_map[] = {
+        "happy", "love", "laughing", "wink", "serene",
+        "smile", "handsome", "angry", "irritated", "distracted",
+        "shy", "drowsy", "sleepy", "dizzy", "speed", "sparkle", "gundam"
+    };
+    if (prev < 17) {
+        if (!playAnim(anim_map[prev], true)) stopAnim();
+    } else {
+        stopAnim();
+    }
 }
 
 void MochiPet::setHelmet(MochiHelmet helmet) {

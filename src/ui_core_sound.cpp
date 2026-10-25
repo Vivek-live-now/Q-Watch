@@ -70,35 +70,48 @@ void UICore::handleSoundMainInput() {
     ButtonEvent ok_evt = btnManager.getEvent(BTN_ID_OK);
 
     if (up_evt == BTN_EVT_SHORT_PRESS || up_evt == BTN_EVT_REPEAT) {
-        if (sound_selection > 0) {
+        if (sound_selection == 0) {
+            sound_selection = SOUND_MAIN_ITEM_COUNT - 1;
+            sound_scroll_offset = (SOUND_MAIN_ITEM_COUNT > 4) ? SOUND_MAIN_ITEM_COUNT - 4 : 0;
+            if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+        } else {
             sound_selection--;
             if (sound_selection < sound_scroll_offset) sound_scroll_offset = sound_selection;
-            soundManager.playNavMove();
-            needs_redraw = true;
         }
+        soundManager.playNavMove();
+        needs_redraw = true;
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
-        if (sound_selection < SOUND_MAIN_ITEM_COUNT - 1) {
+        if (sound_selection >= SOUND_MAIN_ITEM_COUNT - 1) {
+            sound_selection = 0;
+            sound_scroll_offset = 0;
+            if (vibrationManager.isButtonHapticsEnabled()) vibrationManager.triggerPulse(10, 80);
+        } else {
             sound_selection++;
             if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
-            soundManager.playNavMove();
-            needs_redraw = true;
         }
+        soundManager.playNavMove();
+        needs_redraw = true;
     } else if (ok_evt == BTN_EVT_SHORT_PRESS) {
         soundManager.playNavSelect();
         switch (sound_selection) {
             case 0: sound_submenu = SoundSubmenu::SETTINGS; sound_selection = 0; sound_scroll_offset = 0; break;
             case 1: sound_submenu = SoundSubmenu::EFFECTS; sound_selection = 0; sound_scroll_offset = 0; break;
             case 2:
+                sound_submenu = SoundSubmenu::BEAT_MAKER;
+                beat_cursor_track = 0;
+                beat_cursor_step = 0;
+                break;
+            case 3:
                 fileManager.mkdir("/sounds");
                 sound_submenu = SoundSubmenu::CREATOR_LIST;
                 sound_selection = 0;
                 sound_scroll_offset = 0;
                 break;
-            case 3: sound_submenu = SoundSubmenu::TUNES; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 4: sound_submenu = SoundSubmenu::LAB; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 5: sound_submenu = SoundSubmenu::METRONOME; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 6: sound_submenu = SoundSubmenu::MORSE; sound_selection = 0; sound_scroll_offset = 0; break;
-            case 7: sound_submenu = SoundSubmenu::POLY_SYNTH; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 4: sound_submenu = SoundSubmenu::TUNES; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 5: sound_submenu = SoundSubmenu::LAB; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 6: sound_submenu = SoundSubmenu::METRONOME; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 7: sound_submenu = SoundSubmenu::MORSE; sound_selection = 0; sound_scroll_offset = 0; break;
+            case 8: sound_submenu = SoundSubmenu::POLY_SYNTH; sound_selection = 0; sound_scroll_offset = 0; break;
         }
         needs_redraw = true;
     }
@@ -676,9 +689,15 @@ void UICore::handleBeatMakerInput() {
             stopBeat();
             showToast("[PAUSED]", 600);
         } else {
-            current_state = UIState::MAIN_MENU;
-            menu_selection = 2; // BEAT MAKER
-            menu_scroll_offset = 0;
+            if (current_state == UIState::APP_AUDIO) {
+                sound_submenu = SoundSubmenu::MAIN;
+                sound_selection = 2; // BEAT MAKER in Sound
+                sound_scroll_offset = 0;
+            } else {
+                current_state = UIState::MAIN_MENU;
+                menu_selection = 6; // SOUND in SysMenu
+                menu_scroll_offset = 4;
+            }
         }
         needs_redraw = true;
         return;

@@ -295,8 +295,9 @@ public:
     int getVibeSelection() const { return vibe_selection; }
     int getVibeOffset() const { return vibe_offset; }
 
-    static const int VIBE_MENU_ITEM_COUNT = 9;
+    static const int VIBE_MENU_ITEM_COUNT = 10;
     const char* vibe_menu_items[VIBE_MENU_ITEM_COUNT] = {
+        "MASTER SWITCH",
         "CLICK / TICK",
         "DOUBLE PULSE",
         "TACTICAL ALERT",
@@ -345,15 +346,15 @@ public:
     void clearRedrawFlag() { needs_redraw = false; }
     void forceRedraw() { needs_redraw = true; }
 
-    static const int MAIN_MENU_ITEM_COUNT = 19;
+    static const int MAIN_MENU_ITEM_COUNT = 18;
     const char* main_menu_items[MAIN_MENU_ITEM_COUNT] = {
-        "CLOCK", "WEATHER", "BEAT MAKER", "COMPASS", "HEALTH",
+        "CLOCK", "WEATHER", "COMPASS", "HEALTH",
         "IMU6500", "IR REMOTE", "SOUND", "BME280", "BATTERY", "LED RGB", "FILE MANAGER", "APPS", "ANIMATIONS", "MOCHI PET", "WIRELESS", "VIBRATION", "SETTINGS", "ABOUT"
     };
 
-    static const int SOUND_MAIN_ITEM_COUNT = 8;
+    static const int SOUND_MAIN_ITEM_COUNT = 9;
     const char* sound_main_items[SOUND_MAIN_ITEM_COUNT] = {
-        "SETTINGS", "SOUND EFFECTS", "MELODY CREATOR", "COMPOSER", "SOUND LAB", "METRONOME", "MORSE / Q-CODE", "CHIPTUNE SYNTH"
+        "SETTINGS", "SOUND EFFECTS", "BEAT MAKER", "MELODY CREATOR", "COMPOSER", "SOUND LAB", "METRONOME", "MORSE / Q-CODE", "CHIPTUNE SYNTH"
     };
 
     static const int SOUND_SETTINGS_ITEM_COUNT = 5;
@@ -444,6 +445,7 @@ public:
     int getFmScrollOffset() const { return fm_scroll_offset; }
     int getFmEntryCount() const { return fm_entry_count; }
     const struct FileInfo* getFmEntries() const { return fm_entries; }
+    bool isFmDeleteConfirm() const { return fm_delete_confirm; }
 
     static String pending_selected_ssid;
 
@@ -645,6 +647,7 @@ public:
     int fm_scroll_offset;
     int fm_entry_count;
     struct FileInfo* fm_entries;
+    bool fm_delete_confirm;
     void handleFileManagerInput();
     void handleStorageInfoInput();
     void loadDirectory(const String& path);

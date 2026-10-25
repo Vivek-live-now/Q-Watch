@@ -1399,7 +1399,7 @@ def test_mochi_pet_system():
         u_h = f.read()
     assert "APP_MOCHI," in u_h, "Missing APP_MOCHI in UIState"
     assert '"MOCHI PET"' in u_h, 'Missing "MOCHI PET" in main_menu_items'
-    assert "MAIN_MENU_ITEM_COUNT = 19;" in u_h, "MAIN_MENU_ITEM_COUNT must be 19"
+    assert "MAIN_MENU_ITEM_COUNT = 18;" in u_h, "MAIN_MENU_ITEM_COUNT must be 18"
 
     display_h = os.path.join(base_dir, "include", "display.h")
     with open(display_h, "r", encoding="utf-8") as f:
@@ -1873,8 +1873,8 @@ def test_vibration_subsystem_and_app():
         u_h = f.read()
     assert "APP_VIBRATION," in u_h, "Missing APP_VIBRATION in UIState"
     assert '"VIBRATION"' in u_h, 'Missing "VIBRATION" in main_menu_items'
-    assert "MAIN_MENU_ITEM_COUNT = 19;" in u_h, "MAIN_MENU_ITEM_COUNT must be 19"
-    assert "VIBE_MENU_ITEM_COUNT = 9;" in u_h, "Missing VIBE_MENU_ITEM_COUNT in ui_core.h"
+    assert "MAIN_MENU_ITEM_COUNT = 18;" in u_h, "MAIN_MENU_ITEM_COUNT must be 18"
+    assert "VIBE_MENU_ITEM_COUNT = 10;" in u_h, "Missing VIBE_MENU_ITEM_COUNT in ui_core.h"
 
     # 3. Verify Display Registration in display.h and display.cpp
     display_h = os.path.join(base_dir, "include", "display.h")
@@ -3864,7 +3864,7 @@ def test_poly_synth_and_simd_mixing():
     with open(ui_h, "r", encoding="utf-8") as f:
         uh = f.read()
     assert "SoundSubmenu::POLY_SYNTH" in uh or "POLY_SYNTH" in uh
-    assert "SOUND_MAIN_ITEM_COUNT = 8" in uh, "SOUND_MAIN_ITEM_COUNT must be updated to 8"
+    assert "SOUND_MAIN_ITEM_COUNT = 9" in uh, "SOUND_MAIN_ITEM_COUNT must be updated to 9"
     assert '"CHIPTUNE SYNTH"' in uh, "sound_main_items must include CHIPTUNE SYNTH"
     assert "handlePolySynthInput()" in uh
 

@@ -194,7 +194,7 @@ public:
     bool verifyBmeChip();
     void updateBmeHistory();
     void logBmeSample();
-    int getBmeHistoryCount() const { return history_count; }
+    int getBmeHistoryCount() const;
     bool getBmeHistory(BMEHistoryEntry* buffer, int max_entries) const;
 
     BmeHeightState getHeightState() const { return height_state; }

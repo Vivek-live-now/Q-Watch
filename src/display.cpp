@@ -1013,94 +1013,77 @@ void DisplayManager::drawAppWeather() {
     }
 
     int page = ui.getWeatherPage();
-    if (page == 1) {
-        // Page 2: Weather & Sensor Telemetry
+    if (page == 0) {
+        // Page 1: Local BME280 Environment
         oled.setFont(getTitleFont());
-        oled.drawStr(4, 18, "WEATHER TELEMETRY");
-        oled.drawLine(0, 20, 128, 20);
+        oled.drawStr(2, 10, "LOCAL ENVIRONMENT");
+        oled.drawHLine(0, 12, 128);
 
-        char buf[40];
-        snprintf(buf, sizeof(buf), "GPS: %.2f, %.2f", cfg.latitude, cfg.longitude);
-        oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 29, buf);
-
-        String loc = cfg.owm_location.length() > 0 ? cfg.owm_location : "DEFAULT";
-        snprintf(buf, sizeof(buf), "LOC: %s", loc.c_str());
-        oled.drawStr(4, 38, buf);
+        // Draw cute icons cleanly below the header line
+        drawThermometerIcon(102, 15);
+        drawHygrometerIcon(116, 15);
 
         if (sensors.isBmeOk()) {
             EnvironmentData env = sensors.getEnvData();
-            snprintf(buf, sizeof(buf), "BME: %.1fC  %.0fhPa  %.0f%%", env.temperature, env.pressure, env.humidity);
-            oled.drawStr(4, 47, buf);
+            char temp_str[16];
+            snprintf(temp_str, sizeof(temp_str), "%.1f\260C", env.temperature);
+            oled.setFont(u8g2_font_ncenB14_tr);
+            oled.drawStr(4, 32, temp_str);
+
+            char details[40];
+            snprintf(details, sizeof(details), "HUM: %.0f%%  P: %.0f hPa", env.humidity, env.pressure);
+            oled.setFont(u8g2_font_5x7_tf);
+            oled.drawStr(4, 46, details);
         } else {
-            oled.drawStr(4, 47, "BME: SENSOR NOT FOUND");
+            oled.setFont(u8g2_font_6x10_tr);
+            oled.drawStr(4, 34, "BME NOT DETECTED");
+            oled.setFont(u8g2_font_4x6_tr);
+            oled.drawStr(4, 46, "Check I2C connections");
         }
 
-        oled.drawStr(4, 59, "[OK]: SYNC    (2/2)");
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(4, 60, "[UP/DN] ONLINE WEATHER   (1/2)");
         return;
     }
 
-    // Page 0: Live weather overview
+    // Page 2: OpenWeatherMap Online API (No GPS / Raw Location)
+    oled.setFont(getTitleFont());
+    oled.drawStr(2, 10, "OPENWEATHERMAP");
+    oled.drawHLine(0, 12, 128);
+
     if (wd.valid) {
         const char* unit_sym = (cfg.owm_units == "imperial") ? "\260F" : "\260C";
         char temp_str[16];
         snprintf(temp_str, sizeof(temp_str), "%.1f%s", wd.temperature, unit_sym);
 
-        // Cute weather icon at top right
-        drawCuteWeatherIcon(104, 14, wd.condition);
+        // Cute weather icon at top right cleanly below line
+        drawCuteWeatherIcon(104, 15, wd.condition);
 
         // Big temperature
         oled.setFont(u8g2_font_ncenB14_tr);
-        oled.drawStr(4, 28, temp_str);
+        oled.drawStr(4, 30, temp_str);
 
-        // Condition and City
+        // Condition text
         oled.setFont(u8g2_font_5x7_tf);
         String cond = wd.condition;
-        if (cond.length() > 10) cond = cond.substring(0, 10);
-        oled.drawStr(4, 38, cond.c_str());
+        if (cond.length() > 14) cond = cond.substring(0, 14);
+        oled.drawStr(4, 42, cond.c_str());
 
-        String loc = cfg.owm_location.length() > 0 ? cfg.owm_location : "OWM";
-        if (loc.length() > 8) loc = loc.substring(0, 8);
-        oled.drawStr(62, 38, loc.c_str());
-
-        // Environmental stats: Humidity & Wind
+        // Environmental stats: Humidity & Wind & Feels Like
         char details[40];
         const char* wind_unit = (cfg.owm_units == "imperial") ? "mph" : "m/s";
         snprintf(details, sizeof(details), "HUM:%d%% WND:%.1f%s FL:%.0f%s", wd.humidity, wd.wind_speed, wind_unit, wd.feels_like, unit_sym);
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 48, details);
+        oled.drawStr(4, 51, details);
 
-        oled.drawStr(4, 60, "[OK] SYNC  [UP/DN] INFO  (1/2)");
-    } else if (sensors.isBmeOk()) {
-        EnvironmentData env = sensors.getEnvData();
-        oled.setFont(getTitleFont());
-        oled.drawStr(4, 18, "LOCAL ENVIRONMENT");
-        oled.drawLine(0, 20, 128, 20);
-
-        // Draw cute icons
-        drawThermometerIcon(100, 14);
-        drawHygrometerIcon(114, 14);
-
-        char temp_str[16];
-        snprintf(temp_str, sizeof(temp_str), "%.1f\260C", env.temperature);
-        oled.setFont(u8g2_font_ncenB14_tr);
-        oled.drawStr(4, 36, temp_str);
-
-        char details[40];
-        snprintf(details, sizeof(details), "HUM: %.0f%%  P: %.0f hPa", env.humidity, env.pressure);
-        oled.setFont(u8g2_font_5x7_tf);
-        oled.drawStr(4, 48, details);
-
-        oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 60, "[OK] SYNC OWM  (1/2)");
+        oled.drawStr(4, 60, "[OK] SYNC  [UP/DN] LOCAL (2/2)");
     } else {
-        // Cute sleeping cloud when no data
-        drawCuteWeatherIcon(54, 14, "cloud");
+        drawCuteWeatherIcon(104, 15, "cloud");
         oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(18, 42, "NO WEATHER DATA");
+        oled.drawStr(4, 30, "NO WEATHER DATA");
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(14, 52, "CONNECT WI-FI FOR OWM");
-        oled.drawStr(18, 62, "[OK]: SYNC OWM NOW");
+        oled.drawStr(4, 42, "Connect Wi-Fi to fetch");
+        oled.drawStr(4, 60, "[OK] SYNC NOW  [UP/DN] (2/2)");
     }
 }
 
@@ -2681,6 +2664,16 @@ void DisplayManager::drawFileManager() {
             }
         }
     }
+
+    if (ui.isFmDeleteConfirm()) {
+        oled.setDrawColor(0);
+        oled.drawBox(8, 20, 112, 38);
+        oled.setDrawColor(1);
+        oled.drawFrame(8, 20, 112, 38);
+        oled.setFont(u8g2_font_5x7_tf);
+        oled.drawStr(22, 33, "DELETE ITEM?");
+        oled.drawStr(14, 47, "[OK] YES  [CANC] NO");
+    }
 }
 
 void DisplayManager::drawAppApps() {
@@ -3993,15 +3986,16 @@ void DisplayManager::drawAppVibration() {
 
     // Prepare values column
     String vals[UICore::VIBE_MENU_ITEM_COUNT];
+    vals[0] = vibrationManager.isMasterSwitchOn() ? "ON" : "OFF";
     for (int i = 0; i < 7; i++) {
         if (vibrationManager.isVibrating() && static_cast<int>(vibrationManager.getCurrentPattern()) == i) {
-            vals[i] = "RUN";
+            vals[i + 1] = "RUN";
         } else {
-            vals[i] = "";
+            vals[i + 1] = "";
         }
     }
-    vals[7] = String(vibrationManager.getIntensity()) + "%";
-    vals[8] = vibrationManager.isButtonHapticsEnabled() ? "ON" : "OFF";
+    vals[8] = String(vibrationManager.getIntensity()) + "%";
+    vals[9] = vibrationManager.isButtonHapticsEnabled() ? "ON" : "OFF";
 
     // Draw 4 menu items (Y = 12 to 48)
     for (int i = 0; i < 4; i++) {
