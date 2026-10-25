@@ -3,6 +3,7 @@
 #include "settings_data.h"
 #include "button_manager.h"
 #include "poly_synth.h"
+#include "vibration_manager.h"
 
 static const uint16_t NOTE_BASE_FREQS[] = { 262, 294, 330, 349, 392, 440, 494, 0 }; // C4, D4, E4, F4, G4, A4, B4, REST (0Hz)
 static const char* const NOTE_NAMES[] = { "C", "D", "E", "F", "G", "A", "B", "REST" };
