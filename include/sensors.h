@@ -180,6 +180,7 @@ public:
     RawSensorData getRawData() const { return raw_data; }
     CalibratedSensorData getCalData() const { return cal_data; }
     bool isMpuOk() const { return mpu_ok; }
+    bool isMpuAvailable() const { return mpu_ok; }
     bool isMagOk() const { return mag_ok; }
     MagChipType getMagChipType() const { return mag_type; }
     const char* getMagChipName() const;
