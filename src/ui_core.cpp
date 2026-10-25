@@ -3751,7 +3751,6 @@ void UICore::handleBatteryInput() {
             }
             soundManager.playNavMove();
             needs_redraw = true;
-        }
         } else if (up_evt == BTN_EVT_LONG_PRESS) {
             battery_page = 2;
             battery_menu_selection = 0;
