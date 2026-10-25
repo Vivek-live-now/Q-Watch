@@ -264,6 +264,21 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
     gpio_set_direction((gpio_num_t)RGB_LED, GPIO_MODE_OUTPUT);
     gpio_set_level((gpio_num_t)RGB_LED, 0);
     gpio_hold_en((gpio_num_t)RGB_LED);
+
+    // OLED display pin isolation: keep CS HIGH (deselected) and RESET HIGH to prevent floating CMOS / reset current
+    gpio_set_direction((gpio_num_t)OLED_CS, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)OLED_CS, 1);
+    gpio_hold_en((gpio_num_t)OLED_CS);
+    rtc_gpio_hold_en((gpio_num_t)OLED_CS);
+
+    gpio_set_direction((gpio_num_t)OLED_RST, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)OLED_RST, 1);
+    gpio_hold_en((gpio_num_t)OLED_RST);
+
+    gpio_set_direction((gpio_num_t)IR_TX, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)IR_TX, 0);
+    gpio_hold_en((gpio_num_t)IR_TX);
+
     gpio_deep_sleep_hold_en();
 
     switch (current_sleep_engine) {
@@ -294,6 +309,10 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            gpio_hold_dis((gpio_num_t)OLED_CS);
+            rtc_gpio_hold_dis((gpio_num_t)OLED_CS);
+            gpio_hold_dis((gpio_num_t)OLED_RST);
+            gpio_hold_dis((gpio_num_t)IR_TX);
             rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
             rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
             soundManager.reinitHardware();
@@ -307,6 +326,10 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            gpio_hold_dis((gpio_num_t)OLED_CS);
+            rtc_gpio_hold_dis((gpio_num_t)OLED_CS);
+            gpio_hold_dis((gpio_num_t)OLED_RST);
+            gpio_hold_dis((gpio_num_t)IR_TX);
             rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
             rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
             soundManager.reinitHardware();

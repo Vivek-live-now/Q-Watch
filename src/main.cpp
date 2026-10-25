@@ -49,11 +49,15 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
-  // Release RTC deep sleep pad holds latched during sleep to unfreeze buzzer, vibrator and LED
+  // Release RTC deep sleep pad holds latched during sleep to unfreeze buzzer, vibrator, LED, display and IR
   gpio_deep_sleep_hold_dis();
   gpio_hold_dis((gpio_num_t)BUZZER_PIN);
   gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
   gpio_hold_dis((gpio_num_t)RGB_LED);
+  gpio_hold_dis((gpio_num_t)OLED_CS);
+  rtc_gpio_hold_dis((gpio_num_t)OLED_CS);
+  gpio_hold_dis((gpio_num_t)OLED_RST);
+  gpio_hold_dis((gpio_num_t)IR_TX);
   rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
   rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
 #endif
