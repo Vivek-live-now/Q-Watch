@@ -31,6 +31,7 @@
 #include <esp_system.h>
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
 #include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #endif
 
 RTC_DATA_ATTR static uint32_t s_rapid_boot_count = 0;
@@ -53,6 +54,8 @@ void setup() {
   gpio_hold_dis((gpio_num_t)BUZZER_PIN);
   gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
   gpio_hold_dis((gpio_num_t)RGB_LED);
+  rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
+  rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
 #endif
 
   esp_reset_reason_t rst_reason = esp_reset_reason();
@@ -116,7 +119,7 @@ void setup() {
 #else
   qlink.begin();
 #endif
-  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1 || wakeup_reason == ESP_SLEEP_WAKEUP_ULP) {
     soundManager.playWake();
   } else {
     soundManager.playBoot();

@@ -190,8 +190,9 @@ void UICore::performSilentDeepSleepWake() {
     rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
     uint64_t wake_mask = (1ULL << BTN_CANCEL);
 
-    if (s.raise_to_wake) {
+    if (s.raise_to_wake && sensors.isMpuAvailable()) {
         sensors.enterSleep(true);
+        sensors.clearMpuInterrupt();
         rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
         rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
         wake_mask |= (1ULL << MPU_INT);
@@ -202,6 +203,12 @@ void UICore::performSilentDeepSleepWake() {
     max30102Manager.disableSensor();
 
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    rtc_gpio_hold_en((gpio_num_t)BTN_CANCEL);
+    if (s.raise_to_wake && sensors.isMpuAvailable()) {
+        rtc_gpio_hold_en((gpio_num_t)MPU_INT);
+    }
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     esp_deep_sleep_start();
 #endif
 }
@@ -3101,18 +3108,17 @@ void UICore::enterDeepSleep() {
     display_off = true;
     displayManager.setPowerSave(true);
     delay(50);
-
     SettingsData& sleep_s = settingsManager.get();
-    if (sleep_s.eco_radio_cut) {
-        qlink.pauseBleAdvertising();
-    }
-
+    if (sleep_s.eco_radio_cut) qlink.pauseBleAdvertising();
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+    while (digitalRead(BTN_CANCEL) == LOW) delay(10);
+#endif
     rtc_gpio_pullup_en((gpio_num_t)BTN_CANCEL);
     rtc_gpio_pulldown_dis((gpio_num_t)BTN_CANCEL);
     uint64_t wake_mask = (1ULL << BTN_CANCEL);
-
-    if (sleep_s.raise_to_wake) {
+    if (sleep_s.raise_to_wake && sensors.isMpuAvailable()) {
         sensors.enterSleep(true);
+        sensors.clearMpuInterrupt();
         rtc_gpio_pullup_en((gpio_num_t)MPU_INT);
         rtc_gpio_pulldown_dis((gpio_num_t)MPU_INT);
         wake_mask |= (1ULL << MPU_INT);
@@ -3121,25 +3127,21 @@ void UICore::enterDeepSleep() {
         sensors.clearMpuInterrupt();
     }
     max30102Manager.disableSensor();
-
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
     esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    rtc_gpio_hold_en((gpio_num_t)BTN_CANCEL);
+    if (sleep_s.raise_to_wake && sensors.isMpuAvailable()) rtc_gpio_hold_en((gpio_num_t)MPU_INT);
     gpio_wakeup_enable((gpio_num_t)BTN_OK, GPIO_INTR_LOW_LEVEL);
     gpio_wakeup_enable((gpio_num_t)BTN_UP, GPIO_INTR_LOW_LEVEL);
     gpio_wakeup_enable((gpio_num_t)BTN_DN, GPIO_INTR_LOW_LEVEL);
     gpio_wakeup_enable((gpio_num_t)BTN_CANCEL, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
 #endif
-
     uint32_t sleep_sec = calculateNextRecordIntervalSec();
-
-    // Sleep loop for Light Sleep / Display Off
     while (current_state == UIState::SLEEPING) {
         powerManager.executeSleep(sleep_sec, sleep_s.raise_to_wake, wake_mask);
-
-        esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-        if (cause == ESP_SLEEP_WAKEUP_TIMER) {
-            // Background timer fired: record silently without turning on OLED!
+        if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
             if (sleep_s.auto_record_enabled) {
                 sensors.wakeFromSleep();
                 performSilentBackgroundRecording();

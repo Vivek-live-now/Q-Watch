@@ -1314,12 +1314,18 @@ void SensorManager::enterSleep(bool keep_wom_active) {
 
             // Enable Accel Cycle mode: bit 5 = 1 (CYCLE), bit 6 = 0 (SLEEP)
             writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x20);
+
+            // Clear any latched interrupt status from transition
+            clearMpuInterrupt();
         } else {
             // Disarm interrupts
             writeRegister(mpu_i2c_addr, MPU6500_INT_ENABLE, 0x00);
 
             // Full MPU Sleep: bit 6 = 1 (SLEEP)
             writeRegister(mpu_i2c_addr, MPU6500_PWR_MGMT_1, 0x40);
+
+            // Clear any latched interrupt status
+            clearMpuInterrupt();
         }
     }
 

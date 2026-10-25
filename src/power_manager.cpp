@@ -268,12 +268,14 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
 
     switch (current_sleep_engine) {
         case SleepEngine::DEEP_SLEEP: {
+            esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
             if (sleep_sec > 0) {
                 esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
             } else {
                 esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
             }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
             esp_deep_sleep_start();
             break;
         }
@@ -292,6 +294,8 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
+            rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
             soundManager.reinitHardware();
             vibrationManager.reinitHardware();
             break;
@@ -303,6 +307,8 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
             gpio_hold_dis((gpio_num_t)BUZZER_PIN);
             gpio_hold_dis((gpio_num_t)VIBRATOR_PIN);
             gpio_hold_dis((gpio_num_t)RGB_LED);
+            rtc_gpio_hold_dis((gpio_num_t)BTN_CANCEL);
+            rtc_gpio_hold_dis((gpio_num_t)MPU_INT);
             soundManager.reinitHardware();
             vibrationManager.reinitHardware();
             delay(10);
@@ -310,13 +316,15 @@ void PowerManager::executeSleep(uint32_t sleep_sec, bool raise_to_wake, uint64_t
         }
 
         case SleepEngine::ULP_SENTINEL: {
-            // Experimental: deep sleep with ULP sentry
+            // Deep sleep with ULP sentry
+            esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
             if (sleep_sec > 0) {
                 esp_sleep_enable_timer_wakeup((uint64_t)sleep_sec * 1000000ULL);
             } else {
                 esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
             }
             esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
             esp_deep_sleep_start();
             break;
         }

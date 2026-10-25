@@ -29,7 +29,7 @@ void ButtonManager::begin() {
 
     // Check if we woke from deep sleep
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1 || wakeup_reason == ESP_SLEEP_WAKEUP_ULP) {
         woken_from_sleep = true;
 
         // If woke via CANCEL (GPIO21) or EXT1 wakeup mask containing GPIO21/GPIO8,
