@@ -63,6 +63,7 @@ void SettingsManager::load() {
         else if (key == "gdma_enabled") settings.gdma_enabled = (val == "1");
         else if (key == "font_style_idx") settings.font_style_idx = val.toInt();
         else if (key == "font_size_idx") settings.font_size_idx = val.toInt();
+        else if (key == "fullscreen_timeout_idx") settings.fullscreen_timeout_idx = val.toInt();
         else if (key == "auto_record_enabled") settings.auto_record_enabled = (val == "1");
         else if (key == "auto_record_interval_idx") settings.auto_record_interval_idx = val.toInt();
         else if (key == "auto_record_target_idx") settings.auto_record_target_idx = val.toInt();
@@ -123,6 +124,7 @@ void SettingsManager::load() {
         if (prefs.isKey("tz_idx")) settings.timezone_idx = prefs.getInt("tz_idx", settings.timezone_idx);
         if (prefs.isKey("face_style")) settings.watch_face_style = prefs.getInt("face_style", settings.watch_face_style);
         if (prefs.isKey("raise_wake")) settings.raise_to_wake = prefs.getBool("raise_wake", settings.raise_to_wake);
+        if (prefs.isKey("fs_timeout")) settings.fullscreen_timeout_idx = prefs.getInt("fs_timeout", settings.fullscreen_timeout_idx);
         prefs.end();
     }
 #endif
@@ -160,6 +162,7 @@ void SettingsManager::save() {
     out += "gdma_enabled=" + String(settings.gdma_enabled ? "1" : "0") + "\n";
     out += "font_style_idx=" + String(settings.font_style_idx) + "\n";
     out += "font_size_idx=" + String(settings.font_size_idx) + "\n";
+    out += "fullscreen_timeout_idx=" + String(settings.fullscreen_timeout_idx) + "\n";
     out += "auto_record_enabled=" + String(settings.auto_record_enabled ? "1" : "0") + "\n";
     out += "auto_record_interval_idx=" + String(settings.auto_record_interval_idx) + "\n";
     out += "auto_record_target_idx=" + String(settings.auto_record_target_idx) + "\n";
@@ -206,6 +209,7 @@ void SettingsManager::save() {
         prefs.putInt("tz_idx", settings.timezone_idx);
         prefs.putInt("face_style", settings.watch_face_style);
         prefs.putBool("raise_wake", settings.raise_to_wake);
+        prefs.putInt("fs_timeout", settings.fullscreen_timeout_idx);
         prefs.end();
     }
 #endif

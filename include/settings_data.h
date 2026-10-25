@@ -36,6 +36,7 @@ struct SettingsData {
     bool gdma_enabled = true;     // Hardware GDMA Asynchronous Display Refresh
     int font_style_idx = 0;       // 0: CUTE ROUNDED, 1: PIXEL RETRO, 2: MODERN TECH
     int font_size_idx = 1;        // 0: SMALL, 1: MEDIUM, 2: LARGE
+    int fullscreen_timeout_idx = 0; // 0: OFF, 1: 3s, 2: 5s
 
     // UNIFIED AUTO DATA RECORDING & SENSORS
     bool auto_record_enabled = false;    // Unified master switch (Default: OFF -> zero periodic timer wakeups)
@@ -141,6 +142,9 @@ static const int FONT_STYLE_COUNT = 3;
 
 static const char* const FONT_SIZE_OPTIONS[] = {"SMALL", "MEDIUM", "LARGE"};
 static const int FONT_SIZE_COUNT = 3;
+
+static const char* const FULLSCREEN_TIMEOUT_OPTIONS[] = {"OFF", "3s", "5s"};
+static const int FULLSCREEN_TIMEOUT_COUNT = 3;
 
 static const char* const SOUND_STYLE_OPTIONS[] = {"SILENT", "MODERN", "TACTICAL", "RETRO"};
 static const int SOUND_STYLE_COUNT = 4;

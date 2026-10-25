@@ -129,11 +129,21 @@ void UICore::handleSoundSettingsInput() {
             if (sound_selection < sound_scroll_offset) sound_scroll_offset = sound_selection;
             soundManager.playNavMove();
             needs_redraw = true;
+        } else {
+            sound_selection = SOUND_SETTINGS_ITEM_COUNT - 1;
+            sound_scroll_offset = (SOUND_SETTINGS_ITEM_COUNT > 4) ? SOUND_SETTINGS_ITEM_COUNT - 4 : 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
         }
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_SETTINGS_ITEM_COUNT - 1) {
             sound_selection++;
             if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else {
+            sound_selection = 0;
+            sound_scroll_offset = 0;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -169,11 +179,21 @@ void UICore::handleSoundEffectsInput() {
             if (sound_selection < sound_scroll_offset) sound_scroll_offset = sound_selection;
             soundManager.playNavMove();
             needs_redraw = true;
+        } else {
+            sound_selection = SOUND_EFFECTS_ITEM_COUNT - 1;
+            sound_scroll_offset = (SOUND_EFFECTS_ITEM_COUNT > 4) ? SOUND_EFFECTS_ITEM_COUNT - 4 : 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
         }
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_EFFECTS_ITEM_COUNT - 1) {
             sound_selection++;
             if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else {
+            sound_selection = 0;
+            sound_scroll_offset = 0;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -246,11 +266,21 @@ void UICore::handleSoundCreatorListInput() {
             if (sound_selection < sound_scroll_offset) sound_scroll_offset = sound_selection;
             soundManager.playNavMove();
             needs_redraw = true;
+        } else if (total_items > 0) {
+            sound_selection = total_items - 1;
+            sound_scroll_offset = (total_items > 4) ? total_items - 4 : 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
         }
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < total_items - 1) {
             sound_selection++;
             if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else if (total_items > 0) {
+            sound_selection = 0;
+            sound_scroll_offset = 0;
             soundManager.playNavMove();
             needs_redraw = true;
         }
@@ -503,11 +533,21 @@ void UICore::handleSoundLabInput() {
             if (sound_selection < sound_scroll_offset) sound_scroll_offset = sound_selection;
             soundManager.playNavMove();
             needs_redraw = true;
+        } else {
+            sound_selection = SOUND_LAB_ITEM_COUNT - 1;
+            sound_scroll_offset = (SOUND_LAB_ITEM_COUNT > 4) ? SOUND_LAB_ITEM_COUNT - 4 : 0;
+            soundManager.playNavMove();
+            needs_redraw = true;
         }
     } else if (dn_evt == BTN_EVT_SHORT_PRESS || dn_evt == BTN_EVT_REPEAT) {
         if (sound_selection < SOUND_LAB_ITEM_COUNT - 1) {
             sound_selection++;
             if (sound_selection >= sound_scroll_offset + 4) sound_scroll_offset = sound_selection - 3;
+            soundManager.playNavMove();
+            needs_redraw = true;
+        } else {
+            sound_selection = 0;
+            sound_scroll_offset = 0;
             soundManager.playNavMove();
             needs_redraw = true;
         }

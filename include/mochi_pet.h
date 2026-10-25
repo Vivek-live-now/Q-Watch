@@ -121,7 +121,11 @@ public:
 
     // Submode Navigation
     MochiSubmode getSubmode() const { return submode; }
-    void setSubmode(MochiSubmode m) { submode = m; }
+    void setSubmode(MochiSubmode m) {
+        submode = m;
+        picker_selection = 0;
+        picker_offset = 0;
+    }
     void toggleHud();
 
     // Tamagotchi Stats

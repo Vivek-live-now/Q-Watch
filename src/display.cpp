@@ -245,9 +245,10 @@ void DisplayManager::drawAppSettings() {
         const char* vals[UICore::DISPLAY_ITEM_COUNT] = {
             CONTRAST_OPTIONS[s.contrast_idx],
             s.invert_display ? "ON" : "OFF",
-            UI_OPTIONS_LIST[s.ui_option_idx],
             FONT_STYLE_OPTIONS[s.font_style_idx],
-            FONT_SIZE_OPTIONS[s.font_size_idx]
+            FONT_SIZE_OPTIONS[s.font_size_idx],
+            UI_OPTIONS_LIST[s.ui_option_idx],
+            FULLSCREEN_TIMEOUT_OPTIONS[s.fullscreen_timeout_idx]
         };
         drawSettingsMenuWithValues("DISPLAY", ui.display_items, vals, UICore::DISPLAY_ITEM_COUNT, ui.getSettingsSelection(), ui.getSettingsScrollOffset());
     } else if (sub == SettingsSubmenu::SENSORS) {
@@ -1014,31 +1015,26 @@ void DisplayManager::drawAppWeather() {
 
     int page = ui.getWeatherPage();
     if (page == 0) {
-        // Page 1: Local BME280 Environment
-        oled.setFont(getTitleFont());
-        oled.drawStr(2, 10, "LOCAL ENVIRONMENT");
-        oled.drawHLine(0, 12, 128);
-
-        // Draw cute icons cleanly below the header line
-        drawThermometerIcon(102, 15);
-        drawHygrometerIcon(116, 15);
+        // Page 1: Local BME280 Environment (Header removed to prevent status bar collision)
+        drawThermometerIcon(102, 12);
+        drawHygrometerIcon(116, 12);
 
         if (sensors.isBmeOk()) {
             EnvironmentData env = sensors.getEnvData();
             char temp_str[16];
             snprintf(temp_str, sizeof(temp_str), "%.1f\260C", env.temperature);
             oled.setFont(u8g2_font_ncenB14_tr);
-            oled.drawStr(4, 32, temp_str);
+            oled.drawStr(4, 28, temp_str);
 
             char details[40];
             snprintf(details, sizeof(details), "HUM: %.0f%%  P: %.0f hPa", env.humidity, env.pressure);
             oled.setFont(u8g2_font_5x7_tf);
-            oled.drawStr(4, 46, details);
+            oled.drawStr(4, 44, details);
         } else {
             oled.setFont(u8g2_font_6x10_tr);
-            oled.drawStr(4, 34, "BME NOT DETECTED");
+            oled.drawStr(4, 30, "BME NOT DETECTED");
             oled.setFont(u8g2_font_4x6_tr);
-            oled.drawStr(4, 46, "Check I2C connections");
+            oled.drawStr(4, 44, "Check I2C connections");
         }
 
         oled.setFont(u8g2_font_4x6_tr);
@@ -1046,41 +1042,36 @@ void DisplayManager::drawAppWeather() {
         return;
     }
 
-    // Page 2: OpenWeatherMap Online API (No GPS / Raw Location)
-    oled.setFont(getTitleFont());
-    oled.drawStr(2, 10, "OPENWEATHERMAP");
-    oled.drawHLine(0, 12, 128);
-
+    // Page 2: OpenWeatherMap Online API (Header removed to prevent status bar collision)
     if (wd.valid) {
         const char* unit_sym = (cfg.owm_units == "imperial") ? "\260F" : "\260C";
         char temp_str[16];
         snprintf(temp_str, sizeof(temp_str), "%.1f%s", wd.temperature, unit_sym);
 
-        // Cute weather icon at top right cleanly below line
-        drawCuteWeatherIcon(104, 15, wd.condition);
+        drawCuteWeatherIcon(104, 12, wd.condition);
 
         // Big temperature
         oled.setFont(u8g2_font_ncenB14_tr);
-        oled.drawStr(4, 30, temp_str);
+        oled.drawStr(4, 28, temp_str);
 
         // Condition text
         oled.setFont(u8g2_font_5x7_tf);
         String cond = wd.condition;
         if (cond.length() > 14) cond = cond.substring(0, 14);
-        oled.drawStr(4, 42, cond.c_str());
+        oled.drawStr(4, 40, cond.c_str());
 
         // Environmental stats: Humidity & Wind & Feels Like
         char details[40];
         const char* wind_unit = (cfg.owm_units == "imperial") ? "mph" : "m/s";
         snprintf(details, sizeof(details), "HUM:%d%% WND:%.1f%s FL:%.0f%s", wd.humidity, wd.wind_speed, wind_unit, wd.feels_like, unit_sym);
         oled.setFont(u8g2_font_4x6_tr);
-        oled.drawStr(4, 51, details);
+        oled.drawStr(4, 50, details);
 
         oled.drawStr(4, 60, "[OK] SYNC  [UP/DN] LOCAL (2/2)");
     } else {
-        drawCuteWeatherIcon(104, 15, "cloud");
+        drawCuteWeatherIcon(104, 12, "cloud");
         oled.setFont(u8g2_font_6x10_tr);
-        oled.drawStr(4, 30, "NO WEATHER DATA");
+        oled.drawStr(4, 28, "NO WEATHER DATA");
         oled.setFont(u8g2_font_4x6_tr);
         oled.drawStr(4, 42, "Connect Wi-Fi to fetch");
         oled.drawStr(4, 60, "[OK] SYNC NOW  [UP/DN] (2/2)");
@@ -1449,7 +1440,7 @@ void DisplayManager::drawHealthPage2History() {
 
 
 void DisplayManager::drawAppMotionMenu() {
-    drawStandardMenu("IMU6500", ui.imu_subapp_items, UICore::IMU_SUBAPP_COUNT, ui.getImuSubAppSelection(), 0);
+    drawStandardMenu("IMU6500", ui.imu_subapp_items, UICore::IMU_SUBAPP_COUNT, ui.getImuSubAppSelection(), ui.getImuSubAppOffset());
 }
 
 void DisplayManager::drawAppAirMouse() {
@@ -2119,16 +2110,79 @@ void DisplayManager::drawAppMotionOrientation3D() {
     oled.drawStr(68, 63, "[UP/DN]CYCLE");
 }
 
-void DisplayManager::drawAppWireframe3D() {
-    // 1. Header Banner
-    oled.setFont(u8g2_font_5x7_tf);
-    char hdr[32];
-    snprintf(hdr, sizeof(hdr), "3D: %s", wireframe3d.getModelName(wireframe3d.getModel()));
-    oled.drawStr(2, 8, hdr);
+// Cohen-Sutherland Line Clipping to prevent integer underflow / distortion in U8g2
+static const int CS_INSIDE = 0; // 0000
+static const int CS_LEFT   = 1; // 0001
+static const int CS_RIGHT  = 2; // 0010
+static const int CS_BOTTOM = 4; // 0100
+static const int CS_TOP    = 8; // 1000
 
-    const char* modeStr = (wireframe3d.getControlMode() == WireframeControlMode::IMU_TILT) ? "[IMU TILT]" : "[AUTO SPIN]";
-    oled.drawStr(72, 8, modeStr);
-    oled.drawLine(0, 10, 128, 10);
+static int cs_compute_out_code(int16_t x, int16_t y, int16_t xmin, int16_t ymin, int16_t xmax, int16_t ymax) {
+    int code = CS_INSIDE;
+    if (x < xmin) code |= CS_LEFT;
+    else if (x > xmax) code |= CS_RIGHT;
+    if (y < ymin) code |= CS_TOP;
+    else if (y > ymax) code |= CS_BOTTOM;
+    return code;
+}
+
+static bool cs_clip_line(int16_t& x0, int16_t& y0, int16_t& x1, int16_t& y1, int16_t xmin, int16_t ymin, int16_t xmax, int16_t ymax) {
+    int code0 = cs_compute_out_code(x0, y0, xmin, ymin, xmax, ymax);
+    int code1 = cs_compute_out_code(x1, y1, xmin, ymin, xmax, ymax);
+    bool accept = false;
+
+    while (true) {
+        if ((code0 | code1) == 0) {
+            accept = true;
+            break;
+        } else if (code0 & code1) {
+            break;
+        } else {
+            int16_t x = 0, y = 0;
+            int outcodeOut = code0 ? code0 : code1;
+
+            if (outcodeOut & CS_BOTTOM) {
+                x = x0 + (int32_t)(x1 - x0) * (ymax - y0) / (y1 - y0);
+                y = ymax;
+            } else if (outcodeOut & CS_TOP) {
+                x = x0 + (int32_t)(x1 - x0) * (ymin - y0) / (y1 - y0);
+                y = ymin;
+            } else if (outcodeOut & CS_RIGHT) {
+                y = y0 + (int32_t)(y1 - y0) * (xmax - x0) / (x1 - x0);
+                x = xmax;
+            } else if (outcodeOut & CS_LEFT) {
+                y = y0 + (int32_t)(y1 - y0) * (xmin - x0) / (x1 - x0);
+                x = xmin;
+            }
+
+            if (outcodeOut == code0) {
+                x0 = x;
+                y0 = y;
+                code0 = cs_compute_out_code(x0, y0, xmin, ymin, xmax, ymax);
+            } else {
+                x1 = x;
+                y1 = y;
+                code1 = cs_compute_out_code(x1, y1, xmin, ymin, xmax, ymax);
+            }
+        }
+    }
+    return accept;
+}
+
+void DisplayManager::drawAppWireframe3D() {
+    bool full = ui.isFullScreen();
+
+    if (!full) {
+        // 1. Header Banner
+        oled.setFont(u8g2_font_5x7_tf);
+        char hdr[32];
+        snprintf(hdr, sizeof(hdr), "3D: %s", wireframe3d.getModelName(wireframe3d.getModel()));
+        oled.drawStr(2, 8, hdr);
+
+        const char* modeStr = (wireframe3d.getControlMode() == WireframeControlMode::IMU_TILT) ? "[IMU TILT]" : "[AUTO SPIN]";
+        oled.drawStr(72, 8, modeStr);
+        oled.drawLine(0, 10, 128, 10);
+    }
 
     // 2. Render 3D Wireframe Model Lines
     const Point2D* verts = wireframe3d.getProjectedVertices();
@@ -2136,31 +2190,42 @@ void DisplayManager::drawAppWireframe3D() {
     size_t edge_count = wireframe3d.getEdgeCount();
     size_t vert_count = wireframe3d.getVertexCount();
 
+    int16_t ymin = full ? 0 : 11;
+    int16_t ymax = full ? 63 : 53;
+
     if (verts && edges && vert_count > 0) {
         for (size_t i = 0; i < edge_count; i++) {
             uint8_t v1 = edges[i].v1;
             uint8_t v2 = edges[i].v2;
             if (v1 < vert_count && v2 < vert_count) {
-                oled.drawLine(verts[v1].x, verts[v1].y, verts[v2].x, verts[v2].y);
+                int16_t x0 = verts[v1].x;
+                int16_t y0 = verts[v1].y;
+                int16_t x1 = verts[v2].x;
+                int16_t y1 = verts[v2].y;
+                if (cs_clip_line(x0, y0, x1, y1, 0, ymin, 127, ymax)) {
+                    oled.drawLine(x0, y0, x1, y1);
+                }
             }
         }
     }
 
-    // 3. Telemetry Overlay (Euler Angles or Performance metrics)
-    oled.drawLine(0, 54, 128, 54);
-    oled.setFont(u8g2_font_4x6_tr);
+    if (!full) {
+        // 3. Telemetry Overlay (Euler Angles or Performance metrics)
+        oled.drawLine(0, 54, 128, 54);
+        oled.setFont(u8g2_font_4x6_tr);
 
-    if (wireframe3d.isFpsDisplayEnabled()) {
-        char perf[32];
-        snprintf(perf, sizeof(perf), "%uus | %.0f FPS", wireframe3d.getRenderTimeUs(), wireframe3d.getFps());
-        oled.drawStr(2, 62, perf);
-    } else {
-        char ang[32];
-        snprintf(ang, sizeof(ang), "P:%+d R:%+d Y:%+d", wireframe3d.getPitch(), wireframe3d.getRoll(), wireframe3d.getYaw());
-        oled.drawStr(2, 62, ang);
+        if (wireframe3d.isFpsDisplayEnabled()) {
+            char perf[32];
+            snprintf(perf, sizeof(perf), "%uus | %.0f FPS", wireframe3d.getRenderTimeUs(), wireframe3d.getFps());
+            oled.drawStr(2, 62, perf);
+        } else {
+            char ang[32];
+            snprintf(ang, sizeof(ang), "P:%+d R:%+d Y:%+d", wireframe3d.getPitch(), wireframe3d.getRoll(), wireframe3d.getYaw());
+            oled.drawStr(2, 62, ang);
+        }
+
+        oled.drawStr(66, 62, "OK:MODE UP/DN:MDL");
     }
-
-    oled.drawStr(66, 62, "OK:MODE UP/DN:MDL");
 }
 
 
@@ -2665,7 +2730,37 @@ void DisplayManager::drawFileManager() {
         }
     }
 
-    if (ui.isFmDeleteConfirm()) {
+    if (ui.isFmContextMenu()) {
+        oled.setDrawColor(0);
+        oled.drawBox(14, 11, 100, 50);
+        oled.setDrawColor(1);
+        oled.drawFrame(14, 11, 100, 50);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(44, 18, "ACTIONS");
+        oled.drawHLine(14, 20, 100);
+
+        int c_sel = ui.getFmContextSelection();
+        bool hasCut = (ui.getFmMoveSource().length() > 0);
+        const char* c_items[5] = {
+            "OPEN",
+            "RENAME",
+            hasCut ? "PASTE HERE" : "MOVE",
+            "DELETE",
+            "PROPERTIES"
+        };
+        oled.setFont(u8g2_font_5x7_tf);
+        for (int i = 0; i < 5; i++) {
+            int cy = 28 + (i * 8);
+            if (i == c_sel) {
+                oled.drawBox(16, cy - 6, 96, 8);
+                oled.setDrawColor(0);
+                oled.drawStr(18, cy, c_items[i]);
+                oled.setDrawColor(1);
+            } else {
+                oled.drawStr(18, cy, c_items[i]);
+            }
+        }
+    } else if (ui.isFmDeleteConfirm()) {
         oled.setDrawColor(0);
         oled.drawBox(8, 20, 112, 38);
         oled.setDrawColor(1);
@@ -2673,6 +2768,32 @@ void DisplayManager::drawFileManager() {
         oled.setFont(u8g2_font_5x7_tf);
         oled.drawStr(22, 33, "DELETE ITEM?");
         oled.drawStr(14, 47, "[OK] YES  [CANC] NO");
+    } else if (ui.isFmProperties()) {
+        oled.setDrawColor(0);
+        oled.drawBox(10, 11, 108, 50);
+        oled.setDrawColor(1);
+        oled.drawFrame(10, 11, 108, 50);
+        oled.setFont(u8g2_font_4x6_tr);
+        oled.drawStr(40, 18, "PROPERTIES");
+        oled.drawHLine(10, 20, 108);
+
+        int cur_sel = ui.getFmSelection();
+        if (cur_sel < ui.getFmEntryCount()) {
+            const struct FileInfo* f_entries = ui.getFmEntries();
+            char pName[32];
+            snprintf(pName, sizeof(pName), "N: %.14s", f_entries[cur_sel].name.c_str());
+            oled.drawStr(14, 28, pName);
+
+            char pType[32];
+            snprintf(pType, sizeof(pType), "T: %s", f_entries[cur_sel].isDir ? "DIRECTORY" : "FILE");
+            oled.drawStr(14, 37, pType);
+
+            char pSize[32];
+            if (f_entries[cur_sel].isDir) snprintf(pSize, sizeof(pSize), "S: -");
+            else snprintf(pSize, sizeof(pSize), "S: %u B", (unsigned int)f_entries[cur_sel].size);
+            oled.drawStr(14, 46, pSize);
+        }
+        oled.drawStr(34, 56, "[OK/CANCEL]");
     }
 }
 

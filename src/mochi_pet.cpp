@@ -12,7 +12,7 @@ static const char* HELMET_NAMES[] = {
     "CLASSIC", "GUNDAM", "CYBER", "NEKO", "TACTICAL"
 };
 
-static const int MAX_MOCHI_STATIC_ANIMS = 32;
+static const int MAX_MOCHI_STATIC_ANIMS = 96;
 static char s_mochi_static_anims[MAX_MOCHI_STATIC_ANIMS][24];
 static int s_mochi_static_count = 0;
 
@@ -515,30 +515,35 @@ const char* MochiPet::getMochiAnimName(int idx) const {
 }
 
 void MochiPet::pickerUp() {
-    if (submode == MochiSubmode::EMOTE_PICKER) {
-        if (picker_selection > 0) picker_selection--;
-        if (picker_selection < picker_offset) picker_offset = picker_selection;
-    } else if (submode == MochiSubmode::HELMET_PICKER) {
-        if (picker_selection > 0) picker_selection--;
-        if (picker_selection < picker_offset) picker_offset = picker_selection;
-    } else if (submode == MochiSubmode::ANIM_PICKER) {
-        if (picker_selection > 0) picker_selection--;
+    int max_items = 0;
+    if (submode == MochiSubmode::EMOTE_PICKER) max_items = static_cast<int>(MochiEmote::COUNT);
+    else if (submode == MochiSubmode::HELMET_PICKER) max_items = static_cast<int>(MochiHelmet::COUNT);
+    else if (submode == MochiSubmode::ANIM_PICKER) max_items = s_mochi_static_count;
+
+    if (max_items <= 0) return;
+
+    if (picker_selection == 0) {
+        picker_selection = max_items - 1;
+        picker_offset = (max_items > 4) ? max_items - 4 : 0;
+    } else {
+        picker_selection--;
         if (picker_selection < picker_offset) picker_offset = picker_selection;
     }
 }
 
 void MochiPet::pickerDown() {
-    if (submode == MochiSubmode::EMOTE_PICKER) {
-        int max_items = static_cast<int>(MochiEmote::COUNT);
-        if (picker_selection < max_items - 1) picker_selection++;
-        if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
-    } else if (submode == MochiSubmode::HELMET_PICKER) {
-        int max_items = static_cast<int>(MochiHelmet::COUNT);
-        if (picker_selection < max_items - 1) picker_selection++;
-        if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
-    } else if (submode == MochiSubmode::ANIM_PICKER) {
-        int max_items = s_mochi_static_count;
-        if (max_items > 0 && picker_selection < max_items - 1) picker_selection++;
+    int max_items = 0;
+    if (submode == MochiSubmode::EMOTE_PICKER) max_items = static_cast<int>(MochiEmote::COUNT);
+    else if (submode == MochiSubmode::HELMET_PICKER) max_items = static_cast<int>(MochiHelmet::COUNT);
+    else if (submode == MochiSubmode::ANIM_PICKER) max_items = s_mochi_static_count;
+
+    if (max_items <= 0) return;
+
+    if (picker_selection >= max_items - 1) {
+        picker_selection = 0;
+        picker_offset = 0;
+    } else {
+        picker_selection++;
         if (picker_selection >= picker_offset + 4) picker_offset = picker_selection - 3;
     }
 }
@@ -865,10 +870,10 @@ void MochiPet::render(U8G2& display) {
     }
 
     // 2. Authentic Dasai Mochi Eyes & Pupils
-    int16_t lx = cx - 38 + static_cast<int16_t>(pupil_dx);
-    int16_t rx = cx + 14 + static_cast<int16_t>(pupil_dx);
-    int16_t ey = cy - 13 + static_cast<int16_t>(pupil_dy);
-    int16_t my = cy + 11;
+    int16_t lx = cx - 36 + static_cast<int16_t>(pupil_dx);
+    int16_t rx = cx + 16 + static_cast<int16_t>(pupil_dx);
+    int16_t ey = cy - 11 + static_cast<int16_t>(pupil_dy);
+    int16_t my = cy + 12;
 
     if (is_blinking) {
         // Natural multi-stage organic squashing blink
@@ -1081,9 +1086,9 @@ void MochiPet::renderToBuffer(uint8_t* buffer, int width, int height) {
         set_pixel(cx + 40, y);
     }
 
-    int16_t lx = cx - 38 + static_cast<int16_t>(pupil_dx);
-    int16_t rx = cx + 14 + static_cast<int16_t>(pupil_dx);
-    int16_t ey = cy - 13 + static_cast<int16_t>(pupil_dy);
+    int16_t lx = cx - 36 + static_cast<int16_t>(pupil_dx);
+    int16_t rx = cx + 16 + static_cast<int16_t>(pupil_dx);
+    int16_t ey = cy - 11 + static_cast<int16_t>(pupil_dy);
 
     switch (current_emote) {
         case MochiEmote::HAPPY:

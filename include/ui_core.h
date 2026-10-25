@@ -160,6 +160,9 @@ public:
 
     Imu6500SubApp getImuSubApp() const { return imu_subapp; }
     int getImuSubAppSelection() const { return imu_subapp_selection; }
+    int getImuSubAppOffset() const { return imu_subapp_offset; }
+    bool isFullScreen() const { return is_fullscreen; }
+    void resetInteractionTimer();
     int getMouseSettingsSelection() const { return mouse_settings_selection; }
     int getGestureAiSelection() const { return gesture_ai_selection; }
     int getGestureAiViewMode() const { return gesture_ai_view_mode; }
@@ -415,9 +418,9 @@ public:
         "DISPLAY TIMEOUT", "SLEEP TIME", "RAISE TO WAKE", "WIFI AUTO-OFF", "LOW POWER"
     };
 
-    static const int DISPLAY_ITEM_COUNT = 5;
+    static const int DISPLAY_ITEM_COUNT = 6;
     const char* display_items[DISPLAY_ITEM_COUNT] = {
-        "CONTRAST", "INVERT", "FONT STYLE", "FONT SIZE", "UI OPTIONS"
+        "CONTRAST", "INVERT", "FONT STYLE", "FONT SIZE", "UI OPTIONS", "FULLSCREEN"
     };
 
     static const int SENSORS_ITEM_COUNT = 4;
@@ -445,7 +448,17 @@ public:
     int getFmScrollOffset() const { return fm_scroll_offset; }
     int getFmEntryCount() const { return fm_entry_count; }
     const struct FileInfo* getFmEntries() const { return fm_entries; }
-    bool isFmDeleteConfirm() const { return fm_delete_confirm; }
+    enum class FmDialog { NONE, CONTEXT_MENU, DELETE_CONFIRM, PROPERTIES };
+    static const int FM_CONTEXT_COUNT = 5;
+    const char* fm_context_items[FM_CONTEXT_COUNT] = {
+        "OPEN", "RENAME", "MOVE", "DELETE", "PROPERTIES"
+    };
+    FmDialog getFmDialog() const { return fm_dialog; }
+    int getFmContextSelection() const { return fm_context_selection; }
+    bool isFmDeleteConfirm() const { return fm_dialog == FmDialog::DELETE_CONFIRM; }
+    bool isFmContextMenu() const { return fm_dialog == FmDialog::CONTEXT_MENU; }
+    bool isFmProperties() const { return fm_dialog == FmDialog::PROPERTIES; }
+    const String& getFmMoveSource() const { return fm_move_source; }
 
     static String pending_selected_ssid;
 
@@ -455,6 +468,7 @@ private:
     UIState current_state;
     Imu6500SubApp imu_subapp;
     int imu_subapp_selection;
+    int imu_subapp_offset;
     int mouse_settings_selection;
     int gesture_ai_selection;
     int gesture_ai_view_mode;
@@ -648,6 +662,11 @@ public:
     int fm_entry_count;
     struct FileInfo* fm_entries;
     bool fm_delete_confirm;
+    FmDialog fm_dialog;
+    int fm_context_selection;
+    String fm_move_source;
+    bool is_fullscreen;
+    uint32_t last_user_interaction_ms;
     void handleFileManagerInput();
     void handleStorageInfoInput();
     void loadDirectory(const String& path);

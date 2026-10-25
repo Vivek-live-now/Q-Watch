@@ -67,11 +67,11 @@ void Wireframe3D::setControlMode(WireframeControlMode mode) {
 void Wireframe3D::loadModelGeometry(WireframeModel model) {
     switch (model) {
         case WireframeModel::CUBE: {
-            // 8 vertices of a cube (-20 to +20)
+            // 8 vertices of a cube (-16 to +16)
             vertex_count = 8;
             static const Point3D cube_v[8] = {
-                { -20, -20, -20 }, {  20, -20, -20 }, {  20,  20, -20 }, { -20,  20, -20 },
-                { -20, -20,  20 }, {  20, -20,  20 }, {  20,  20,  20 }, { -20,  20,  20 }
+                { -16, -16, -16 }, {  16, -16, -16 }, {  16,  16, -16 }, { -16,  16, -16 },
+                { -16, -16,  16 }, {  16, -16,  16 }, {  16,  16,  16 }, { -16,  16,  16 }
             };
             memcpy(model_vertices, cube_v, sizeof(cube_v));
 
@@ -89,8 +89,8 @@ void Wireframe3D::loadModelGeometry(WireframeModel model) {
             // 5 vertices (square base + apex)
             vertex_count = 5;
             static const Point3D pyr_v[5] = {
-                {   0,  24,   0 }, // Apex (top)
-                { -22, -18, -22 }, {  22, -18, -22 }, {  22, -18,  22 }, { -22, -18,  22 }
+                {   0,  18,   0 }, // Apex (top)
+                { -16, -14, -16 }, {  16, -14, -16 }, {  16, -14,  16 }, { -16, -14,  16 }
             };
             memcpy(model_vertices, pyr_v, sizeof(pyr_v));
 
@@ -107,9 +107,9 @@ void Wireframe3D::loadModelGeometry(WireframeModel model) {
             // 6 vertices (Octahedron)
             vertex_count = 6;
             static const Point3D oct_v[6] = {
-                {   0,  26,   0 }, // Top apex
-                {   0, -26,   0 }, // Bottom apex
-                { -24,   0,   0 }, {   0,   0, -24 }, {  24,   0,   0 }, {   0,   0,  24 } // Waist ring
+                {   0,  20,   0 }, // Top apex
+                {   0, -20,   0 }, // Bottom apex
+                { -18,   0,   0 }, {   0,   0, -18 }, {  18,   0,   0 }, {   0,   0,  18 } // Waist ring
             };
             memcpy(model_vertices, oct_v, sizeof(oct_v));
 
@@ -127,11 +127,11 @@ void Wireframe3D::loadModelGeometry(WireframeModel model) {
             // 7 vertices: 3D arrow / directional compass pointer
             vertex_count = 7;
             static const Point3D arr_v[7] = {
-                {   0,  28,   0 }, // Arrow tip
-                { -18, -10,  12 }, {  18, -10,  12 }, // Front fins
-                { -18, -10, -12 }, {  18, -10, -12 }, // Back fins
-                {   0, -10,   0 }, // Fin center
-                {   0, -26,   0 }  // Tail end
+                {   0,  22,   0 }, // Arrow tip
+                { -14,  -8,  10 }, {  14,  -8,  10 }, // Front fins
+                { -14,  -8, -10 }, {  14,  -8, -10 }, // Back fins
+                {   0,  -8,   0 }, // Fin center
+                {   0, -20,   0 }  // Tail end
             };
             memcpy(model_vertices, arr_v, sizeof(arr_v));
 
@@ -149,12 +149,12 @@ void Wireframe3D::loadModelGeometry(WireframeModel model) {
             // 12 vertices: Hexagonal prism
             vertex_count = 12;
             static const Point3D prism_v[12] = {
-                // Top hexagon (y = 18)
-                { -12,  18, -20 }, {  12,  18, -20 }, {  22,  18,   0 },
-                {  12,  18,  20 }, { -12,  18,  20 }, { -22,  18,   0 },
-                // Bottom hexagon (y = -18)
-                { -12, -18, -20 }, {  12, -18, -20 }, {  22, -18,   0 },
-                {  12, -18,  20 }, { -12, -18,  20 }, { -22, -18,   0 }
+                // Top hexagon (y = 14)
+                { -10,  14, -16 }, {  10,  14, -16 }, {  18,  14,   0 },
+                {  10,  14,  16 }, { -10,  14,  16 }, { -18,  14,   0 },
+                // Bottom hexagon (y = -14)
+                { -10, -14, -16 }, {  10, -14, -16 }, {  18, -14,   0 },
+                {  10, -14,  16 }, { -10, -14,  16 }, { -18, -14,   0 }
             };
             memcpy(model_vertices, prism_v, sizeof(prism_v));
 
