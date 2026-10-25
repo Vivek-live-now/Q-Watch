@@ -8,7 +8,7 @@
 
 class DisplayManager {
 public:
-    DisplayManager() : mag_history_idx(0), display_dimmed(false), transition_active(false), transition_type(SIMD_TRANSITION_NONE), transition_start_time(0), transition_duration_ms(120), gdma_enabled(true) {
+    DisplayManager() : mag_history_idx(0), display_dimmed(false), gdma_enabled(true), transition_active(false), transition_type(SIMD_TRANSITION_NONE), transition_start_time(0), transition_duration_ms(120) {
         for(int i=0; i<64; i++) mag_history[i] = 0;
     }
 public:
