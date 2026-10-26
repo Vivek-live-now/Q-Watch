@@ -736,6 +736,10 @@ The **Q-Link Companion App** gives you real-time OLED screen mirroring, remote D
 2. Open the downloaded APK. If prompted, enable **"Install unknown apps"** in your Android device settings.
 3. Tap **Install** to finish setup.
 
+> [!IMPORTANT]
+> **Troubleshooting "App not installed":**
+> If you previously installed any test, debug, or older version of the Q-Link app on your device, Android will block the installation due to conflicting signature keys. You must **uninstall the existing Q-Link app first**, then install the release APK. Also ensure Play Protect allows sideloaded apps if prompted.
+
 #### Required Android App Permissions
 To enable all tactical features, grant the following permissions in Android Settings:
 - **Nearby Devices / Bluetooth**: Required for BLE GATT screen mirroring, sensor telemetry, and Air Mouse remote.
