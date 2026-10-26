@@ -35,11 +35,20 @@
   - [19. Q-Link Android Companion Suite](#19-q-link-android-companion-suite)
 - [Controls & Navigation Reference](#-controls--navigation-reference)
 - [Project Directory Structure](#-project-directory-structure)
-- [Getting Started & Installation](#-getting-started--installation)
-  - [Prerequisites](#prerequisites)
-  - [Compiling & Flashing Firmware](#compiling--flashing-firmware)
-  - [Building the Android Companion App](#building-the-android-companion-app)
-  - [Initial Wi-Fi & Device Setup](#initial-wi-fi--device-setup)
+- [Installation & Quick Start](#-installation--quick-start)
+  - [1. Installing Precompiled Firmware (Easiest)](#1-installing-precompiled-firmware-easiest)
+    - [Method A: 1-Click Web Flasher (Browser-Based)](#method-a-1-click-web-flasher-browser-based)
+    - [Method B: Command-Line Flashing via `esptool.py`](#method-b-command-line-flashing-via-esptoolpy)
+  - [2. Building & Flashing Firmware from Source (PlatformIO)](#2-building--flashing-firmware-from-source-platformio)
+  - [3. Flashing the LittleFS Asset Partition (Sounds, Remotes, Animations)](#3-flashing-the-littlefs-asset-partition-sounds-remotes-animations)
+  - [4. Installing the Certified Android Companion App (`Q-Link`)](#4-installing-the-certified-android-companion-app-q-link)
+    - [Direct APK Installation](#direct-apk-installation)
+    - [Required Android App Permissions](#required-android-app-permissions)
+    - [Building Android App from Source (Android Studio / Gradle)](#building-android-app-from-source-android-studio--gradle)
+  - [5. First Boot & Network Pairing Walkthrough](#5-first-boot--network-pairing-walkthrough)
+    - [On-Watch Direct Wi-Fi Setup](#on-watch-direct-wi-fi-setup)
+    - [SoftAP Captive Portal Setup (`192.168.4.1`)](#softap-captive-portal-setup-19216841)
+    - [Connecting to the Q-Link Android Companion](#connecting-to-the-q-link-android-companion)
 - [Automated Testing & Verification](#-automated-testing--verification)
 - [Contributing & License](#-contributing--license)
 
@@ -622,76 +631,152 @@ Q-Watch/
 
 ---
 
-## 🛠️ Getting Started & Installation
+## 🛠️ Installation & Quick Start
 
-### Prerequisites
-
-- **Development Environment**: [VS Code](https://code.visualstudio.com/) with the [PlatformIO IDE Extension](https://platformio.org/) installed (or PlatformIO Core CLI).
-- **Toolchain / Framework**: Espressif32 Platform `v7.1.3` (Arduino framework).
-- **USB Interface**: USB-C data cable connected to the ESP32-S3 SuperMini (ensure USB CDC on boot is enabled).
-- **Android Companion (Optional)**: Android Studio Hedgehog or newer (for building `android/`).
+Whether you prefer a 1-click browser flashing process, command-line flashing, or building directly from source, follow the instructions below.
 
 ---
 
-### Compiling & Flashing Firmware
+### 1. Installing Precompiled Firmware (Easiest)
 
+Precompiled release binaries are available under [**GitHub Releases**](https://github.com/Vivek-live-now/Q-Watch/releases/latest).
+
+#### Entering ESP32-S3 Bootloader Mode
+Before flashing, connect your ESP32-S3 SuperMini to your computer using a high-quality USB-C data cable. If your operating system fails to detect the serial port, put the board into ROM Bootloader mode:
+1. Hold down the **BOOT** button (labeled `B` or `BOOT` on the SuperMini board).
+2. Connect the USB-C cable (or press and release the **RESET** button while holding **BOOT**).
+3. Release the **BOOT** button. The chip is now in flashing mode.
+
+---
+
+#### Method A: 1-Click Web Flasher (Browser-Based)
+*No command-line tools or drivers needed! Works on Chrome and Edge.*
+
+1. Download **`qwatch-esp32s3-factory-merged-v1.7.0.bin`** from [GitHub Releases](https://github.com/Vivek-live-now/Q-Watch/releases/latest).
+2. Navigate to [ESP Web Flasher](https://esp.adrian-alvarez.dev/) or [Espressif Web Tool](https://espressif.github.io/esptool-js/).
+3. Click **Connect** and select your ESP32-S3 USB Serial port.
+4. Set the flash address to **`0x0`** (or `0x0000`).
+5. Choose the downloaded `qwatch-esp32s3-factory-merged-v1.7.0.bin` file.
+6. Click **Program** / **Flash**. Once completed, press the **RESET** button to boot into Q-Watch!
+
+---
+
+#### Method B: Command-Line Flashing via `esptool.py`
+
+Install `esptool` via Python:
+```bash
+pip install --upgrade esptool
+```
+
+**Flashing the Single Factory-Merged Binary (Recommended):**
+```bash
+esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash -z 0x0 qwatch-esp32s3-factory-merged-v1.7.0.bin
+```
+*(On Windows, replace `/dev/ttyUSB0` with your COM port, e.g., `COM3`)*
+
+**Alternatively, Flashing Discrete Partitions:**
+If flashing individual binaries from `qwatch-firmware-esp32s3-v1.7.0.zip`:
+```bash
+esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash -z \
+  0x0000 bootloader.bin \
+  0x8000 partitions.bin \
+  0x10000 firmware.bin
+```
+
+---
+
+### 2. Building & Flashing Firmware from Source (PlatformIO)
+
+For developers who want to modify firmware, tune features, or compile custom apps:
+
+#### Prerequisites
+- [VS Code](https://code.visualstudio.com/) with the [PlatformIO IDE extension](https://platformio.org/) installed, or PlatformIO Core CLI (`pip install platformio`).
+- ESP-IDF / Arduino framework via `espressif32@7.1.3` (automatically managed by PlatformIO).
+
+#### Build & Flash Steps
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/Vivek-live-now/Q-Watch.git
    cd Q-Watch
    ```
-
-2. **Build the Firmware**:
+2. **Compile the Firmware**:
    ```bash
    pio run -e esp32s3_supermini
    ```
-
-3. **Upload the Firmware**:
-   Connect the ESP32-S3 SuperMini via USB-C and run:
+3. **Upload to Board**:
+   Connect the ESP32-S3 SuperMini via USB-C and flash:
    ```bash
    pio run -e esp32s3_supermini -t upload
    ```
-
-4. **Upload the LittleFS Filesystem**:
-   Flash the default filesystem assets (configuration files, preloaded `.anim` animations, and `.ir` remotes):
-   ```bash
-   pio run -e esp32s3_supermini -t uploadfs
-   ```
-
-5. **Monitor Serial Output (Optional)**:
+4. **Serial Monitor (Optional)**:
    ```bash
    pio device monitor -b 115200
    ```
 
 ---
 
-### Building the Android Companion App
+### 3. Flashing the LittleFS Asset Partition (Sounds, Remotes, Animations)
 
-1. Open the `android/` directory in **Android Studio**.
-2. Allow Gradle to synchronize dependencies.
-3. Connect your Android device via USB debugging or launch an emulator.
-4. Build and install the debug APK:
+Q-Watch utilizes an onboard **LittleFS** partition to store boot animations (`/boot`), IR remote databases (`/ir`), procedural pet assets (`/mochi`), and preloaded Micro-ELF Q-Apps (`/apps`).
+
+To populate the flash filesystem with default repository assets:
+```bash
+pio run -e esp32s3_supermini -t uploadfs
+```
+*Note: Run `uploadfs` at least once upon initial hardware setup so all default apps, boot animations, and infrared remotes are present on the watch.*
+
+---
+
+### 4. Installing the Certified Android Companion App (`Q-Link`)
+
+The **Q-Link Companion App** gives you real-time OLED screen mirroring, remote D-pad controls, telemetry cockpits, wireless `.qapp` app sideloading, cloud IRDB syncing, and smartphone notification forwarding.
+
+#### Direct APK Installation
+1. On your Android smartphone (Android 8.0 / API 26+), download the latest **`qlink-companion-v1.7.0.apk`** from [GitHub Releases](https://github.com/Vivek-live-now/Q-Watch/releases/latest).
+2. Open the downloaded APK. If prompted, enable **"Install unknown apps"** in your Android device settings.
+3. Tap **Install** to finish setup.
+
+#### Required Android App Permissions
+To enable all tactical features, grant the following permissions in Android Settings:
+- **Nearby Devices / Bluetooth**: Required for BLE GATT screen mirroring, sensor telemetry, and Air Mouse remote.
+- **Location**: Required by the Android OS framework to scan for nearby Bluetooth Low Energy peripherals.
+- **Notification Access**: Go to **Settings -> Apps -> Special app access -> Notification access -> Enable "Q-Link"**. This allows the watch to receive real-time SMS, phone calls, and WhatsApp notifications with custom haptic vibration pulses and RGB LED flashes.
+
+#### Building Android App from Source (Android Studio / Gradle)
+If you wish to compile or modify the Android companion app:
+1. Open the `android/` directory in **Android Studio Hedgehog** (2023.1.1) or newer.
+2. Ensure **JDK 17** is selected in *Settings -> Build, Execution, Deployment -> Build Tools -> Gradle*.
+3. Connect your Android phone with USB Debugging enabled (or start an emulator).
+4. Run or build the app:
    ```bash
+   cd android
    ./gradlew assembleDebug
    adb install -r app/build/outputs/apk/debug/app-debug.apk
    ```
 
 ---
 
-### Initial Wi-Fi & Device Setup
+### 5. First Boot & Network Pairing Walkthrough
 
-1. **Power On**: On first boot, the watch will play the boot splash animation and display the `HOME` watch face.
-2. **Wi-Fi Setup via Watch**:
-   - Navigate to `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS`.
-   - Select your Wi-Fi SSID from the scanned list.
-   - Enter your network password using the on-screen keyboard.
-3. **Wi-Fi Setup via SoftAP Captive Portal**:
-   - If unconfigured, the watch broadcasts an open Wi-Fi network named `Q-Watch-Setup`.
-   - Connect from your phone or PC; the captive portal will open automatically at `http://192.168.4.1`.
-   - Enter your Wi-Fi SSID, password, POSIX timezone string, and optional OpenWeatherMap API key, then click **Save & Connect**.
-4. **Access Web Services**:
-   - Once connected to your home network, access the watch dashboard at `http://q-watch.local`.
-   - Access the Web File Manager at `http://q-watch.local/fm`.
+#### Power On
+Upon cold boot, Q-Watch plays the tactical boot animation (`/boot/boot.anim` or the default MI6 radar sweep) and enters the `HOME` watch face. Press any button to immediately skip the boot splash.
+
+#### On-Watch Direct Wi-Fi Setup
+1. From the `HOME` screen, press `[OK]` to enter `MAIN MENU`.
+2. Scroll to `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS`.
+3. Select your local 2.4GHz Wi-Fi network from the list.
+4. Enter your network password using the on-screen keyboard and press `[OK]`.
+
+#### SoftAP Captive Portal Setup (`192.168.4.1`)
+1. If Wi-Fi is unconfigured or out of range, the watch automatically broadcasts a soft-AP network named `Q-Watch-Setup`.
+2. Connect your phone or laptop to `Q-Watch-Setup`. The setup portal will launch automatically, or navigate to `http://192.168.4.1` in your browser.
+3. Fill in your home Wi-Fi SSID, password, POSIX timezone string, and optional OpenWeatherMap API key.
+4. Click **Save & Connect**. Once connected, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.
+
+#### Connecting to the Q-Link Android Companion
+1. Launch the **Q-Link** app on your Android device with Bluetooth enabled.
+2. In the Q-Link dashboard, tap **Scan & Connect**. Select your Q-Watch.
+3. Navigate to **Mirror** for live 128x64 display simulation and remote D-pad control, or **Sensors** for live telemetry dials!
 
 ---
 
