@@ -39,13 +39,13 @@ jobs:
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Assemble Debug APK
+      - name: Assemble Release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
-      - name: Upload Q-Link APK Artifact
+      - name: Upload Q-Link Signed Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Q-Link-Android-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Q-Link-Android-Release-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

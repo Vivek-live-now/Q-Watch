@@ -738,7 +738,7 @@ The **Q-Link Companion App** gives you real-time OLED screen mirroring, remote D
 
 > [!IMPORTANT]
 > **Troubleshooting "App not installed":**
-> If you previously installed any test, debug, or older version of the Q-Link app on your device, Android will block the installation due to conflicting signature keys. You must **uninstall the existing Q-Link app first**, then install the release APK. Also ensure Play Protect allows sideloaded apps if prompted.
+> If you previously installed any test, debug, or older version of the Q-Link app on your device, Android will block the installation due to conflicting signature keys. You must **uninstall the existing Q-Link app first**, then install the release APK. The APK is fully signed and certified with official release signature schemes (v1, v2, and v3) for clean installation.
 
 #### Required Android App Permissions
 To enable all tactical features, grant the following permissions in Android Settings:
