@@ -1,340 +1,723 @@
-# 007 Q-Watch
+# 007 Q-Watch ⌚🕶️
 
-A James Bond "First Light" tactical smartwatch built on the ESP32-S3 SuperMini.
+> **The Ultimate James Bond "First Light" Tactical Smartwatch & Cyber-Deck**  
+> Engineered on the **ESP32-S3 SuperMini** with 2MB PSRAM, 4MB Flash, Xtensa LX7 SIMD Vector Acceleration, GDMA Asynchronous OLED Engine, Flipper Zero/Bruce IR Subsystem, Micro-ELF Relocatable App Store, Wireless Recon Suite, and Native Android Jetpack Compose Companion.
 
-## Milestones & Features
+---
 
-### Milestone 1: Hardware Foundation
-*   **Microcontroller:** ESP32-S3 SuperMini (4MB Flash, 2MB PSRAM).
-*   **Display:** 1.3" 128x64 OLED Display (White Color).
-*   **Controller:** SH1106 via 4-wire Hardware SPI.
-*   **Configuration:** Custom `esp32s3_supermini` PlatformIO board definition to ensure correct memory and USB routing.
+## 📑 Table of Contents
 
-### Milestone 2 & 3: Connectivity, Time & Weather
-*   **Captive Portal:** A mobile-friendly setup dashboard accessible at `192.168.4.1` (when Wi-Fi is unconfigured/disconnected) or `q-watch.local` via mDNS on your home network.
-*   **Wi-Fi Management & Settings:** Dedicated `SETTINGS -> CONNECTIVITY -> Wi-Fi` status screen displaying Power (ON/OFF), Status (`OFF`, `NO CREDS`, `CONNECTING`, `CONNECTED`, `FAILED`, `DISCONNECTED`), current SSID, and IP address. Features battery-saving radio shutdown (`WiFi.mode(WIFI_OFF)`) when disabled.
-*   **Wi-Fi Scanner & Direct Connect:** Search local networks directly on the OLED (`SETTINGS -> CONNECTIVITY -> SCAN NETWORKS`), displaying RSSI and security locks. Select any open or encrypted network and input credentials right on the watch.
-*   **NTP Time Synchronization:** Non-blocking SNTP time synchronization. Auto-syncs when Wi-Fi connects or on demand via `SETTINGS -> TIME -> SYNC NOW`. Features POSIX timezone support and 12-hour (AM/PM) / 24-hour time formatting toggles.
-*   **OpenWeatherMap Integration:** Configurable weather fetching over **HTTPS** (Temperature, Feels Like, Humidity, Wind Speed, Condition).
-*   **Energy Efficient Architecture:** Display only redraws when seconds change (1Hz). Weather API calls are heavily rate-limited and cached, executed via FreeRTOS tasks to prevent UI freezing.
+- [Overview](#-overview)
+- [System Architecture & Hardware Specs](#-system-architecture--hardware-specs)
+  - [Hardware Specifications](#hardware-specifications)
+  - [Pinout & GPIO Allocation](#pinout--gpio-allocation)
+  - [I2C Address Map](#i2c-address-map)
+  - [Electrical & Circuit Design Notes](#electrical--circuit-design-notes)
+- [Comprehensive Feature Breakdown](#-comprehensive-feature-breakdown)
+  - [1. Watch Faces & Timekeeping Suite](#1-watch-faces--timekeeping-suite)
+  - [2. Environmental & Atmospheric Weather Station](#2-environmental--atmospheric-weather-station)
+  - [3. Cardiorespiratory Health & Biometrics](#3-cardiorespiratory-health--biometrics)
+  - [4. Navigation, Motion & 3D Vector Graphics](#4-navigation-motion--3d-vector-graphics)
+  - [5. BLE Air Mouse Remote](#5-ble-air-mouse-remote)
+  - [6. On-Device TinyML Gesture AI](#6-on-device-tinyml-gesture-ai)
+  - [7. Tactical Wireless Recon & SIGINT Suite](#7-tactical-wireless-recon--sigint-suite)
+  - [8. Flipper Zero & Bruce-Compatible IR Remote Subsystem](#8-flipper-zero--bruce-compatible-ir-remote-subsystem)
+  - [9. Dasai Mochi Procedural Emote Pet Companion](#9-dasai-mochi-procedural-emote-pet-companion)
+  - [10. Polyphonic Chiptune Synthesizer & Beat Maker](#10-polyphonic-chiptune-synthesizer--beat-maker)
+  - [11. Haptic Feedback & Vibration Subsystem](#11-haptic-feedback--vibration-subsystem)
+  - [12. WS2812 Tactical RGB LED System](#12-ws2812-tactical-rgb-led-system)
+  - [13. Micro-ELF Dynamic App Engine & Q-Apps](#13-micro-elf-dynamic-app-engine--q-apps)
+  - [14. Tactical Animation Engine & Player](#14-tactical-animation-engine--player)
+  - [15. LittleFS File Manager & Web File Server](#15-littlefs-file-manager--web-file-server)
+  - [16. Multi-Tier Power Governor & Battery Cockpit](#16-multi-tier-power-governor--battery-cockpit)
+  - [17. System Settings, Wi-Fi Scanner & Captive Portal](#17-system-settings-wi-fi-scanner--captive-portal)
+  - [18. Hardware Acceleration: GDMA & Xtensa LX7 SIMD](#18-hardware-acceleration-gdma--xtensa-lx7-simd)
+  - [19. Q-Link Android Companion Suite](#19-q-link-android-companion-suite)
+- [Controls & Navigation Reference](#-controls--navigation-reference)
+- [Project Directory Structure](#-project-directory-structure)
+- [Getting Started & Installation](#-getting-started--installation)
+  - [Prerequisites](#prerequisites)
+  - [Compiling & Flashing Firmware](#compiling--flashing-firmware)
+  - [Building the Android Companion App](#building-the-android-companion-app)
+  - [Initial Wi-Fi & Device Setup](#initial-wi-fi--device-setup)
+- [Automated Testing & Verification](#-automated-testing--verification)
+- [Contributing & License](#-contributing--license)
 
-### Milestone 4: Local Storage, File Manager & Opt-In Web File Server
-*   **LittleFS Partition:** Configured a dedicated LittleFS filesystem partition for persistent local storage of configurations, calibration data, and settings (`/config/settings`).
-*   **FileManager Abstraction:** A lightweight C++ wrapper class around LittleFS for robust read/write/append operations for both standard `String` text and raw binary (`uint8_t*`) data.
-*   **File Browser UI:** Native 'FILE MANAGER' app in the Q-Watch menu. Features dynamic directory browsing, file size inspection, and a unified storage information panel (Total/Used/Free space on ESP32), operating within the 3-item OLED viewport.
-*   **Opt-In Web File Server:** When enabled via `SETTINGS -> CONNECTIVITY -> FILE SERVER`, visiting `http://q-watch.local/fm` launches a full web-based LittleFS file manager interface:
-    *   Dynamic directory and file browser
-    *   File upload via HTTP multipart
-    *   Direct file streaming and download
-    *   File/directory deletion and folder creation
-    *   Excludes destructive filesystem formatting for safety
-*   **Settings Control Center:** Structured Settings hub with 6 top-level categories:
-    *   `CONNECTIVITY` (Wi-Fi details, Wi-Fi Scanner, BLE, File Server status)
-    *   `TIME` (Sync Now, Auto Sync, Timezone, 24 Hour)
-    *   `POWER` (Display Timeout, Sleep Time, Low Power)
-    *   `DISPLAY` (Contrast, Invert, UI Options)
-    *   `SENSORS` (Compass Cal, IMU Cal, Health, Sensor Status)
-    *   `SYSTEM` (Storage Info, Reset Settings)
+---
 
-### Milestone 5: 4-Button Navigation & Gesture Framework
-*   **On-Screen Input & Control:** Multi-button layout (K1 3-way directional + dedicated CANCEL button).
-*   **Gestures & Semantics:**
-    *   **HOME Screen:** Short UP / DOWN = Cycle Watch Face styles; Short CANCEL = Display ON/OFF toggle (10s auto-sleep); Long CANCEL = Enter Deep Sleep.
-    *   **Sub-Screens:** Short CANCEL = Back; Long OK = Back; Long CANCEL = Return to HOME.
-    *   **Combinations & Double-Tap:** Generic framework support for CANCEL+UP, CANCEL+OK, CANCEL+DN, and Double-Tap CANCEL for future shortcut mapping.
-*   **Dual Deep Sleep Wake:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (CANCEL button) and **GPIO 8** (MPU-6500 raise-to-wake motion interrupt). The initial wake event is automatically consumed so it does not trigger accidental in-app actions.
+## 🌟 Overview
 
+The **007 Q-Watch** is an open-source, James Bond-inspired wearable computer, tactical gadget, and development cyber-deck built from the ground up on the ultra-compact **ESP32-S3 SuperMini**. Combining high-performance dual-core 32-bit computing, hardware vector SIMD acceleration, high-speed asynchronous GDMA OLED graphics, and an array of tactical sensors and transceivers, Q-Watch bridges the gap between everyday smartwatches and advanced tactical hardware.
 
-### Milestone 6: BME280 Environmental Sensor App & Weather App Architecture
-*   **BME280 App (5 Pages):**
-    *   **Page 1 (Pressure):** Real-time barometric pressure in hPa with min/max auto-scaled historical trend graph.
-    *   **Page 2 (Humidity):** Real-time relative humidity (%RH) with min/max auto-scaled historical trend graph.
-    *   **Page 3 (Temperature):** Real-time temperature (°C) incorporating active calibration offset with historical trend graph.
-    *   **Page 4 (Relative Height / Altimeter):** Pressure-based relative altitude measurement state machine (OFF -> [OK] SET ZERO -> MEASURING -> [OK] PAUSE -> [OK] RESUME).
-    *   **Page 5 (Diagnostic & Calibration):** Displays sensor status (Address 0x76, Chip ID 0x60), live readings, active temperature offset (°C), reference pressure (hPa), reading age, and interactive controls to adjust temperature offset or reset calibration.
-*   **Weather App (6 Pages):**
-    *   **Page 1 (Local Readings):** Live local BME280 temperature, humidity, and barometric pressure.
-    *   **Page 2 (OpenWeatherMap + Cute Animated Graphics):** HTTPS OpenWeatherMap report with animated weather icons (Clear, Clouds, Rain, Thunderstorm, Mist/Fog, plus offline animated cute placeholder).
-    *   **Pages 3–5 (24h Trend Graphs):** Whole-day temperature, pressure, and humidity graphs drawn from historical buffer.
-    *   **Page 6 (Logging & Refresh Settings):** Configurable sensor logging / refresh interval (5 min, 10 min, 15 min, 30 min, 1 hour).
-*   **24-Hour Historical Data Logging in LittleFS:**
-    *   Compact binary ring-buffer logger (`/bme_history.bin`) storing up to 288 records (10 bytes/entry) for 24-hour history at 5-minute intervals.
-    *   **Persistent Calibration:** Saves temperature offset (`temp_offset`) and reference ground pressure (`reference_pressure`) in NVS Preferences, surviving deep sleep and complete restarts.
-    *   **Deep Sleep Periodic Logging:** When waking from deep sleep via the RTC timer, the watch silently reads the BME280, logs calibrated values to `/bme_history.bin`, re-arms the timer, and returns to deep sleep immediately without activating the OLED display or Wi-Fi.
+### Key Highlights
+- **Micro-ELF Dynamic App Store**: Run relocatable C-ABI `.qapp` binaries compiled independently and loaded dynamically into internal SRAM and external PSRAM with zero-leak sandbox protection.
+- **Wireless Recon & SIGINT**: On-device 2.4GHz Wi-Fi spectrum analyzer, 802.11 deauthentication/disassociation flood IDS sentry, promiscuous packet monitor, and BLE radar with acoustic Geiger counter proximity ticks.
+- **Universal IR Transceiver**: Compatible with Flipper Zero and Bruce `.ir` files (both `raw` and `parsed`), featuring TV-B-Gone, on-device signal learning, multi-button remote cloning, and IR lab carrier diagnostics.
+- **Dasai Mochi Pet Companion**: Vector-rendered procedural emote companion (<8KB flash, 140B RAM) with 17 emotional moods, 5 swappable helmet skins (including Gundam RX-78-2), 6-axis IMU reactive physics, and Tamagotchi petting/feeding progression.
+- **Chiptune Audio Engine**: 4-channel polyphonic synthesizer with SIMD mixing, 8-step Beat Maker sequencer, built-in chiptune jukebox, metronome, frequency generator, and Morse code engine.
+- **On-Device TinyML Gesture AI**: Real-time wrist gesture classification powered by INT8 SIMD-accelerated neural network inference on MPU-6500 6-DOF data.
+- **Multi-Tier Power Governor**: 4 dynamic profiles (Performance 240MHz, Balanced 160MHz Light Sleep, Endurance 80MHz Deep Sleep, Custom), 5-page Battery Cockpit HUD, dual hardware EXT1 wakeup, raise-to-wake wrist tracking, and silent background sensor logging.
+- **Native Android Companion App**: Cyberpunk OLED Jetpack Compose companion app supporting live display canvas mirroring with virtual D-Pad, sensor telemetry cockpit, OTA `.qapp` sideloading, notification forwarding (SMS/calls/WhatsApp), and atomic time/weather syncing.
 
-### Milestone 6(A): MAX30102 Health & Pulse Oximeter App
-*   **Live Health Monitoring (Page 1):** Real-time PPG pulse waveform graph rendered chronologically from a 64-sample circular buffer, live Heart Rate (BPM), SpO2 percentage with a horizontal progress bar gauge, MAX30102 die/sensor temperature reading (°C), and dynamic finger contact detection.
-*   **Whole-Day History & Trends (Page 2):** Historical trend graphs for Heart Rate, SpO2, and Sensor Temperature filtered strictly to today's local calendar day using `localtime_r` calendar comparisons (`tm_year`, `tm_yday`). Provides latest, minimum, maximum, and average summary statistics.
-*   **Independent Background Scheduling:** Autonomous deep-sleep periodic wakeup logging for MAX30102 and BME280 sensors. Each sensor maintains an independent schedule (`last_bme` and `last_health` stored in persistent `Preferences`). Deep sleep calculates the earliest required wakeup time across all active background sensors.
-*   **Strict Power Lifecycle:** MAX30102 LEDs and optical engine automatically power down when navigating away from Page 1, switching to Page 2, or performing background snapshots to maximize battery longevity.
-*   **Health Settings:** Configurable under `SETTINGS -> SENSORS -> HEALTH` (Background Recording ON/OFF and Interval: 5m, 10m, 15m, 30m, 1h).
+---
 
-### Milestone 7: IMU6500 Sub-App Architecture & BLE Air Mouse Mode
-*   **Sub-App Selector Shell:** IMU6500 operates as a parent menu containing two distinct sub-applications:
-    *   **`ALTIMETER`:** Preserves the full artificial horizon / attitude indicator, altitude zero/reference, 3D compass integration, telemetry page, and IMU calibration/axis controls (including `Invert Z`).
-    *   **`AIR MOUSE`:** Converts the watch into a wireless BLE HID air mouse remote for PCs, tablets, and mobile devices.
-*   **Native BLE HID Mouse Lifecycle:** Utilizes native ESP32 BLE HID (`BLEHIDDevice`) for fast pairing and full teardown lifecycle management (`BLEDevice::deinit(false)`). BLE operates strictly when explicitly started inside Air Mouse mode and completely stops when exiting to conserve battery.
-*   **Gyro Motion Pipeline:** Direct angular velocity control using calibrated MPU-6500 gyro data (combined Yaw+Roll and pitch) with slider-controlled dead-zone suppression (0.5° to 10.0°/s), ramped anti-dead-zone compensation (0.0° to 3.4°/s), 6-DOF true zero-drift auto-tracking, adaptive velocity smoothing, non-linear power curve acceleration, dedicated Precision Mode (linear 1:1, 0.35x micro-speed, heavy tremor filtering), and remainder-preserving integer accumulation clamped to HID range (-127 to +127).
-*   **Dual Mode & Controls:**
-    *   **`POINTER` Mode:** UP = Left Click & Hold (full click-and-drag / text selection); DOWN = Right Click & Hold; Short OK = Back Click.
-    *   **`SCROLL` Mode:** UP = Scroll Up; DOWN = Scroll Down; Short OK = Back Click.
-    *   **Toggle Mode:** Short CANCEL toggles between `POINTER` and `SCROLL` modes.
-    *   **Pause & In-Situ Settings:** Long OK toggles pointer movement ON/OFF. When paused, UP/DOWN navigates settings, Short OK / Short CANCEL adjusts sliders and options (Sensitivity, Dead Zone, Anti-Dead Zone, Precision, Yaw+Roll, Axis Swaps, Recenter Gyro). Long CANCEL cleanly exits Air Mouse.
-    *   **Visual 3D Vector Diagram Orientation Selectors:** Interactive 3D wireframe and vector arrow projections on the 128x64 OLED display for both Magnetometer (`SETTINGS -> SENSORS -> COMPASS CAL -> 3D Mount Orient`) and IMU (`MAIN MENU -> MOTION / ALTIMETER -> SETTINGS -> 3D Mount Orient`), featuring real-time live heading (`HDG: 000° N`) and pitch/roll telemetry (`P:%+03d° R:%+03d°`), 8 orthogonal mounting presets (including upside-down and inverted-Z configurations), and universal persistent saving across all watch faces, Q-Apps, and Q-Link companions.
-*   **Reconnect Handling:** Displays explicit BLE status (`OFF`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`). If a host disconnects, advertising automatically resumes, or pressing Short OK explicitly restarts advertising and reconnects.
+## 🔧 System Architecture & Hardware Specs
 
+### Hardware Specifications
 
-### Milestone 8: Full IR Remote Subsystem & Bruce / Flipper Zero Compatibility
-* **Pure Menu Architecture:** Structured as a 9-item scrolling menu shell (`TV-B-GONE`, `CUSTOM IR`, `IR READ`, `QUICK REMOTE`, `UNIVERSAL`, `RECENT`, `FAVORITES`, `IR FILES`, `IR LAB`) on the 128x64 OLED display.
-* **Flipper Zero & Bruce `.ir` File Compatibility:** Dedicated parser and serializer for standard `.ir` library files, supporting both `type: parsed` (protocol, address, command, nbits) and `type: raw` (frequency, duty_cycle, microsecond pulse data). Files stored under `/ir/` on LittleFS can be transferred seamlessly between Bruce, Flipper Zero, and Q-Watch.
-* **Exact Protocol Variant Preservation:** Full support and 100% round-trip fidelity for `NEC`, `NECext`, `NEC42`, `Samsung32`, `RC5`, `RC5X`, `RC6`, `SIRC` (Sony 12-bit), `SIRC15`, and `SIRC20`. Preserves exact multi-byte hex addresses/commands, bit counts, and raw carrier frequency/duty cycle attributes without inventing unmeasured default values.
-* **Non-Blocking IR Read & RX Lifecycle:** Asynchronous signal capture pipeline (`IRrecv` on GPIO 17) with explicit receiver ownership. RX automatically pauses during transmissions (`IRsend` on GPIO 18) and when navigating away from capture screens.
-* **Interactive Quick Remote Cloning:** Multi-button remote builder workflow: Name Remote → Name Button → Learn Signal → Test Transmission → Save Button → Add Additional Buttons → Save as standard `.ir` file.
-* **TV-B-GONE Power Blaster:** Non-blocking power code transmitter featuring animated progress status (`CODE X/Y`), immediate cancellation on Short CANCEL, and data-driven code expansion support via `/ir/tvbgone.ir` on LittleFS.
-* **IR Signal Lab Diagnostics:** Engineering laboratory tool featuring 36 kHz, 38 kHz, and 40 kHz PWM carrier output validation (LEDC channel) and real-time raw-to-parsed protocol decoding analysis.
-* **File Manager Integration:** Selecting any `.ir` file directly from the main Q-Watch File Manager (`APP_FILE_MANAGER`) launches the IR Remote viewer to inspect and transmit buttons immediately.
-* **Signal Limits & Storage:** Strict `MAX_IR_RAW_TIMINGS = 1024` buffer enforcement across parsing, capturing, and serialization. Persistent Recent signals log (`/ir/recent.txt`) and Favorite button shortcuts (`/ir/favorites.txt`).
+| Component | Specification |
+| :--- | :--- |
+| **Microcontroller** | Espressif ESP32-S3FH4R2 (Dual-Core Xtensa LX7 @ up to 240 MHz) |
+| **Memory** | 4MB Quad-SPI Flash, 2MB Quad-SPI PSRAM, 512KB SRAM |
+| **Display** | 1.3-inch 128x64 Monochrome White OLED (SH1106 controller) |
+| **Display Bus** | 4-Wire Hardware SPI + Dedicated ESP32-S3 GDMA Pipeline |
+| **Atmospheric Sensor** | Bosch BME280 (Temperature, Relative Humidity, Barometric Pressure) |
+| **Motion Tracking** | InvenSense MPU-6500 (6-DOF: 3-Axis Gyroscope + 3-Axis Accelerometer) |
+| **Magnetometer** | QST QMC5883P (3-Axis Digital Magnetic Compass) |
+| **Biometric Sensor** | SparkFun / Maxim MAX30102 (Photoplethysmogram Pulse & SpO2 Oximeter) |
+| **Infrared Subsystem** | 38 kHz Demodulated IR Receiver + High-Power IR Blaster LED (LEDC Carrier) |
+| **Audio Engine** | Piezoelectric Buzzer driven via N-MOSFET / BJT with 4-Channel Polyphonic Synth |
+| **Haptic Feedback** | Eccentric Rotating Mass (ERM) Vibration Motor via LEDC Hardware PWM |
+| **Visual Lighting** | Onboard WS2812 Addressable RGB LED (FastLED Engine) |
+| **Input Interface** | K1 3-Way Rocker (UP, OK, DOWN) + Dedicated Tactile CANCEL / Wake Button |
+| **Power Management** | Single-Cell LiPo / Li-ion Battery with 100k/100k ADC Voltage Divider |
+| **Filesystem** | Partitioned LittleFS Flash Storage (Configs, History, Apps, Sounds, Remotes) |
 
-### Milestone 9: Altimeter Control, RGB LED System, Weather Binding & Factory Reset
-* **BME Altimeter Input Handling:** Interactive page navigation and calibration controls on the BME280 Altimeter app (`[UP]`/`[DN]` to cycle pages, `[OK]` to zero reference altitude, tune temperature offset, and reset baseline).
-* **WS2812 RGB LED Control Center:** Full settings menu (`LED CONTROL`) with toggle, color presets (Red, Green, Blue, Amber, Cyan, Purple, White), brightness levels (10% to 100%), and animation effects (Solid, Pulse, Rainbow, Strobe, Tactical Beacon).
-* **Live Weather Data Binding:** Real-time HTTPS OpenWeatherMap fetching seamlessly integrated with local BME280 telemetry fallback when offline.
-* **Factory Reset Protection:** `SETTINGS -> SYSTEM -> RESET SETTINGS` provides a dedicated confirmation dialog with `[OK] CONFIRM` and `[CANCEL] ABORT` to safely reset configuration to defaults without data corruption.
+---
 
-### Milestone 10: Power Optimization, Instant Screen-Off & Raise-to-Wake Gesture
-* **Instant Screen-Off:** Short press of the dedicated `CANCEL` button on the `HOME` screen immediately turns off display power (`displayManager.setPowerSave(true)`).
-* **10-Second Deep Sleep Auto-Timeout:** If the screen is toggled off on the `HOME` screen, the watch automatically transitions into ESP32 deep sleep after 10 seconds of inactivity to maximize battery life.
-* **Dual Deep Sleep Wakeup:** Configured ESP32-S3 `EXT1` active-low wakeup on both **GPIO 21** (`BTN_CANCEL`) and **GPIO 8** (`MPU_INT` motion interrupt).
-* **Raise-to-Wake Gesture Detection:** Pre-sleep wrist orientation tracking via calibrated MPU-6500 (`pitch 15°..65°`, `|roll| <= 35°`) with configurable setting toggle under `SETTINGS -> POWER -> RAISE TO WAKE`.
-* **Wake Audio Chime:** Pleasant dual-tone wake sound upon resuming from sleep.
+### Pinout & GPIO Allocation
 
-### Milestone 11: Comprehensive Watch & Timekeeping Suite
-* **4 Switchable Watch Faces:**
-    * **Digital Face:** Clean modern layout with large digital time, seconds, date, battery percentage, weather widget (temperature), pedometer steps widget, and status icons (Wi-Fi `W`, Alarms `A`, Hourly Chime `C`).
-    * **Analog Face:** 12-hour tick dial with accentuated quarter markers (12, 3, 6, 9), hardware FPU trigonometric hands (`cosf()`/`sinf()`), center disc hub, and flanking telemetry widgets (battery %, date window, weather, steps).
-    * **Retro Casio LCD Face:** Vintage double-frame border with top Day-of-Week selector pills (`SU MO TU WE TH FR SA`) highlighting the active day with an inverted box, `CHI`/`ALM` status tags, bracketed seconds box, and bottom telemetry.
-    * **Tactical / Mission Face:** Military tactical HUD with live compass heading (`HDG 000M`), barometric altitude (`ALT 000m`), 24-hour military time, step progress bar against target goal, battery telemetry, and mission/stopwatch active status.
-    * **On-the-Fly Face Cycling:** Quick `[UP]` / `[DN]` buttons on the `HOME` screen cycle watch faces instantly with persistent LittleFS saving.
-* **Unified Clock Suite App (`MAIN_MENU -> CLOCK`):**
-    * **Watch Face Selector:** Interactive visual picker across all 4 watch face styles.
-    * **Face Widgets Options:** Toggle individual face widgets (Date, Battery, Weather, Steps, Status Icons).
-    * **Tactical Stopwatch (Chronograph):** Millisecond precision (`MM:SS.hh`), split lap recording up to 8 laps, `[OK]` for Start/Lap, `[UP]` for Pause/Resume, `[DN]` for Reset.
-    * **Countdown Timer:** Duration presets (1m, 3m, 5m, 10m, 15m, 30m, 60m), countdown tick loop, audible alert on expiration via `soundManager.playAlert()`.
-    * **Multi-Alarms:** 3 independent configurable daily alarms stored in `/config/alarms`, audible ringing sequence, snooze (+5 min), dismiss, and interactive Hour/Minute editor.
-    * **Hourly Chime:** Configurable audio chime on each hour (`:00:00`) with dual high-frequency tone.
-    * **World Clock:** 12 major world cities (Kolkata, UTC, London, Berlin, New York, Chicago, Denver, Los Angeles, Dubai, Singapore, Tokyo, Sydney) with precise quarter-hour timezone offset calculations and relative day indicator (`+1 DAY`, `SAME DAY`, `-1 DAY`).
-    * **Pedometer & Step Goal:** Real-time MPU-6500 accelerometer magnitude step detector with threshold hysteresis and debouncing, estimated distance (`km`), calories (`kcal`), step goal adjustment (+/- 1,000 steps), and step counter reset.
+The ESP32-S3 SuperMini pinout has been engineered to prevent conflicts with internal Octal/Quad Flash and PSRAM lines while avoiding bootstrapping pins (GPIO 0, 3, 45, 46).
 
-### Milestone 12: Micro-ELF Relocatable Q-App Store Architecture, Loader & Target Ecosystem
-* **Q-App Binary Interface (`qwatch_api.h`):** Versioned C-ABI export table (`QWatchAPI`) providing modular, hardware-abstracted access to OLED display graphics, 4-button input events, MPU-6500 6-axis motion fusion, QMC5883P 3D magnetometer, MAX30102 PPG/health, IR transceiver, audio tones, WS2812 RGB LED, LittleFS sandboxed file I/O, system time, and lifecycle hooks.
-* **Micro-ELF Relocatable Binary Format (`.qapp`):** Dual-segment architecture cleanly separating executable code placed in executable internal SRAM (`MALLOC_CAP_EXEC | MALLOC_CAP_INTERNAL`) from initialized data/BSS/heap allocated in external 2MB PSRAM (`MALLOC_CAP_SPIRAM`), resolved via relocation table records (`QAppReloc`).
-* **Dynamic In-Firmware App Launcher:** Dynamic scanning of LittleFS `/apps/*.qapp`, binary header validation, dynamic symbol resolution, per-frame `update(dt)` / `render()`, button routing, and clean unmapping on exit.
-* **Reference Q-Apps:**
-    * **Tilt Ball (`apps/tilt_ball.qapp`):** 6-axis MPU-6500 roll/pitch physics simulation, bounce damping, target collision, audio score chimes, and LED flash.
-    * **Compass HUD (`apps/compass_hud.qapp`):** QMC5883P 3D magnetometer tactical HUD, rotating North-seeking needle, 8-point cardinal telemetry, waypoint bearing lock, course deviation indicator, and declination adjustment.
-    * **007 Invaders (`apps/invaders.qapp`):** Space Invaders arcade shooter with 3 bunkers, alien fleet marching, projectile combat, and boss UFO.
-    * **Tactical Dice (`apps/dice.qapp`):** Multi-mode D6, D20, D100, and Coin flipper with IMU shake-to-roll physics.
-    * **Retro Snake (`apps/snake.qapp`):** Iconic Nokia snake arcade game with 4-way steering, food spawning, growth mechanics, and high score tracking.
-    * **F1 Grand Prix (`apps/f1_race.qapp`):** Top-down high-speed racer with multi-lane traffic, boost mechanics, RPM engine audio, and crash avoidance.
-    * **Pacman Arcade (`apps/pacman.qapp`):** Authentic arcade maze chase with power pellets, ghost AI pathfinding, score fruit, and death sequences.
-    * **Breakout 007 (`apps/breakout.qapp`):** Brick wall destruction platformer with paddle bounce physics, power-ups, multi-ball action, and laser fire.
-    * **Space Impact 2 (`apps/space_impact.qapp`):** Nokia space shooter with delta fighter, laser blasts, screen-clearing torpedo bombs, alien squadron waves, and mothership boss battle.
-    * **Nokia Bounce (`apps/bounce.qapp`):** Classic bouncing ball platformer with restitution gravity physics, platform navigation, spikes, rotating ring collection, and 3 level maps.
-* **Automated Verification:** Comprehensive test harness (`tests/test_qapp_system.cpp`) with ESP32-S3 IRAM/PSRAM POC execution, fault injection (corrupt magic, ABI mismatch, OOB entry, invalid relocations), and 100-cycle zero-leak stress tests.
+```
+                 ESP32-S3 SuperMini
+                   +-------------+
+        BAT_ADC <--| GPIO 1   5V |-- Power In
+        OLED_DC <--| GPIO 2  GND |-- Ground
+        OLED_CS <--| GPIO 4  3V3 |-- 3.3V Rail
+      OLED_MOSI <--| GPIO 5   10 |-- VIBE_PWM (Haptic Motor)
+         BUZZER <--| GPIO 6    8 |-- MPU_INT (Motion Wake)
+       OLED_SCK <--| GPIO 7    9 |-- [Reserved Outer]
+       OLED_RST <--| GPIO 41  11 |-- [Reserved Outer]
+        BTN_DWN <--| GPIO 42  12 |-- [Reserved Outer]
+         BTN_OK <--| GPIO 40  13 |-- [Reserved Outer]
+         BTN_UP <--| GPIO 39  15 |-- I2C_SDA (Shared Bus)
+     BTN_CANCEL <--| GPIO 21  16 |-- I2C_SCL (Shared Bus)
+          IR_TX <--| GPIO 18  17 |-- IR_RX (Demodulated 38kHz)
+                   +-------------+
+                    [Bottom Pad]
+                      GPIO 38 (Clean Reserve)
+                      GPIO 48 (Onboard WS2812 RGB LED)
+```
 
-### Milestone 13: Tactical Animation Engine, Custom Boot Splash & Player
-* **Compact Binary Animation Format (`.anim`):** 16-byte packed header (`magic: 0x4D4E4151` / `"QANM"`, `version: 1`, `width: 128`, `height: 64`, `frame_count`, `frame_delay_ms`, `flags`) with direct sequential 1024-byte 1-bit XBM frames for fast streaming off LittleFS without RAM buffering.
-* **Native 1-Bit BMP Compatibility:** Auto-detects and decodes standard 1-bit Windows monochrome BMP files (`.bmp`), converting bottom-up MSB-first scanlines to display-native LSB-first XBM bitmaps on-the-fly with hardware bit-reversal.
-* **On-Device Animation Browser (`SYS MENU -> ANIMATIONS`):** Lists installed `.anim` and `.bmp` files in `/anim` and `/boot`, displaying filename, frame count (`XF`), or `BMP` badge with 3-item scrolling viewport and scrollbar.
-* **Tactical Animation Player (`APP_ANIM_PLAYER`):**
-    * Full 128x64 display rendering with tactical auto-hiding HUD overlay (playback status `PLAY`/`PAUSE`, frame position `X/Y`, speed multiplier, timeline progress bar).
-    * `[OK]` Short Press: Toggle Play / Pause.
-    * `[OK]` Long Press: Set current animation as system boot animation (`/boot/boot.anim` or `/boot/boot.bmp`).
-    * `[UP]` Short Press: Speed cycle (`1.0x` -> `1.5x` -> `2.0x` -> `0.5x` -> `1.0x`) when playing, or Step Forward 1 frame when paused.
-    * `[DN]` Short Press: Toggle Loop (`LOOP: ON` / `LOOP: OFF`) when playing, or Step Backward 1 frame when paused.
-    * `[CANCEL]` Short / Long Press: Exit player and return to browser or file manager.
-* **Custom Boot Animation & Instant Skip:** On cold boot or reset, plays `/boot/boot.anim` or `/boot/boot.bmp` if installed, or falls back to the MI6 tactical radar sweep sequence. Any button press immediately skips boot animation to launch straight into the watch face.
-* **Animation Tooling (`tools/anim_packer.py`):** Standalone CLI tool to pack frame sequences, inspect metadata, and generate procedural animations (`radar.anim`, `gunbarrel.anim`).
+#### Detailed Pin Mapping Table
 
-### Milestone 14: Tactical Wireless Recon Suite (Wi-Fi & Bluetooth Tools)
-* **Dedicated Recon Suite Shell (`SYS MENU -> WIRELESS`):** Integrated tactical wireless suite featuring 4 dedicated sub-applications on the 128x64 OLED display:
-    * **BLE Radar (`BLE RADAR`):** Proximity tracking HUD featuring real-time log-distance path loss distance estimation ($d \approx 10^{(A - \text{RSSI})/(10n)}$ with calibrated $A = -59\text{ dBm}, n = 2.4$), rotating 52px tactical reticle with sweep line, directional target lock brackets, live RSSI signal strength gauge, target cycling, and acoustic Geiger counter tick rate scaling (tick intervals shortening from 1200ms at long range to 60ms at point-blank range).
-    * **Wi-Fi Channel Spectrum Analyzer (`CH SPECTRUM`):** 2.4GHz spectrum analyzer scanning across channels 1 through 13. Computes AP density histogram, highlights non-overlapping channels (1, 6, 11), recommends cleanest channel (`REC: CH X`), and supports on-demand rescan via `[OK]`.
-    * **802.11 Deauth / Disassociation Attack Detector (`DEAUTH DETECT`):** Promiscuous 802.11 IDS sentry that detects and logs frame control deauthentication (`0x00C0`) and disassociation (`0x00A0`) floods. Computes flood rates (deauths/sec), identifies attacking transmitter MAC and target victim MAC, extracts 802.11 reason codes, and triggers flashing visual alerts and acoustic alarm chimes. Supports channel cycling via `[UP]`/`[DN]` and stats reset via `[OK]`.
-    * **Promiscuous Packet Monitor (`PKT MONITOR`):** Non-blocking 802.11 air traffic sniffer displaying live packets/second rate, a 64-sample scrolling histogram rate graph, cumulative packet tally, and real-time percentage breakdown and multi-segment bar for Management, Control, and Data frames.
-* **Zero SRAM Allocation & Fast UI Dispatch:** Fully non-blocking promiscuous frame parsing operating directly on incoming packet buffers. Integrated with high-framerate (20-50 FPS) UI render loop for smooth radar rotation and live packet graph rendering.
-* **Automated Verification:** Comprehensive host test suite (`tests/test_wireless_recon.cpp`) verifying 802.11 frame control parsing, deauth attack detection logic, logarithmic BLE proximity distance math, Wi-Fi channel tallying, and packet type distribution.
+| Subsystem | Signal Name | GPIO | Type / Mode | Description & Electrical Notes |
+| :--- | :--- | :---: | :--- | :--- |
+| **OLED Display** | `OLED_MOSI` | **5** | SPI Master Out | Hardware SPI Data line (GDMA driven) |
+| | `OLED_SCK` | **7** | SPI Clock | Hardware SPI Clock line (GDMA driven) |
+| | `OLED_CS` | **4** | Digital Output | Display SPI Chip Select (Active Low) |
+| | `OLED_DC` | **2** | Digital Output | Display Data / Command Select |
+| | `OLED_RST` | **41** | Digital Output | Display Hardware Reset (Active Low) |
+| **I2C Sensor Bus** | `I2C_SDA` | **15** | Open-Drain / Pullup | Shared I2C Serial Data Bus |
+| | `I2C_SCL` | **16** | Open-Drain / Pullup | Shared I2C Serial Clock Bus |
+| | `MPU_INT` | **8** | Input / RTC Wake | MPU-6500 Wake-on-Motion interrupt (Active Low) |
+| **Buttons & Input**| `BTN_UP` | **39** | `INPUT_PULLUP` | K1 Multi-directional UP button |
+| | `BTN_OK` | **40** | `INPUT_PULLUP` | K1 Multi-directional OK / Select button |
+| | `BTN_DOWN` | **42** | `INPUT_PULLUP` | K1 Multi-directional DOWN button |
+| | `BTN_CANCEL` | **21** | `INPUT_PULLUP` | Dedicated CANCEL button & ESP32-S3 `EXT1` Deep Sleep Wake |
+| **Infrared** | `IR_RX` | **17** | Digital Input | 38 kHz demodulated infrared receiver data |
+| | `IR_TX` | **18** | LEDC PWM Output | High-power IR blaster LED driver |
+| **Audio & Haptic** | `BUZZER` | **6** | LEDC PWM Output | Piezo buzzer driver (LEDC Timer 0 / Channel 0) |
+| | `VIBRATION` | **10** | LEDC PWM Output | ERM vibration motor driver (LEDC Timer 1 / Channel 2, 200 Hz) |
+| **RGB Lighting** | `WS2812_DATA` | **48** | FastLED Digital | Onboard addressable RGB LED data line |
+| **Power Telemetry**| `BAT_ADC` | **1** | Analog Input (ADC1) | 100kΩ / 100kΩ voltage divider from raw battery rail |
+| **UART / Debug** | `UART0_TX` | **43** | Serial Out | Hardware UART0 Transmit (Clean Reserve) |
+| | `UART0_RX` | **44** | Serial In | Hardware UART0 Receive (Clean Reserve) |
+| **Clean Reserves** | `RESERVE` | **9, 11, 12, 13, 38** | Digital I/O | Header & underside solder pads reserved for expansion |
 
-### Milestone 15: Q-Link Android Companion Suite & Hardware-Agnostic Protocol v1.0.0
-* **Clean Layered Architecture:** Completely decoupled communication model ensuring the Android app never relies on undocumented firmware internals:
-  $$\text{Q-Link:Android} \longrightarrow \text{Q-Link Protocol v1.0.0} \longrightarrow \text{Q-Watch API / Services} \longrightarrow \text{Hardware}$$
-* **Authoritative Protocol Specification (`docs/qlink_spec.md`):** Complete contract defining 128-bit BLE GATT services (`0xFE50`), 32-byte compact binary telemetry packets, and high-speed Wi-Fi REST & continuous stream endpoints (`/api/v1/...`).
-* **Native Android App (`android/`):** Full-fledged Kotlin + Jetpack Compose companion app styled in a cyberpunk/007 tactical OLED theme:
-    * **Live 128x64 OLED Simulation (`MIRROR`):** Real-time canvas rendering of the watch's display buffer with configurable phosphor glow (Cyan, Amber, Green, White), on/off stream toggling, screenshot export, and an interactive virtual D-Pad (`UP`, `OK`, `DOWN`, `BACK`) controlling the watch remotely.
-    * **Telemetry Cockpit (`SENSORS`):** Real-time BME280 atmospheric station, MPU-6500 artificial horizon with live pitch/roll angles, QMC5883P rotating compass rose, and MAX30102 biometrics (heart rate, SpO2, and finger detection).
-    * **LittleFS File Manager (`FILES`):** Visual file explorer supporting directory traversal (`/apps`, `/sounds`, `/anim`, `/boot`, `/config`), file deletion, and uploads.
-    * **Micro-ELF App Store (`APPS`):** Curated catalog of relocatable `.qapp` binaries (Tilt Ball, Compass HUD, Space Invaders, Dice Roller) with 1-tap installation directly to `/apps/` on the watch.
-    * **Phone Notification Forwarding (`ALERTS`):** Native Android `NotificationListenerService` forwarding SMS, WhatsApp, and call alerts with custom buzzer chimes and RGB LED flashes.
-    * **Device Synchronization (`SETTINGS`):** 1-tap atomic time sync from phone RTC and hyper-local GPS weather relaying without requiring an API key on the watch.
-* **Firmware Q-Link Engine (`include/qlink.h`, `src/qlink.cpp`):** Zero-copy framebuffer streaming, synthetic button event injection into `ButtonManager`, and phone notification alert dispatch.
-* **Automated Verification & CI:** Host test suite (`tests/test_qlink.cpp`) verifying 32-byte telemetry packet alignment, magic header validation, and button parsing; automated GitHub Actions workflow (`.github/workflows/android.yml`) building the Android debug APK artifact on push.
+---
 
-### Milestone 16: Multi-Tier Power Management Suite, Battery Cockpit & ULP Sentinel Architecture
-* **Unified Power Governor (`PowerManager`):** Centralized power lifecycle management in `include/power_manager.h` and `src/power_manager.cpp` offering 4 dynamic, user-switchable operational profiles:
-    * **`PERFORMANCE` ("Tactical Max"):** 240 MHz dual-core CPU clock, display-off idling with FreeRTOS `waiti` yielding, zero sleep latency, high-performance radios and sensors (~12–16 hrs runtime).
-    * **`BALANCED` ("Everyday Smart"):** Dynamic 160 MHz CPU clock, ESP32-S3 Light Sleep with instant 300µs wakeup, 24/7 background pedometer tracking, automatic radio sleep (~3–5 days runtime).
-    * **`ENDURANCE` ("Ultra Saver"):** 80 MHz eco CPU clock, Deep Sleep down to 15µA quiescent draw, automatic radio kill, RGB LED and buzzer audio muting (~15–20 days runtime).
-    * **`CUSTOM` ("Power Lab"):** Granular user-configured CPU clocks, sleep engines, radio power-down policies, and low-voltage cutoff guards.
-* **Interactive 5-Page Battery Cockpit (`APP_BATTERY`):**
-    * **Page 1 (HUD / Cockpit):** Large tactical battery gauge with fill level, real-time voltage (`3.92V`), battery percentage (`84%`), dynamic runtime estimate (`EST: 4.2d` or `EST: 14.5h`), active profile badge (`[BALANCED]`), and on-demand ADC refresh via `[OK]`.
-    * **Page 2 (Profiles Selector):** Quick 1-click selector menu to cycle between `PERFORMANCE`, `BALANCED`, `ENDURANCE`, and `CUSTOM` with active profile indicators.
-    * **Page 3 (Sleep Engine Configuration):** Interactive controls for sleep engine (`LIGHT SLEEP`, `DEEP SLEEP`, `DISPLAY OFF`, `ULP SENTRY`), 24/7 pedometer toggle, raise-to-wake gesture sensitivity, and screen auto-lock timeouts.
-    * **Page 4 (Peripheral Load Shedding):** Selective subsystem cuts including `Radio Cut` (kill Wi-Fi/BLE when locked), `RGB LED` blocking, `Audio/Chime` eco mute, and persistent low-battery safety cutoff (`3.20V`).
-    * **Page 5 (ULP RISC-V Sentinel Lab):** Diagnostic telemetry HUD displaying coprocessor execution status, RTC SLOW RAM allocation (8192 bytes), wake trigger tally, and interactive sentry test toggle.
-* **Hierarchical Navigation:** Seamless short/long button navigation (`[UP]`/`[DN]` to cycle items, long press to cycle pages, `[OK]` to select/toggle) with hierarchical `[CANCEL]` handling that returns from sub-pages to the root HUD before exiting to the main menu.
-* **Automated Verification:** Comprehensive self-test suite (`tests/test_suite.py` Section 14) verifying power profile enum boundaries, battery consumption models, mathematical runtime estimation across voltage/percentage curves, and navigation state transitions.
+### I2C Address Map
 
-### Milestone 17: Dasai Mochi Pet Companion & Procedural Vector Emote Engine
-* **Zero-Flash-Bloat Architecture:** Unlike traditional approaches that embed megabytes of raw GIF frame arrays in firmware (which would overflow the ESP32's remaining 26% flash partition), Mochi is built with a parameterized procedural vector rendering engine consuming **< 8 KB of flash code** and **only 140 bytes of RAM**.
-* **17 Expressive Emotes & Moods:**
-    * **Positive / Cheerful:** `HAPPY` (smiling crescent eyes, blushing cheeks, cheerful bounce), `LOVE` (pulsing heartbeat eyes, sweet love chime), `LAUGH` (squinting `><` eyes, laughing mouth), `EXCITED` (winking eye, energetic hop), `CONTENT` (warm soft gaze), `RELAXED` (zen wavy eyes, gentle breathing), `PROUD` (raised tilted eyebrows, smug grin).
-    * **Negative / Reactive:** `ANGRY` (sharp slanted brows `\ /`, crimson LED, low grumble), `FRUSTRATED` (annoyed frown, animated dripping forehead sweat drop), `CONFUSED` (asymmetric eyes, floating animated `?` question mark), `EMBARRASSED` (bashful glance, hatching blush `///`), `DIZZY` (spinning Archimedean spiral eyes, orbiting stars triggered by shake).
-    * **Care & Ambient:** `SLEEPY` (drooping 70% closed eyelids, yawning), `SLEEPING` (closed eyes, animated floating `Zzz` drifting up, slow breathing), `DRIVING` (aerodynamic racing visor, animated wind speed streaks, engine rev), `MUSIC` (rhythmic head bobbing, floating eighth-notes), `GUNDAM` (awakened combat visor optics, lock-on reticle, robot chime).
-* **Modular Digital Helmets (Swappable Skins):**
-    * **`CLASSIC`:** Smooth rounded helmet shell with top aerodynamic intake.
-    * **`GUNDAM`:** RX-78-2 Mobile Suit helmet featuring iconic V-fin crest, forehead sensor gem, dual cheek intake slits, and red chin tab.
-    * **`CYBER`:** Cyberpunk carbon edition with HUD corner brackets and tech lines.
-    * **`NEKO`:** Cute cat ears with inner notch geometry.
-    * **`TACTICAL`:** 007 Agent night-vision reticle bezel with corner tick brackets.
-* **IMU 6-Axis Reactive Physics (Driving Companion):**
-    * **Gaze Tracking:** Low-pass filtered roll/pitch angle smoothly tracks watch tilt, moving Mochi's pupils naturally ($dx \in [-7, 7]$, $dy \in [-5, 5]$).
-    * **Cornering Lean:** Leans body into sharp turns.
-    * **Shake Detection:** High-G shakes ($> 2.2\text{G}$) trigger instant `DIZZY` state with orbiting stars and stumble tones.
-    * **Freefall Response:** Zero-G drops ($< 0.25\text{G}$) trigger shocked `CONFUSED` / panic face.
-    * **Auto-Sleep Idle Timer:** Stationary inactivity ($> 25\text{s}$) automatically transitions Mochi into sleepy yawn and deep slumber (`Zzz`), waking up immediately upon wrist movement.
-* **Interactive Petting & Feeding (Tamagotchi Mechanics):**
-    * Short `[OK]`: Pet Mochi (heart burst, happiness meter boost, friendship XP, arpeggio chime).
-    * Long `[OK]`: Feed Mochi (animated onigiri snack glides across screen, munching `nom nom` chewing animation, restores hunger).
-    * Friendship level progression (Level 1–10) with persistent stats.
-    * Short `[CANCEL]`: Toggle between full-screen interactive face and Stats Cockpit (Happiness, Hunger, Friendship, Battery, Step count).
-* **Acoustic SFX & WS2812 LED Sync:** Synchronized audio chirps and RGB mood colors (Warm Amber, Vivid Pink, Bright Yellow, Crimson, Moon Blue, Mecha Blue/Gold).
-* **LittleFS `.anim` Extensibility:** Built-in compatibility with `/mochi/*.anim` allowing users to drop custom converted GIFs from the community into LittleFS without consuming code flash.
-* **Automated Host Verification:** Host test harness (`tests/test_mochi_system.cpp`) verifying all 17 emotes, 5 helmets, gaze physics, shake triggers, Tamagotchi mechanics, and 128x64 vector buffer rendering.
+All four environmental, motion, and biometric sensors share the single high-speed I2C bus on **GPIO 15 (SDA)** and **GPIO 16 (SCL)**:
 
-### Milestone 18: Jules System Audit, Xtensa LX7 SIMD Acceleration & Platform Hardening
-* **Xtensa LX7 SIMD/PIE Hardware Vector Acceleration (`include/simd_accel.h`, `src/simd_accel.cpp`):**
-    * **128-Bit OLED Framebuffer Operations:** Vectorized 128-bit SIMD framebuffer bitwise inversion (`simd_invert_framebuffer_128`) and XOR mask blitting (`simd_xor_blit_128`) processing 16 bytes per instruction using verified Xtensa LX7 TRM PIE vector opcodes (`ee.notq`, `ee.xorq`, `ee.andq`, `ee.orq`), delivering near-instant full-screen UI transforms and game blitting.
-    * **MAX30102 32-Tap Digital Bandpass FIR Filter:** Hardware-vectorized dual-accumulator SIMD FIR filter (`simd_fir_filter_32tap_batch`) for biometric pulse oximetry and PPG wave filtering, with automatic scalar fallbacks on unaligned memory buffers.
-* **Web Portal Flash Memory (PROGMEM) Optimization:**
-    * Static captive portal HTML, CSS, JavaScript, and SVG assets relocated to flash program memory (`PROGMEM`) in `src/wifi_portal.cpp`, reclaiming over **14 KB of critical heap RAM** for TCP/IP network sockets, TLS handshakes, and relocatable `.qapp` execution.
-* **Jules System Security Audit & Filesystem Hardening:**
-    * **Path Traversal Sanitization:** Implemented `FileManager::isPathSafe()` and `FileManager::normalizePath()` across all web file server endpoints (`/api/files/download`, `/api/files/delete`, `/api/files/upload`), strictly enforcing boundary sandboxing and neutralizing directory traversal attacks (`../`, `//`, null bytes, control characters).
-* **Storage Longevity & Batched History Pruning:**
-    * **32-Entry Hysteresis Ring Buffer:** Re-architected environmental (`src/sensors.cpp`) and biometric (`src/max30102_manager.cpp`) logging with batched pruning and `readSeek` tail retrieval, eliminating per-record flash rewrites and reducing SPI flash erase wear by **~97%**.
-* **Peripheral & Subsystem Hardening:**
-    * **Morse Code Timing Engine:** Corrected Morse sequence for letter `'P'` (`.--.`) in `src/sound_manager.cpp`.
-    * **FastLED Compass Blend Interpolation:** Eliminated cardinal boundary discontinuities in `src/led_manager.cpp` with continuous 360° circular hue blending.
-    * **IR Zero-Allocation Stream Parser:** Replaced dynamic heap string splits with pre-reserved buffers and zero-allocation token iteration in `src/ir_engine.cpp` to prevent heap fragmentation during rapid signal capture.
-    * **Comprehensive 29-Suite Automated Verification:** Expanded test harness (`tests/test_suite.py` Sections 15–29, `tests/test_simd_audit.py`, and `tests/test_mochi_system.cpp`) verifying SIMD vector arithmetic, security sanitization, storage hysteresis, and emote kinematics across all subsystems.
+| Sensor Module | Model | 7-Bit I2C Address | Features Provided |
+| :--- | :--- | :---: | :--- |
+| **Atmospheric Sensor** | Bosch BME280 | `0x76` | Barometric pressure, humidity, ambient temperature, altimeter |
+| **Motion Tracking** | InvenSense MPU-6500 | `0x68` | 3-axis accelerometer, 3-axis gyroscope, wake-on-motion interrupt |
+| **3D Magnetometer** | QST QMC5883P | `0x0D` | 3-axis magnetic compass heading, azimuth calculation |
+| **Pulse Oximeter** | Maxim MAX30102 | `0x57` | Photoplethysmogram (PPG) pulse wave, heart rate BPM, SpO2 % |
 
-### Milestone 19: App Store Q-Apps & Wireless App Sideload Installer
-* **007 Retro Invaders (`apps/invaders/`, `apps/invaders.qapp`):**
-    * Full-featured Micro-ELF arcade space shooter for the 128x64 OLED display.
-    * **Dual Steering Pipeline:** Precise digital navigation with `[UP]`/`[DN]` buttons or smooth analog wrist steering utilizing MPU-6500 gyro/accelerometer roll fusion.
-    * **Procedural Alien Fleet:** 3 rows × 6 columns (18 invaders: Spectre Bosses, Drones, Minions) with 2-frame flapping vector animations, accelerating 4-pitch cadence tones, and dynamic alien bomb drops.
-    * **Destructible Tactical Bunkers:** 3 energy barriers with 4 hit points that degrade as they absorb player and alien lasers.
-    * **SPECTRE UFO Mystery Ship:** High-value stealth ship flying across the top with oscillating warble tone and mystery bonus points (+50, +100, +150).
-    * **Audio & WS2812 LED Sync:** Green laser muzzle flashes, red damage strobes, purple UFO hits, and emerald wave victory fanfares.
-    * **Persistent High Scores:** Automatic score persistence saved in LittleFS at `/apps/invaders.dat` via `api->file_read` and `api->file_write`.
-* **Tactical Dice & RNG Engine (`apps/dice/`, `apps/dice.qapp`):**
-    * **High-Entropy Cryptographic Dice:** Combines hardware TRNG, microsecond timers, and IMU accelerometer noise jitter for non-deterministic random number generation.
-    * **9 Tactical Modes:** `D6` (realistic 3D pip die), `D20` (icosahedral diamond with "NAT 20 CRITICAL!" and "NAT 1 FUMBLE!" banners), `D100` (percentile), `COIN` (spinning flip animation landing on Heads/Tails), `2D6`, `3D6`, `D4`, `D8`, and `D12`.
-    * **Physical Shake-to-Roll:** High-G IMU acceleration detection ($> 1.85\text{G}$) automatically triggers tumbling dice physics with decelerating mechanical ratchet click SFX and landing chime.
-    * **Telemetry History:** Ring buffer displaying the last 4 roll results on the OLED status bar.
-* **Q-Link Wireless Sideload & Filesystem REST Endpoints (`src/qlink.cpp`, `include/qlink.h`):**
-    * **Over-The-Air Q-App Installer (`POST /api/v1/app/install`):** Direct wireless `.qapp` upload and installation directly into `/apps/` from the Android Companion App.
-    * **Binary Header Validation (`validateQAppHeader`):** Enforces `QAPP_MAGIC (0x51415050)`, API version compatibility, and code/data/relocation memory boundary bounds checking before disk write.
-    * **Filesystem Endpoints:** Implemented `/api/v1/fs/list`, `/api/v1/fs/download`, and `/api/v1/fs/delete` endpoints protected with `FileManager::isPathSafe` path traversal sandboxing.
-* **100% Android Companion App Store Catalog Synchronization:**
-    * All 4 apps in `android/.../AppStoreScreen.kt` (`tilt_ball.qapp`, `compass_hud.qapp`, `invaders.qapp`, `dice.qapp`) now possess full firmware implementations, relocatable packagers, and binaries in `apps/`.
-* **Comprehensive 30-Suite Automated Verification:**
-    * 30 complete test suites passing 100% across `tests/test_suite.py`, `tests/test_qapp_system.cpp`, and `tests/test_qlink.cpp`, including 100-cycle zero-leak dynamic memory stress tests for all apps.
+---
 
-### Milestone 20: Haptic & Vibration Subsystem & Interactive Haptic Lab App
-* **GPIO 10 Hardware Driver:** Configured outer-header pin **GPIO 10** for haptic vibration motor control via LEDC hardware PWM (Channel 2 on Timer 1 to prevent buzzer tone timer collisions, 200 Hz low-frequency carrier, 8-bit resolution with full DC saturation at 100%), supporting discrete BJT drivers (e.g., 2N2222A with $330\,\Omega$ base resistor, $10\,\text{k}\Omega$ pulldown, and 1N4148/1N5819 flyback diode).
-* **Non-Blocking Sequencer (`VibrationManager`):** Multi-step asynchronous pattern engine supporting variable duty-cycle profiles:
-    * `CLICK / TICK`: Crisp 60ms pulse for tactile UI navigation clicks.
-    * `DOUBLE PULSE`: Two 50ms pulses with 70ms pause for phone notifications.
-    * `TACTICAL ALERT`: 220ms continuous tactile pulse for alarms and countdown timers.
-    * `HEARTBEAT`: Biometric lub-dub cardiac rhythm simulation.
-    * `SOS MORSE`: `··· ——— ···` emergency sequence.
-    * `RAMP INTENSITY`: Dynamic PWM acceleration ramp (20% to 100%).
-    * `CONTINUOUS RUN`: Sustained hardware validation test with auto-cutoff.
-* **Interactive Haptic Lab App (`APP_VIBRATION`):** Native smartwatch app accessible directly from `SYS MENU -> VIBRATION` featuring a 3-item scrolling menu, strength adjustment (25%, 50%, 75%, 100%), button haptic click toggle, and a live oscillating waveform HUD visualizer with `[VIB]` / `[IDLE]` state badge.
-* **Settings Persistence & Safety:** Persistent saving in `/config/settings` (`vibe_master_on`, `vibe_intensity`, `vibe_button_clicks`, `vibe_alarms`) with power-down muting during ESP32-S3 sleep.
+### Electrical & Circuit Design Notes
 
-### Milestone 21: Unified Auto Data Recording & Silent Background Sleep Architecture
-* **Unified Sensor Recording Settings (`SETTINGS -> SENSORS -> AUTO DATA REC`):** Unified configuration replacing fragmented logging settings with a consolidated, user-controllable interface:
-    * `AUTO RECORD`: Master switch (`[ON]` / `[OFF]`, default: `OFF`). When `OFF`, all periodic background timer wakeups are completely disabled in hardware, preventing unrequested periodic wakeups.
-    * `REC INTERVAL`: Configurable interval (`5 min`, `10 min`, `15 min`, `30 min`, `1 hour`).
-    * `TARGET`: Selectable logging targets (`ALL` for BME280 + MAX30102, `WEATHER` for BME280 environmental data, or `HEALTH` for MAX30102 PPG biometrics).
-* **Silent Background Execution (Zero OLED / Audio Flash):**
-    * **Deep Sleep Early Intercept:** `main.cpp:setup()` intercepts `ESP_SLEEP_WAKEUP_TIMER` before display SPI initialization (`displayManager.begin()`) or audio boot sequences. The OLED panel remains unpowered and completely dark while sensors log silently before returning directly to deep sleep.
-    * **Light Sleep Execution Loop:** In `UICore::enterDeepSleep()`, periodic timer wakeups are processed inside a persistent sleep loop with the display in power-save mode (`display_off = true`), recalculating next intervals and continuing sleep without leaking into active UI render loops or false raise-to-wake triggers.
-    * **Responsive User Interrupt:** If any physical button (`CANCEL`, `OK`, `UP`, `DOWN`) is pressed during background sampling, the silent sleep aborts and transitions immediately into active interactive boot.
+1. **I2C Pull-Up Resistor Optimization**:
+   Connecting four independent sensor breakout boards in parallel results in multiple onboard pull-up resistors in parallel, dropping the bus pull-up resistance down to ~1 kΩ or less and causing bus contention. **Recommendation:** Physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards, maintaining a single clean 4.7 kΩ pull-up on the SDA and SCL lines.
+2. **Decoupling Capacitors (High-Current Pulsed Loads)**:
+   The **IR Transmitter LED** and **Piezo Buzzer** create heavy microsecond current spikes. Place a `100nF (104)` ceramic capacitor in parallel with a `10µF` tantalum or electrolytic capacitor directly across the driver rail to prevent microcontroller reset under pulse load.
+3. **Vibration Motor Driver Circuit**:
+   Never connect an ERM vibration motor directly to an ESP32-S3 GPIO pin. Drive GPIO 10 through a 330 Ω base resistor into an NPN transistor (e.g. 2N2222A) or N-channel MOSFET, with a 10 kΩ pulldown resistor on the gate/base, and place a `1N4148` or `1N5819` Schottky flyback diode in reverse parallel across the motor terminals to clamp inductive voltage spikes.
+4. **Battery Voltage Divider**:
+   Pin **GPIO 1** connects to the midpoint of two 100 kΩ 1% metal-film resistors bridging the raw LiPo battery rail (`VBAT`) to ground. A `100nF` ceramic capacitor placed between GPIO 1 and GND filters out high-frequency ADC switching noise.
 
-## Hardware Architecture & Pinout
+---
 
-To avoid conflicts with the ESP32-S3's internal Flash/PSRAM lines and strapping pins, the following optimized GPIO map is used.
+## 🚀 Comprehensive Feature Breakdown
 
-### 1. OLED Display
-| Peripheral | Function | GPIO | Notes |
-| :--- | :--- | :--- | :--- |
-| OLED | MOSI/DIN | 5 | Hardware SPI |
-| OLED | CLK/SCK | 7 | Hardware SPI |
-| OLED | CS | 4 | |
-| OLED | DC | 2 | |
-| OLED | RST | 41 | Reassigned to GPIO 41 (Standard digital output) |
+---
 
-### 2. I2C Sensors (Shared Bus)
-| Peripheral | Function | GPIO | Notes |
-| :--- | :--- | :--- | :--- |
-| BME280 / MPU-6500 / QMC5883P / MAX30102 | SDA | 15 | |
-| BME280 / MPU-6500 / QMC5883P / MAX30102 | SCL | 16 | Address 0x57 for MAX30102 |
-| MPU-6500 Interrupt | INT | 8 | RTC Wake Capable (Active-Low WOM Interrupt) |
+### 1. Watch Faces & Timekeeping Suite
 
-*Note on I2C Pull-ups:* When placing 4 breakout boards in parallel, the effective pull-up resistance drops significantly. To maintain an ideal ~4.7kΩ resistance, it is recommended to physically desolder the SMD pull-up resistors from 2 or 3 of the breakout boards.
+Q-Watch features four distinct switchable watch faces and a full suite of precision horological tools.
 
-### 3. Inputs & Audio/Visual
-| Peripheral | Function | GPIO | Notes |
-| :--- | :--- | :--- | :--- |
-| Button Up | INPUT_PULLUP | 39 | K1 Multi-directional UP |
-| Button OK / Select | INPUT_PULLUP | 40 | K1 Multi-directional OK / SELECT |
-| Button Down | INPUT_PULLUP | 42 | K1 Multi-directional DOWN |
-| Button Cancel / Back | INPUT_PULLUP / RTC WAKE | 21 | Tactile CANCEL button & Deep Sleep RTC Wake source |
-| Battery Monitor | ADC1_CH0 | 1 | Requires 100k/100k external divider from raw VBAT + 104 filter cap |
-| IR Receiver | RX DATA | 17 | |
-| IR Transmitter| TX DATA | 18 | High current pulse load |
-| Buzzer | CONTROL | 6 | Requires N-channel MOSFET/BJT driver |
-| Vibration Motor | PWM CONTROL | 10 | Outer-header pin; requires external NPN (e.g. 2N2222A) or N-MOSFET driver + flyback diode |
-| RGB LED | WS2812 DATA | 48 | Onboard RGB LED |
+#### Switchable Watch Faces
+- **Digital Tactical Face**: Clean, high-legibility display featuring large 24-hour/12-hour time, running seconds, date, battery percentage, real-time weather temperature widget, pedometer step counter, and status indicator icons (Wi-Fi `W`, Alarms `A`, Hourly Chime `C`).
+- **Analog Dial Face**: Classic 12-hour tick dial with accentuated quarter markers (12, 3, 6, 9), floating center hub, trigonometric hour/minute/second hands computed via the Xtensa hardware FPU (`cosf()`/`sinf()`), and flanking date/battery telemetry windows.
+- **Retro Casio LCD Face**: Nostalgic double-frame vintage digital watch border featuring a top Day-of-Week selector pill matrix (`SU MO TU WE TH FR SA`) highlighting the active day with an inverted box, `CHI`/`ALM` status flags, bracketed seconds counter, and bottom telemetry bar.
+- **Tactical / Mission Face**: Military HUD interface integrating live QMC5883P compass heading (`HDG 000° M`), BME280 barometric altitude (`ALT 000m`), 24-hour military timestamp, step progress bar against daily goal, battery gauge, and mission stopwatch indicator.
 
-### 4. Available / Reserved Pins
-The following GPIOs on the ESP32-S3 SuperMini have been intentionally left unassigned to preserve them for future features, sensors, or debugging:
-*   **GPIO 38:** Clean reserve (Underside solder pad on SuperMini).
-*   **GPIO 43:** Reserved (Hardware UART0 TX / Serial Debugging if USB CDC fails).
-*   **GPIO 44:** Reserved (Hardware UART0 RX / Serial Debugging if USB CDC fails).
-*   **GPIO 9, 11, 12, 13:** Clean reserves on headers.
-*   *Note: GPIOs 0, 3, 45, and 46 are strictly avoided as they are boot/strapping pins.*
+*Quick Switching*: Press `[UP]` or `[DOWN]` on the `HOME` screen to immediately cycle through all four watch faces. Preferences are automatically saved to LittleFS.
 
-### 5. Decoupling Capacitor Strategy (104 Ceramic)
-Because the **IR Transmitter** and **Buzzer** are high-current pulsed loads, it is recommended to place a single `100nF (104)` ceramic capacitor in parallel with a `10uF` bulk capacitor directly across the power rails of their respective driver circuits to prevent voltage droops.
+#### Clock Suite Applications (`MAIN MENU -> CLOCK`)
+- **Tactical Stopwatch (Chronograph)**: High-precision stopwatch with millisecond readout (`MM:SS.hh`) and split lap recording for up to 8 laps. `[OK]` starts and records split laps, `[UP]` pauses and resumes, and `[DOWN]` resets.
+- **Countdown Timer**: Configurable countdown timer with quick presets (1m, 3m, 5m, 10m, 15m, 30m, 60m), real-time graphical progress bar, and an audible alert sequence on expiration.
+- **Multi-Alarms**: 3 independent daily alarms stored persistently in `/config/alarms`. Features an interactive hour/minute selector, audible ringing melody, 5-minute snooze, and one-touch dismiss.
+- **Hourly Chime**: Configurable audio chime on every hour (`:00:00`) with a distinct dual high-frequency tone.
+- **World Clock**: 12 world cities and military hubs (Kolkata, UTC, London, Berlin, New York, Chicago, Denver, Los Angeles, Dubai, Singapore, Tokyo, Sydney) with precise quarter-hour timezone calculations and relative day offsets (`+1 DAY`, `SAME DAY`, `-1 DAY`).
+- **Pedometer & Step Goal**: Real-time MPU-6500 accelerometer magnitude step detector with threshold hysteresis and debouncing. Computes estimated distance (`km`), calories burned (`kcal`), step goal progress, and on-demand reset.
+- **Manual Clock Setting**: Allows setting the time, date, and year manually without an active Wi-Fi or NTP connection.
 
-## Getting Started
+---
 
-1.  Open the project in PlatformIO.
-2.  Connect the hardware according to the pinout above.
-3.  Build and upload the code using the pre-configured `esp32s3_supermini` environment.
-4.  On first boot, configure Wi-Fi directly on the watch via `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS` or connect to the **Q-Watch-Setup** Wi-Fi captive portal network at `http://192.168.4.1`.
-5.  Enter your Wi-Fi credentials, timezone, and OpenWeatherMap API key.
-6.  Once connected to your home network, access the watch dashboard anytime at `http://q-watch.local` or the Web File Manager at `http://q-watch.local/fm`.
+### 2. Environmental & Atmospheric Weather Station
+
+Powered by the onboard **Bosch BME280** sensor and the **OpenWeatherMap HTTPS API**, Q-Watch provides comprehensive local and remote weather tracking.
+
+#### Applications & Views (`APP_WEATHER` & `BME280 App`)
+- **Live Environmental Readings**: Real-time barometric pressure in hectopascals (hPa), relative humidity percentage (%RH), and ambient temperature in Celsius (°C).
+- **Barometric Altimeter**: Pressure-based relative altitude measurement state machine. Allows users to zero their current altitude at ground level and track relative climbs or descents in real time.
+- **OpenWeatherMap HTTPS Integration**: Fetches encrypted remote weather data over TLS when Wi-Fi is connected, displaying temperature, "feels like" temperature, humidity, wind speed, and meteorological condition strings.
+- **Cute Animated Weather Graphics**: Procedural 1-bit animated weather icons for Clear/Sunny, Clouds, Rain, Thunderstorm, and Mist/Fog, plus an offline animation placeholder.
+- **24-Hour Historical Trend Graphs**: 288-record binary ring-buffer (`/bme_history.bin`) logging environmental metrics at user-defined intervals (5m, 10m, 15m, 30m, 1h). The watch renders auto-scaled rolling 24-hour graphical trend charts for temperature, pressure, and humidity.
+- **Interactive Calibration**: Real-time temperature offset adjustment and reference ground sea-level pressure calibration saved in persistent NVS Preferences.
+
+---
+
+### 3. Cardiorespiratory Health & Biometrics
+
+Equipped with the **Maxim MAX30102** photoplethysmogram (PPG) optical sensor, Q-Watch serves as an on-wrist biometric monitoring station.
+
+#### Applications & Views (`APP_HEALTH`)
+- **Real-Time Pulse Oximeter**: Live heart rate detection (BPM) and blood oxygen saturation (SpO2 %) rendered alongside an interactive SpO2 progress bar gauge.
+- **Live PPG Pulse Waveform Visualizer**: Dynamic 64-sample circular waveform visualizer rendering raw optical absorption data filtered in real time by an Xtensa LX7 SIMD 32-tap digital FIR bandpass filter.
+- **Sensor Die Temperature**: Measures MAX30102 internal die temperature for calibration and thermal compensation.
+- **Calendar-Day Trend History**: Historical trend graphs for Heart Rate, SpO2, and sensor temperature, automatically filtered to the current local calendar day (`localtime_r`). Displays latest, minimum, maximum, and average statistics.
+- **Dynamic Optical Power Lifecycle**: Automatically powers down the MAX30102 red and infrared LEDs when navigating away from the health screen to eliminate unneeded power draw.
+- **Finger Contact Detection**: Smart optical threshold detection that pauses calculation and alerts the user when no finger or wrist contact is present.
+
+---
+
+### 4. Navigation, Motion & 3D Vector Graphics
+
+Integrating the **QMC5883P 3-Axis Magnetometer** and **MPU-6500 6-Axis IMU**, Q-Watch delivers tactical situational awareness and 3D graphics rendering.
+
+#### Subsystems & Views (`APP_COMPASS`, `APP_MOTION`)
+- **Tactical Compass HUD (`APP_COMPASS`)**:
+  - Full-screen rotating North-seeking compass rose and needle.
+  - Real-time magnetic heading in degrees (`000°`) and 8-point cardinal direction (`N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`).
+  - Waypoint bearing lock with course deviation indicator (CDI) showing degrees off-course.
+  - Interactive magnetic declination offset adjustment for true geographic North alignment.
+- **Artificial Horizon & Attitude Indicator (`SUBAPP_ALTIMETER`)**:
+  - Aircraft-style tactical artificial horizon displaying real-time pitch and roll angles.
+  - Digital bubble level indicator with numerical degree readouts for precision leveling.
+- **Interactive 3D Mount Orientation Engine**:
+  - Solves sensor placement discrepancies by projecting 3D wireframe axes directly on the 128x64 OLED display.
+  - Provides 8 selectable orthogonal mounting presets (including inverted-Z, upside-down, and 90° rotations) with persistent saving across all apps and watch faces.
+- **Real-Time 3D Wireframe Graphics Engine (`SUBAPP_WIREFRAME_3D`)**:
+  - Hardware-accelerated 3D vector pipeline with real-time perspective division and 3D polygon clipping.
+  - Renders rotating 3D wireframe geometric models (Cube, Pyramid, Torus, Spacecraft).
+  - Integrates with the MPU-6500 IMU, allowing users to rotate 3D objects in physical space by tilting the watch.
+
+---
+
+### 5. BLE Air Mouse Remote
+
+Turn the Q-Watch into a wireless Bluetooth Low Energy (BLE) HID air mouse remote for laptops, smart TVs, tablets, and phones.
+
+#### Features & Controls (`MAIN MENU -> MOTION -> AIR MOUSE`)
+- **Native BLE HID Stack**: Uses ESP32-S3 `BLEHIDDevice` to present as a standard Bluetooth mouse. Operates strictly when the app is active and completely de-initializes (`BLEDevice::deinit(false)`) upon exit to maximize battery life.
+- **Calibrated Gyroscope Control Pipeline**: Maps angular velocity from the MPU-6500 directly to cursor coordinates, featuring:
+  - Adjustable dead-zone suppression (0.5°/s to 10.0°/s) to eliminate resting hand tremors.
+  - Ramped anti-dead-zone compensation (0.0°/s to 3.4°/s) for smooth micro-movements.
+  - 6-DOF true zero-drift auto-tracking and adaptive velocity smoothing.
+  - Non-linear power-curve acceleration.
+  - Remainder-preserving integer accumulation clamped to HID bounds (-127 to +127).
+- **Dual Operational Modes**:
+  - **`POINTER` Mode**: Wrist motion moves the pointer. `[UP]` = Left Click & Hold (drag and drop / text selection); `[DOWN]` = Right Click & Hold; `[OK]` = Back Click.
+  - **`SCROLL` Mode**: `[UP]` = Scroll Up; `[DOWN]` = Scroll Down; `[OK]` = Back Click.
+  - `[CANCEL]` toggles instantly between `POINTER` and `SCROLL` modes.
+- **In-Situ Settings & Precision Mode**: Long-pressing `[OK]` pauses cursor tracking, opening an in-situ tuning menu to adjust sensitivity, dead zones, axis swapping, gyro recentering, or toggle **Precision Mode** (1:1 linear tracking, 0.35x micro-speed, heavy tremor filtering for CAD and pixel art).
+
+---
+
+### 6. On-Device TinyML Gesture AI
+
+Run real-time machine learning inference directly on the watch to classify dynamic wrist gestures.
+
+#### Capabilities (`MAIN MENU -> MOTION -> GESTURE AI`)
+- **Quantized INT8 Neural Network**: Compact multi-layer perceptron (MLP) trained on 6-axis accelerometer and gyroscope time-series data.
+- **SIMD-Accelerated Inference**: Leverages the ESP32-S3 Xtensa LX7 PIE vector instructions to compute dot products and activations with near-zero latency.
+- **Real-Time Classification**: Identifies distinct wrist gestures:
+  - *Flick Up*
+  - *Flick Down*
+  - *Twist Left*
+  - *Twist Right*
+  - *Shake / Tremor*
+- **Live Telemetry HUD**: Displays real-time confidence bars, detected gesture class, and inference duration in milliseconds.
+
+---
+
+### 7. Tactical Wireless Recon & SIGINT Suite
+
+Transform the Q-Watch into a wrist-mounted signals intelligence (SIGINT) unit for network analysis and attack detection.
+
+#### Applications (`SYS MENU -> WIRELESS`)
+- **BLE Radar (`BLE RADAR`)**:
+  - Rotating 52px tactical reticle with a continuous sweep line.
+  - Computes real-time target distance using log-distance path loss estimation:
+    $$d \approx 10^{\frac{A - \text{RSSI}}{10n}} \quad (A = -59\text{ dBm}, n = 2.4)$$
+  - Directional target lock brackets and live RSSI signal strength gauge.
+  - **Acoustic Geiger Counter**: Dynamic audio ticks from the piezo buzzer that shorten in interval as you get closer to the target (from 1200ms at range down to 60ms at point-blank proximity).
+- **Wi-Fi Channel Spectrum Analyzer (`CH SPECTRUM`)**:
+  - Sweeps all 13 channels across the 2.4GHz ISM band.
+  - Renders a live access point density histogram on the OLED.
+  - Highlights non-overlapping channels (1, 6, 11) and automatically calculates the cleanest channel (`REC: CH X`).
+- **802.11 Deauth / Disassociation Attack Detector (`DEAUTH DETECT`)**:
+  - Promiscuous 802.11 IDS sentry listening for deauthentication (`0x00C0`) and disassociation (`0x00A0`) management frame floods.
+  - Calculates attack flood rates (deauths/sec), identifies the attacking transmitter MAC and victim station MAC, and extracts 802.11 reason codes.
+  - Triggers flashing visual alerts and audible sirens upon detecting an active attack.
+- **Promiscuous Packet Monitor (`PKT MONITOR`)**:
+  - Non-blocking 802.11 air traffic monitor displaying live packets/second rate.
+  - 64-sample scrolling histogram rate graph and cumulative packet counters.
+  - Real-time percentage breakdown and multi-segment bar displaying Management, Control, and Data frame ratios.
+
+---
+
+### 8. Flipper Zero & Bruce-Compatible IR Remote Subsystem
+
+A full-featured infrared transceiver compatible with community remote databases.
+
+#### Capabilities (`APP_IR`)
+- **Flipper Zero & Bruce `.ir` File Compatibility**: Complete parser and serializer for standard `.ir` library files stored in `/ir/` on LittleFS. Supports both `type: parsed` (protocol, address, command, bit length) and `type: raw` (carrier frequency, duty cycle, microsecond pulse sequences).
+- **Multi-Protocol Engine**: 100% round-trip fidelity for `NEC`, `NECext`, `NEC42`, `Samsung32`, `RC5`, `RC5X`, `RC6`, and Sony `SIRC` (12-bit, 15-bit, 20-bit).
+- **Signal Learning & Capture**: Demodulated 38 kHz receiver on **GPIO 17** captures incoming signals in real time, automatically decoding protocol, address, and command, or recording raw microsecond pulse timings up to 1024 edges.
+- **Quick Remote Cloning**: Interactive on-watch remote builder: Name Remote → Name Button → Learn Signal → Test Transmission → Save Button → Add Buttons → Save to `.ir` file.
+- **TV-B-Gone Power Blaster**: Transmits universal power codes for hundreds of television models in rapid succession with an animated status display and instant cancellation via `[CANCEL]`.
+- **IR Signal Lab**: Generates 36 kHz, 38 kHz, and 40 kHz PWM carrier waves to test transmitters and analyze raw-to-parsed protocol decoding.
+
+---
+
+### 9. Dasai Mochi Procedural Emote Pet Companion
+
+An ultra-lightweight procedural vector animation pet inspired by Dasai Mochi.
+
+#### Features (`APP_MOCHI`)
+- **Ultra-Compact Procedural Vector Engine**: Consumes **< 8 KB of flash** and **only 140 bytes of RAM**, avoiding bloated GIF frame arrays.
+- **17 Expressive Moods & Emotes**:
+  - *Positive*: `HAPPY` (crescent eyes, blushing cheeks), `LOVE` (pulsing heart eyes, love chime), `LAUGH` (squinting `><` eyes), `EXCITED` (energetic hop), `CONTENT`, `RELAXED`, `PROUD`.
+  - *Reactive*: `ANGRY` (slanted brows, red LED, grumble), `FRUSTRATED` (sweat drop), `CONFUSED` (`?` marker), `EMBARRASSED` (hatching blush `///`), `DIZZY` (spinning Archimedean spiral eyes).
+  - *Ambient*: `SLEEPY` (drooping eyelids), `SLEEPING` (floating `Zzz`, slow breathing), `DRIVING` (racing visor, wind streaks), `MUSIC` (head bobbing, eighth-notes), `GUNDAM` (combat visor optics).
+- **5 Swappable Modular Digital Helmets**:
+  - `CLASSIC`: Smooth rounded helmet with aerodynamic intake.
+  - `GUNDAM`: RX-78-2 Mobile Suit helmet with V-fin crest, forehead sensor gem, cheek vents, and red chin tab.
+  - `CYBER`: Cyberpunk edition with corner brackets and telemetry lines.
+  - `NEKO`: Cat ears with inner notch geometry.
+  - `TACTICAL`: 007 Agent night-vision reticle bezel.
+- **6-Axis IMU Reactive Physics**:
+  - *Gaze Tracking*: Pupils smoothly follow wrist tilt ($dx \in [-7, 7]$, $dy \in [-5, 5]$).
+  - *Cornering Lean*: Body tilts into turns during movement.
+  - *High-G Shake*: Shaking the watch (>2.2G) triggers dizzy eyes and stumble tones.
+  - *Freefall Detection*: Zero-G drops (<0.25G) trigger panic expressions.
+  - *Idle Timer*: Stationary inactivity (>25s) transitions Mochi into a yawn and slumber (`Zzz`).
+- **Tamagotchi Petting & Feeding Mechanics**:
+  - Short `[OK]`: Pet Mochi (heart burst, happiness boost, XP gain, arpeggio chime).
+  - Long `[OK]`: Feed Mochi (animated onigiri snack, chewing animation, restores hunger).
+  - Friendship Level progression (Level 1–10) with persistent saving.
+  - Short `[CANCEL]`: Toggles between full-screen face and the Stats Cockpit (Happiness, Hunger, Friendship, Battery, Steps).
+
+---
+
+### 10. Polyphonic Chiptune Synthesizer & Beat Maker
+
+A modular chiptune music workstation and tactical audio engine.
+
+#### Features (`APP_AUDIO`)
+- **4-Channel Polyphonic Synthesizer (`poly_synth`)**:
+  - 4 independent voices mixed in real time using SIMD saturated arithmetic.
+  - Waveform generators: Square (variable duty cycle), Sawtooth, Triangle, Sine, and Noise.
+  - Configurable Attack-Decay-Sustain-Release (ADSR) volume envelopes.
+- **8-Step Beat Maker Sequencer**:
+  - Visual 8-step rhythm grid editor on the 128x64 display.
+  - Programmable kick, snare, hi-hat, and synth notes.
+  - Real-time tempo adjustment (BPM) and continuous looping playback.
+- **Jukebox & Chiptune Player**:
+  - Preloaded with 8-bit chiptune arrangements, including the iconic James Bond 007 theme and retro arcade fanfares.
+- **Tactical Sound Lab & Utilities**:
+  - Frequency tone generator (1 Hz to 20 kHz).
+  - Visual pendulum metronome.
+  - Morse code transmitter (`.--.`, `--.-`, etc.) with synchronized audio and screen flash.
+
+---
+
+### 11. Haptic Feedback & Vibration Subsystem
+
+Tactile haptic feedback powered by an ERM vibration motor on **GPIO 10**.
+
+#### Subsystems (`APP_VIBRATION`)
+- **Hardware PWM Driver**: Uses ESP32-S3 LEDC Timer 1 / Channel 2 running at 200 Hz with 8-bit duty cycle resolution, preventing timer collisions with buzzer audio.
+- **Asynchronous Pattern Sequencer**:
+  - `CLICK / TICK`: Crisp 60ms tactile click for UI button navigation.
+  - `DOUBLE PULSE`: Two 50ms pulses with 70ms pause for smartphone notifications.
+  - `TACTICAL ALERT`: 220ms continuous pulse for alarms and countdown timers.
+  - `HEARTBEAT`: Biometric lub-dub cardiac rhythm simulation.
+  - `SOS MORSE`: Standard `··· ——— ···` emergency sequence.
+  - `RAMP INTENSITY`: Dynamic acceleration ramp from 20% to 100%.
+- **Interactive Haptic Lab App**:
+  - Live oscillating waveform visualizer on the OLED with `[VIB]` / `[IDLE]` state indicators.
+  - Master vibration toggle and button-click haptic toggle.
+  - Variable intensity adjustment (25%, 50%, 75%, 100%).
+
+---
+
+### 12. WS2812 Tactical RGB LED System
+
+Visual status indicators driven by the onboard addressable RGB LED on **GPIO 48**.
+
+#### Modes (`APP_LED`)
+- **Lighting Effects**: Solid Color, Gentle Pulse, Rainbow Cycle, High-Visibility Strobe, and Tactical Beacon.
+- **Color Presets**: Red, Green, Blue, Amber, Cyan, Purple, and White.
+- **360° Compass Hue Blending**: Dynamically blends LED color continuously across the color wheel based on QMC5883P compass heading.
+- **Brightness Scaling**: Variable duty cycle scaling from 10% to 100% to conserve battery.
+
+---
+
+### 13. Micro-ELF Dynamic App Engine & Q-Apps
+
+Execute relocatable binary applications from LittleFS storage without reflashing firmware.
+
+#### Engine Architecture (`qapp_loader`)
+- **Dual-Segment Relocatable Binary Format (`.qapp`)**: Separates executable code loaded into internal SRAM (`MALLOC_CAP_EXEC | MALLOC_CAP_INTERNAL`) from initialized data, BSS, and heap memory allocated in external 2MB PSRAM (`MALLOC_CAP_SPIRAM`), resolved via relocation tables (`QAppReloc`).
+- **Sandboxed C-ABI Export (`qwatch_api.h`)**: Provides applications with hardware-abstracted access to OLED drawing routines, 4-button input events, 6-axis IMU, 3D magnetometer, MAX30102 biometrics, IR transceivers, audio synthesis, RGB LED, and LittleFS file I/O.
+
+#### Pre-Loaded Applications & Games (`apps/`)
+
+| Application | Binary File | Description |
+| :--- | :--- | :--- |
+| **007 Space Invaders** | `invaders.qapp` | Classic arcade shooter with button or wrist-tilt steering, 3 alien rows, destructible bunkers, mystery SPECTRE UFO, and high-score saving. |
+| **Tactical Dice & TRNG** | `dice.qapp` | High-entropy random number generator combining hardware TRNG, timers, and IMU jitter. Supports D6, D20 (with Nat 20/Nat 1 banners), D100, Coin flip, and shake-to-roll physics. |
+| **Tilt Ball** | `tilt_ball.qapp` | 6-axis IMU roll/pitch physics simulation with bounce damping, target collision, and audio chimes. |
+| **Compass HUD** | `compass_hud.qapp` | Tactical navigation HUD with rotating needle, waypoint bearing lock, and course deviation indicator. |
+| **Retro Snake** | `snake.qapp` | Nokia-style snake game with 4-way steering, food spawning, growth mechanics, and high-score persistence. |
+| **F1 Grand Prix** | `f1_race.qapp` | Top-down high-speed racer with multi-lane traffic avoidance, boost mechanics, and engine audio. |
+| **Pacman Arcade** | `pacman.qapp` | Authentic arcade maze chase with power pellets, ghost AI pathfinding, and fruit scoring. |
+| **Breakout 007** | `breakout.qapp` | Brick-busting platformer with paddle bounce physics, laser power-ups, and multi-ball action. |
+| **Space Impact 2** | `space_impact.qapp` | Side-scrolling space shooter with delta fighter, laser blasts, screen-clearing bombs, and boss battles. |
+| **Nokia Bounce** | `bounce.qapp` | Platformer with bouncing ball physics, gravity restitution, obstacle avoidance, and rotating ring collection across 3 levels. |
+
+---
+
+### 14. Tactical Animation Engine & Player
+
+A lightweight streaming 1-bit animation player for boot splashes, UI effects, and visual clips.
+
+#### Capabilities (`APP_ANIM_PLAYER`)
+- **Proprietary Streaming Binary Format (`.anim`)**: 16-byte packed header with sequential 1024-byte uncompressed 1-bit XBM frames streamed straight from LittleFS without RAM buffering.
+- **Windows Monochrome BMP Compatibility**: Decodes standard 1-bit monochrome `.bmp` files on the fly with hardware bit-reversal.
+- **Interactive Player Controls**:
+  - `[OK]` Short Press: Play / Pause.
+  - `[OK]` Long Press: Set current animation as the system boot splash (`/boot/boot.anim`).
+  - `[UP]` Short Press: Cycle speed (`0.5x` -> `1.0x` -> `1.5x` -> `2.0x`) when playing, or step forward 1 frame when paused.
+  - `[DOWN]` Short Press: Toggle looping (`LOOP: ON/OFF`) when playing, or step backward 1 frame when paused.
+  - `[CANCEL]`: Exit player.
+- **Custom Boot Splash**: Cold boot plays `/boot/boot.anim` or `/boot/boot.bmp`, or falls back to the MI6 tactical radar sweep. Pressing any button instantly skips the boot animation.
+- **CLI Packing Tool (`tools/anim_packer.py`)**: Python tool to convert GIF, MP4, and image sequences into `.anim` files with Bayer 4x4 spatial dithering.
+
+---
+
+### 15. LittleFS File Manager & Web File Server
+
+Manage configurations, logs, animations, and applications directly on the watch or over Wi-Fi.
+
+#### Features (`APP_FILE_MANAGER`)
+- **On-Watch OLED Browser**: Native 3-item scrolling viewport displaying filenames, file sizes, and total/free storage. Includes a context menu (`[OK]` long press) to open, delete, or inspect file properties.
+- **Direct Viewer Associations**: Selecting `.ir` files launches the IR Remote viewer; selecting `.anim` or `.bmp` launches the Animation Player; selecting `.qapp` executes the dynamic binary loader.
+- **Opt-In Web File Server**: Enable via `SETTINGS -> CONNECTIVITY -> FILE SERVER` and visit `http://q-watch.local/fm` on any browser:
+  - Dynamic folder navigation and file downloading.
+  - Multipart HTTP file uploading.
+  - File deletion and folder creation.
+  - Protected with strict path traversal sandboxing (`FileManager::isPathSafe`) to prevent directory traversal attacks (`../`, `//`).
+
+---
+
+### 16. Multi-Tier Power Governor & Battery Cockpit
+
+Sophisticated power lifecycle management designed to maximize battery life across operating conditions.
+
+#### Dynamic Power Profiles (`APP_BATTERY`)
+- **`PERFORMANCE` ("Tactical Max")**: 240 MHz dual-core CPU clock, display-off idling with FreeRTOS `waiti` yielding, zero sleep latency, high-performance radios and sensors (~12–16 hrs runtime).
+- **`BALANCED` ("Everyday Smart")**: Dynamic 160 MHz CPU clock, ESP32-S3 Light Sleep with 300µs wake latency, 24/7 background pedometer tracking, automatic radio sleep (~3–5 days runtime).
+- **`ENDURANCE` ("Ultra Saver")**: 80 MHz eco CPU clock, Deep Sleep down to 15µA quiescent draw, automatic radio kill, RGB LED and buzzer muting (~15–20 days runtime).
+- **`CUSTOM` ("Power Lab")**: Granular user configuration of CPU clocks, sleep engines, radio power-down policies, and low-voltage cutoff guards.
+
+#### 5-Page Battery Cockpit HUD
+- **Page 1 (HUD)**: Battery level gauge, real-time voltage (`3.92V`), percentage (`84%`), dynamic runtime estimate (`EST: 4.2d`), active profile badge, and manual ADC refresh via `[OK]`.
+- **Page 2 (Profiles)**: 1-click profile switcher.
+- **Page 3 (Sleep Engine)**: Configures sleep engines (`LIGHT SLEEP`, `DEEP SLEEP`, `DISPLAY OFF`, `ULP SENTRY`), pedometer toggle, and raise-to-wake gesture sensitivity.
+- **Page 4 (Load Shedding)**: Subsystem power cuts (Radio Cut on lock, RGB LED mute, Audio mute, low-battery cutoff at `3.20V`).
+- **Page 5 (ULP Sentinel Lab)**: Telemetry HUD displaying ULP RISC-V coprocessor execution status, RTC SLOW RAM allocation (8192 bytes), and wake trigger tallies.
+
+#### Wakeup & Background Logging
+- **Dual Hardware Wakeup**: ESP32-S3 `EXT1` active-low wakeup on **GPIO 21** (`BTN_CANCEL`) and **GPIO 8** (`MPU_INT` motion interrupt).
+- **Raise-to-Wake Gesture**: Evaluates wrist angle before sleep (`pitch 15°..65°`, `|roll| <= 35°`).
+- **Silent Background Sleep Recording**: When waking from deep sleep on an RTC timer event, the watch samples the BME280 or MAX30102, appends data to LittleFS, and returns immediately to deep sleep without powering the OLED display or playing sound.
+
+---
+
+### 17. System Settings, Wi-Fi Scanner & Captive Portal
+
+Centralized configuration hub for device setup, network credentials, and system maintenance.
+
+#### Settings Control Center (`APP_SETTINGS`)
+- **`CONNECTIVITY`**: Wi-Fi status, Wi-Fi Scanner, Web File Server toggle, BLE status.
+- **`TIME`**: NTP Sync Now, Auto Sync toggle, POSIX Timezone configuration, 12h/24h toggle, Manual Time Set.
+- **`POWER`**: Display timeout, sleep profiles, raise-to-wake sensitivity, load shedding.
+- **`DISPLAY`**: Contrast adjustment, screen inversion, UI transition effects.
+- **`SENSORS`**: Auto Data Recording master switch, Compass 3D Mount Orientation, IMU Calibration, Health Recording Interval.
+- **`SYSTEM`**: Storage Info, Firmware Version, Factory Reset (with confirmation dialog).
+
+#### Wi-Fi Scanner & Captive Portal
+- **On-Watch Wi-Fi Scanner**: Scan local 2.4GHz networks directly on the watch, select an SSID, and input passwords using the on-screen keyboard.
+- **SoftAP Captive Portal**: If Wi-Fi is unconfigured, the watch broadcasts a `Q-Watch-Setup` network accessible at `http://192.168.4.1` (or `http://q-watch.local` via mDNS). Static assets (HTML, CSS, JS, SVG) are stored in `PROGMEM`, saving over 14 KB of heap RAM for networking and app execution.
+
+---
+
+### 18. Hardware Acceleration: GDMA & Xtensa LX7 SIMD
+
+Q-Watch takes full advantage of the ESP32-S3 hardware architecture for fluid performance.
+
+- **ESP32-S3 GDMA Asynchronous Display Pipeline**:
+  Transfers 128x64 display frames from memory to the SH1106 controller over SPI using General Direct Memory Access (GDMA). The CPU initiates the transfer and immediately yields, eliminating blocking waits during frame rendering.
+- **Xtensa LX7 128-Bit SIMD Framebuffer Operations**:
+  Uses Xtensa LX7 PIE vector opcodes (`ee.notq`, `ee.xorq`, `ee.andq`, `ee.orq`) to process 16 bytes (128 pixels) per instruction for instant screen inversion, XOR mask blitting, and UI transitions.
+- **Hardware-Vectorized 32-Tap FIR Filter**:
+  A dual-accumulator SIMD FIR bandpass filter accelerates biometric pulse oximetry and PPG wave filtering for the MAX30102 sensor.
+- **6-DOF IMU Parallel Vector Filter**:
+  Smooths accelerometer and gyroscope channels simultaneously using SIMD vector instructions.
+
+---
+
+### 19. Q-Link Android Companion Suite
+
+A native Android companion application written in **Kotlin** and **Jetpack Compose**, communicating over BLE GATT (`0xFE50`) and Wi-Fi REST.
+
+#### Companion Features (`android/`)
+- **Live 128x64 OLED Canvas Mirroring**: Real-time rendering of the watch's display buffer on the phone with selectable phosphor glow colors (Cyan, Amber, Green, White), screenshot export, and an interactive virtual D-Pad (`UP`, `OK`, `DOWN`, `BACK`) for full remote control.
+- **Sensor Telemetry Cockpit**: Live readouts for the BME280 weather station, MPU-6500 artificial horizon (with live pitch/roll angles), QMC5883P rotating compass rose, and MAX30102 cardiorespiratory biometrics.
+- **Micro-ELF App Store**: Browse and install `.qapp` binaries directly to the watch over Wi-Fi (`POST /api/v1/app/install`) with a single tap.
+- **Online IRDB & Adaptive Remote**: Access a cloud database of Bruce and Flipper Zero `.ir` remotes and transmit codes through the watch.
+- **Animation Market & Studio**: Preview, convert, and upload animations (`.anim`, `.bmp`, GIFs) directly to `/anim` or `/mochi` on the watch.
+- **Phone Notification Forwarding**: Android `NotificationListenerService` forwards incoming SMS, WhatsApp messages, and incoming calls to the watch, triggering custom vibration pulses and RGB LED flashes.
+- **Atomic Time & GPS Weather Relay**: Sync exact phone RTC time and hyper-local GPS weather data to the watch with one tap (no OpenWeatherMap API key required on the watch).
+- **Remote File Manager**: Visual explorer for LittleFS partitions supporting directory browsing, file uploads, and file deletion.
+
+---
+
+## 🎮 Controls & Navigation Reference
+
+The watch uses a 4-button input scheme: the **K1 3-way directional rocker** (`UP`, `OK`, `DOWN`) and a dedicated tactile **`CANCEL`** button.
+
+### Global Button Action Matrix
+
+| Location / Mode | Button Action | Behavior / Result |
+| :--- | :--- | :--- |
+| **HOME Screen** | `[UP]` / `[DOWN]` Short | Cycle through watch faces (Digital, Analog, Casio, Tactical) |
+| | `[OK]` Short | Open `MAIN MENU` |
+| | `[CANCEL]` Short | Toggle Display Power Save (Screen Off / On) |
+| | `[CANCEL]` Long (1.5s) | Enter ESP32-S3 Deep Sleep immediately |
+| | **Wrist Raise** | Wake display from sleep (Raise-to-Wake gesture) |
+| **Menus & Lists** | `[UP]` / `[DOWN]` Short | Scroll items up / down (with cyclic wrap-around) |
+| | `[OK]` Short | Select item / Enter sub-menu / Toggle option |
+| | `[CANCEL]` Short | Return to previous screen / Back |
+| | `[CANCEL]` Long (1.5s) | Immediately return to `HOME` screen |
+| **Sub-Apps & Tools**| `[CANCEL]` Short | Exit sub-app to main menu |
+| | `[OK]` Long | Context menu / Secondary action (e.g. Set as Boot Splash in Anim Player) |
+| **Air Mouse Mode** | `[CANCEL]` Short | Toggle between `POINTER` mode and `SCROLL` mode |
+| | `[OK]` Long | Pause / Resume cursor movement & open in-situ settings |
+| | `[UP]` (Pointer) | Left Click & Hold (drag / select) |
+| | `[DOWN]` (Pointer) | Right Click & Hold |
+| | `[UP]` / `[DOWN]` (Scroll) | Scroll page Up / Down |
+| **Mochi Pet** | `[OK]` Short | Pet Mochi (heart burst, happiness boost, XP gain) |
+| | `[OK]` Long | Feed Mochi (animated onigiri snack, chewing animation) |
+| | `[CANCEL]` Short | Toggle between Full-Screen Face and Stats Cockpit |
+| **Stopwatch** | `[OK]` Short | Start / Split Lap |
+| | `[UP]` Short | Pause / Resume |
+| | `[DOWN]` Short | Reset |
+
+---
+
+## 📂 Project Directory Structure
+
+```
+Q-Watch/
+├── android/                   # Native Android Jetpack Compose companion app
+│   ├── app/src/main/java/     # Kotlin source (Q-Link BLE/Wi-Fi, screens, IRDB, anims)
+│   └── build.gradle.kts       # Android Gradle build configuration
+├── apps/                      # Micro-ELF relocatable C-ABI applications (.qapp)
+│   ├── bounce/                # Nokia Bounce platformer
+│   ├── breakout/              # Breakout 007 arcade game
+│   ├── compass_hud/           # Tactical Compass HUD app
+│   ├── dice/                  # Tactical 3D TRNG dice roller
+│   ├── f1_race/               # F1 Grand Prix top-down racer
+│   ├── invaders/              # 007 Space Invaders arcade shooter
+│   ├── pacman/                # Pacman arcade maze game
+│   ├── snake/                 # Retro Nokia snake game
+│   ├── space_impact/          # Space Impact 2 side-scrolling shooter
+│   └── tilt_game/             # 6-axis IMU physics tilt ball
+├── boards/                    # Custom PlatformIO board definitions (esp32s3_supermini)
+├── data/                      # LittleFS filesystem assets (configs, animations, remotes)
+├── docs/                      # Architectural specifications (qlink_spec.md, anim_market_spec.md)
+├── include/                   # Firmware C++ header files
+│   ├── air_mouse.h            # BLE HID air mouse engine
+│   ├── anim_engine.h          # Streaming 1-bit animation player
+│   ├── clock.h                # Watch faces, stopwatch, timer, alarms, world clock
+│   ├── display.h              # SH1106 OLED display driver & UI graphics
+│   ├── gdma_manager.h         # ESP32-S3 GDMA display transfer pipeline
+│   ├── gesture_ai.h           # TinyML on-device INT8 gesture neural network
+│   ├── hw_config.h            # Hardware pin mapping and bus definitions
+│   ├── ir_engine.h            # Flipper Zero / Bruce IR transceiver subsystem
+│   ├── mochi_pet.h            # Dasai Mochi procedural emote engine
+│   ├── poly_synth.h           # 4-channel polyphonic chiptune synthesizer
+│   ├── power_manager.h        # Multi-tier power governor & battery cockpit
+│   ├── qapp_loader.h          # Micro-ELF binary loader & symbol resolver
+│   ├── qlink.h                # Q-Link BLE/Wi-Fi communication protocol
+│   ├── qwatch_api.h           # Versioned C-ABI export table for Q-Apps
+│   ├── sensors.h              # BME280, MPU-6500, QMC5883P sensor managers
+│   ├── simd_accel.h           # Xtensa LX7 SIMD/PIE vector acceleration
+│   └── ui_core.h              # UI state machine and event router
+├── src/                       # Firmware C++ implementation files
+│   ├── main.cpp               # System entry point, setup, and loop dispatch
+│   ├── ui_core.cpp            # UI state dispatch and navigation handling
+│   ├── ui_core_sound.cpp      # Beat maker, jukebox, and sound menu UI
+│   └── ...                    # Subsystem implementations
+├── tests/                     # Automated host verification test suite
+│   ├── test_suite.py          # 35+ automated pytest verification test suites
+│   ├── test_qapp_system.cpp   # Micro-ELF binary loader host test harness
+│   └── ...                    # Subsystem host unit tests
+├── tools/                     # Developer utilities
+│   └── anim_packer.py         # Animation conversion and packing CLI
+└── platformio.ini             # PlatformIO build configuration
+```
+
+---
+
+## 🛠️ Getting Started & Installation
+
+### Prerequisites
+
+- **Development Environment**: [VS Code](https://code.visualstudio.com/) with the [PlatformIO IDE Extension](https://platformio.org/) installed (or PlatformIO Core CLI).
+- **Toolchain / Framework**: Espressif32 Platform `v7.1.3` (Arduino framework).
+- **USB Interface**: USB-C data cable connected to the ESP32-S3 SuperMini (ensure USB CDC on boot is enabled).
+- **Android Companion (Optional)**: Android Studio Hedgehog or newer (for building `android/`).
+
+---
+
+### Compiling & Flashing Firmware
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/Vivek-live-now/Q-Watch.git
+   cd Q-Watch
+   ```
+
+2. **Build the Firmware**:
+   ```bash
+   pio run -e esp32s3_supermini
+   ```
+
+3. **Upload the Firmware**:
+   Connect the ESP32-S3 SuperMini via USB-C and run:
+   ```bash
+   pio run -e esp32s3_supermini -t upload
+   ```
+
+4. **Upload the LittleFS Filesystem**:
+   Flash the default filesystem assets (configuration files, preloaded `.anim` animations, and `.ir` remotes):
+   ```bash
+   pio run -e esp32s3_supermini -t uploadfs
+   ```
+
+5. **Monitor Serial Output (Optional)**:
+   ```bash
+   pio device monitor -b 115200
+   ```
+
+---
+
+### Building the Android Companion App
+
+1. Open the `android/` directory in **Android Studio**.
+2. Allow Gradle to synchronize dependencies.
+3. Connect your Android device via USB debugging or launch an emulator.
+4. Build and install the debug APK:
+   ```bash
+   ./gradlew assembleDebug
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+---
+
+### Initial Wi-Fi & Device Setup
+
+1. **Power On**: On first boot, the watch will play the boot splash animation and display the `HOME` watch face.
+2. **Wi-Fi Setup via Watch**:
+   - Navigate to `SETTINGS -> CONNECTIVITY -> SCAN NETWORKS`.
+   - Select your Wi-Fi SSID from the scanned list.
+   - Enter your network password using the on-screen keyboard.
+3. **Wi-Fi Setup via SoftAP Captive Portal**:
+   - If unconfigured, the watch broadcasts an open Wi-Fi network named `Q-Watch-Setup`.
+   - Connect from your phone or PC; the captive portal will open automatically at `http://192.168.4.1`.
+   - Enter your Wi-Fi SSID, password, POSIX timezone string, and optional OpenWeatherMap API key, then click **Save & Connect**.
+4. **Access Web Services**:
+   - Once connected to your home network, access the watch dashboard at `http://q-watch.local`.
+   - Access the Web File Manager at `http://q-watch.local/fm`.
+
+---
+
+## 🧪 Automated Testing & Verification
+
+The Q-Watch repository includes a comprehensive host test suite verifying hardware algorithms, communication protocols, memory bounds, and SIMD instructions without requiring physical hardware:
+
+```bash
+# Run the complete Python-based test harness (35+ test suites)
+pytest tests/test_suite.py -v
+
+# Run the Micro-ELF binary loader and sandbox host test
+g++ -std=c++17 tests/test_qapp_system.cpp tests/mock_qwatch_api.cpp -o test_qapp && ./test_qapp
+
+# Run the Dasai Mochi procedural vector engine test
+g++ -std=c++17 tests/test_mochi_system.cpp src/mochi_pet.cpp -o test_mochi && ./test_mochi
+```
+
+---
+
+## 🤝 Contributing & License
+
+Contributions, bug reports, and pull requests are welcome! Please ensure that code changes maintain documentation integrity and pass the host automated verification test suite before submitting pull requests.
+
+This project is licensed under the **ISC / MIT License**. See [package.json](package.json) for details.
+
+---
+
+*Designed for secret agents, embedded engineers, and hardware enthusiasts.* 🍸🔫⌚
